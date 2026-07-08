@@ -6,13 +6,18 @@ import {
 } from '../src/swarmlab-evidence.js';
 
 describe('SwarmLab evidence gate', () => {
-  it('turns completed SwarmLab retests into a passing release gate', () => {
+  it('surfaces pending stack mappings without overstating verified coverage', () => {
     const result = evaluateSwarmLabEvidence();
-    expect(result.status).toBe('passed');
+    expect(result.status).toBe('partial');
     expect(result.total).toBe(7);
-    expect(result.passed).toBe(7);
+    expect(result.passed).toBe(6);
     expect(result.failed).toBe(0);
-    expect(result.partial).toBe(0);
+    expect(result.partial).toBe(1);
+    expect(result.pendingImplementation).toBe(1);
+
+    const rt06 = result.cases.find((c) => c.id === 'RT-06');
+    expect(rt06?.status).toBe('partial');
+    expect(rt06?.implementationStatus).toBe('pending');
   });
 
   it('covers the currently proven stack failure classes', () => {

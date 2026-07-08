@@ -239,3 +239,63 @@ export function evaluateSwarmLabEvidence(
     cases: results,
   };
 }
+
+
+function pct(n: number): string {
+  return `${(n * 100).toFixed(1)}%`;
+}
+
+function fmt(n: number, unit?: string): string {
+  const value = Number.isInteger(n) ? String(n) : n.toFixed(3).replace(/0+$/, '').replace(/\.$/, '');
+  return unit ? `${value}${unit}` : value;
+}
+
+export function swarmLabEvidenceToMarkdown(result: EvidenceGateResult): string {
+  const lines: string[] = [];
+  lines.push('# Aegis SwarmLab Evidence Gate');
+  lines.push('');
+  lines.push('> DATA: REPLAY-VERIFIED SWARMLAB RETESTS (RT-01..RT-07)');
+  lines.push('> predictor: NONE — deterministic release gate, not a learned model');
+  lines.push('');
+  lines.push(
+    `Status: **${result.status.toUpperCase()}** · ${result.passed}/${result.total} passed · ` +
+      `${result.partial} partial · ${result.failed} failed`,
+  );
+  lines.push('');
+  lines.push('## Case summary');
+  lines.push('');
+  lines.push('| id | status | owners | source | release-gate mapping |');
+  lines.push('|---|---|---|---|---|');
+  for (const c of result.cases) {
+    lines.push(
+      `| ${c.id} | ${c.status} | ${c.owners.join(', ')} | ${c.source} | ${c.aegisMapping} |`,
+    );
+  }
+  lines.push('');
+  lines.push('## Metric checks');
+  lines.push('');
+  for (const c of result.cases) {
+    lines.push(`### ${c.id} — ${c.finding}`);
+    lines.push('');
+    lines.push('| metric | before | after | gate | result |');
+    lines.push('|---|---:|---:|---:|---|');
+    for (const m of c.metrics) {
+      const before = m.before === undefined ? '—' : fmt(m.before, m.unit);
+      const cmp = m.comparator === 'eq' ? '=' : m.comparator === 'gte' ? '>=' : '<=';
+      lines.push(
+        `| ${m.name} | ${before} | ${fmt(m.after, m.unit)} | ${cmp} ${fmt(m.threshold, m.unit)} | ` +
+          `${m.passed ? 'PASS' : 'FAIL'} |`,
+      );
+    }
+    if (c.failedMetrics.length > 0) {
+      lines.push('');
+      lines.push(`Failed metrics: ${c.failedMetrics.join(', ')}`);
+    }
+    lines.push('');
+  }
+  lines.push('---');
+  lines.push('');
+  lines.push(`_Gate pass rate: ${pct(result.total === 0 ? 0 : result.passed / result.total)}._`);
+  lines.push('');
+  return lines.join('\n');
+}

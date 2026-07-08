@@ -45,6 +45,7 @@
     "directory": "packages/aegis-bench"
   },
   "dependencies": {
+    "@heybeaux/awm-core": "file:../../../../awm/packages/core",
     "@heybeaux/lattice-aegis": "workspace:*"
   },
   "devDependencies": {

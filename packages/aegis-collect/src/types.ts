@@ -74,6 +74,8 @@ export interface DecisionRow {
   newFile: boolean;
   /** P(failure) from AWM prediction if present; undefined when no predictor running. */
   pFailure?: number;
+  /** Identity of the model that generated this tool call (e.g. "VibeThinker-3B"). */
+  model?: string;
 }
 
 /** One PostToolUse/PostToolUseFailure outcome recorded by the outcome CLI. */
@@ -110,4 +112,6 @@ export interface DatasetRow {
   action_failed: 0 | 1 | null;
   /** How the join was made. */
   joinMethod: 'exact' | 'fuzzy' | 'none';
+  /** Identity of the model that generated this tool call (propagated from decision.model). */
+  model?: string;
 }

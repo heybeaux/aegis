@@ -32,6 +32,9 @@ importers:
 
   packages/aegis-bench:
     dependencies:
+      '@heybeaux/awm-core':
+        specifier: file:../../../../awm/packages/core
+        version: file:../../awm/packages/core
       '@heybeaux/lattice-aegis':
         specifier: workspace:*
         version: link:../aegis
@@ -397,6 +400,9 @@ packages:
     resolution: {integrity: sha512-wtF6h+DY6M3YaDBPAmvuuA6jV8Sif9MjtOI5euKFWRgCDl5PeDpPsHR9u2l6St5ceY8AZgoNDww5+HvEsXFsGg==}
     engines: {node: '>=6'}
     hasBin: true
+
+  '@heybeaux/awm-core@file:../../awm/packages/core':
+    resolution: {directory: ../../awm/packages/core, type: directory}
 
   '@humanfs/core@0.19.2':
     resolution: {integrity: sha512-UhXNm+CFMWcbChXywFwkmhqjs3PRCmcSa/hfBgLIb7oQ5HNb1wS0icWsGtSAUNgefHeI+eBrA8I1fxmbHsGdvA==}
@@ -1859,6 +1865,8 @@ snapshots:
       long: 5.3.2
       protobufjs: 7.6.4
       yargs: 17.7.2
+
+  '@heybeaux/awm-core@file:../../awm/packages/core': {}
 
   '@humanfs/core@0.19.2':
     dependencies:

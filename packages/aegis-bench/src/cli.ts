@@ -13,7 +13,8 @@ import { mkdirSync, writeFileSync } from 'node:fs';
 import { join, resolve } from 'node:path';
 import { runBenchmark } from './run.js';
 import { toMarkdown, toJSON } from './report.js';
-import { runRealBenchmark, type RealBenchmarkResult } from './real.js';
+import { runRealBenchmark, runRealBenchmarkWithCore, type RealBenchmarkResult } from './real.js';
+import { evaluateSwarmLabEvidence, swarmLabEvidenceToMarkdown } from './swarmlab-evidence.js';
 
 /** The committed baseline artifact stem (spec §4 file layout). */
 const BASELINE_STEM = 'baseline-2026-06-14';
@@ -28,6 +29,8 @@ interface CliArgs {
   format: Format;
   /** Path to a real labeled dataset JSONL (the `real` subcommand). */
   dataset?: string;
+  /** Include real awm-core Oracle engine alongside the synthetic stub. */
+  core: boolean;
 }
 
 const DEFAULTS = {
@@ -35,6 +38,7 @@ const DEFAULTS = {
   episodes: 50,
   out: 'results',
   format: 'both' as Format,
+  core: false,
 };
 
 function parseArgs(argv: readonly string[]): CliArgs {
@@ -44,6 +48,7 @@ function parseArgs(argv: readonly string[]): CliArgs {
     episodes: DEFAULTS.episodes,
     out: DEFAULTS.out,
     format: DEFAULTS.format,
+    core: DEFAULTS.core,
   };
 
   for (let i = 0; i < argv.length; i++) {
@@ -63,6 +68,9 @@ function parseArgs(argv: readonly string[]): CliArgs {
         break;
       case '--dataset':
         args.dataset = requireValue(argv[++i], '--dataset');
+        break;
+      case '--core':
+        args.core = true;
         break;
       default:
         // Ignore the leading command token and any unknown flags' positional values.
@@ -106,6 +114,7 @@ function usage(): void {
       '',
       'Usage:',
       '  aegis-bench run [--seed N] [--episodes N] [--out DIR] [--format md|json|both]',
+      '  aegis-bench swarmlab-evidence [--out DIR] [--format md|json|both]',
       '',
       'Defaults: --seed 42 --episodes 50 --out results --format both',
       '',
@@ -127,8 +136,12 @@ function main(): void {
     runReal(args);
     return;
   }
+  if (args.command === 'swarmlab-evidence' || args.command === 'evidence') {
+    runSwarmLabEvidence(args);
+    return;
+  }
   if (args.command !== 'run') {
-    fail(`unknown command "${args.command}" (expected "run" or "real")`);
+    fail(`unknown command "${args.command}" (expected "run", "real", or "swarmlab-evidence")`);
   }
 
   const result = runBenchmark({ seed: args.seed, episodes: args.episodes });
@@ -183,18 +196,14 @@ function printSummary(
   process.stdout.write(lines.join('\n'));
 }
 
-/** The `real` subcommand: score a real labeled dataset, write a dated result. */
-function runReal(args: CliArgs): void {
-  if (args.dataset === undefined) {
-    fail('real: --dataset <path-to-jsonl> is required');
-  }
-  const datasetPath = resolve(process.cwd(), args.dataset);
-  const result = runRealBenchmark(datasetPath);
 
+/** The `swarmlab-evidence` subcommand: run completed-retet release gate. */
+function runSwarmLabEvidence(args: CliArgs): void {
+  const result = evaluateSwarmLabEvidence();
   const outDir = resolve(process.cwd(), args.out);
   mkdirSync(outDir, { recursive: true });
 
-  const stem = `real-${todayStamp()}`;
+  const stem = `swarmlab-evidence-${todayStamp()}`;
   const written: string[] = [];
   if (args.format === 'json' || args.format === 'both') {
     const p = join(outDir, `${stem}.json`);
@@ -203,11 +212,51 @@ function runReal(args: CliArgs): void {
   }
   if (args.format === 'md' || args.format === 'both') {
     const p = join(outDir, `${stem}.md`);
-    writeFileSync(p, realToMarkdown(result), 'utf8');
+    writeFileSync(p, swarmLabEvidenceToMarkdown(result), 'utf8');
     written.push(p);
   }
 
-  printRealSummary(result, written);
+  process.stdout.write(
+    `SwarmLab evidence gate: ${result.status.toUpperCase()} ` +
+      `(${result.passed}/${result.total} passed, partial=${result.partial}, failed=${result.failed})\n` +
+      `Wrote: ${written.join(', ')}\n`,
+  );
+}
+
+/** The `real` subcommand: score a real labeled dataset, write a dated result. */
+function runReal(args: CliArgs): void {
+  if (args.dataset === undefined) {
+    fail('real: --dataset <path-to-jsonl> is required');
+  }
+  const datasetPath = resolve(process.cwd(), args.dataset);
+
+  const writeAndPrint = (result: RealBenchmarkResult) => {
+    const outDir = resolve(process.cwd(), args.out);
+    mkdirSync(outDir, { recursive: true });
+
+    const stem = `real-${todayStamp()}${args.core ? '-v2' : ''}`;
+    const written: string[] = [];
+    if (args.format === 'json' || args.format === 'both') {
+      const p = join(outDir, `${stem}.json`);
+      writeFileSync(p, JSON.stringify(result, null, 2) + '\n', 'utf8');
+      written.push(p);
+    }
+    if (args.format === 'md' || args.format === 'both') {
+      const p = join(outDir, `${stem}.md`);
+      writeFileSync(p, realToMarkdown(result), 'utf8');
+      written.push(p);
+    }
+    printRealSummary(result, written);
+  };
+
+  if (args.core) {
+    runRealBenchmarkWithCore(datasetPath).then(writeAndPrint).catch((e: unknown) => {
+      process.stderr.write(`aegis-bench: awm-core error: ${String(e)}\n`);
+      process.exit(1);
+    });
+  } else {
+    writeAndPrint(runRealBenchmark(datasetPath));
+  }
 }
 
 /** YYYY-MM-DD stamp for the real-result filename. */

@@ -1,0 +1,69 @@
+name: aegis
+type: capability
+version: 1.0.0
+description: "Predictive governance harness: deterministic rule gate, live label collection, AWM prediction, and SwarmLab-derived release gates."
+
+provides:
+  - governance-harness
+  - rule-gater
+  - tool-use-benchmark
+  - live-label-pipeline
+  - swarmlab-evidence-gate
+
+requires:
+  tools: []
+  capabilities:
+    - name: swarmlab
+      optional: true
+    - name: sonder
+      optional: true
+    - name: aop
+      optional: true
+    - name: lattice
+      optional: true
+    - name: engram
+      optional: true
+    - name: parliament
+      optional: true
+    - name: awm
+      optional: true
+  context: []
+
+budget:
+  index: 20
+  summary: 200
+  standard: 1250
+  deep: 2500
+
+activation:
+  triggers:
+    - type: pattern
+      match: "(aegis|governance harness|aegis-bench|aegis-hook|aegis-collect|action_failed|tool_use_id|SwarmLab evidence gate)"
+  trigger_logic: OR
+  co_activates:
+    - swarmlab
+    - awm
+    - lattice
+    - sonder
+  conflicts: []
+
+permissions:
+  data:
+    aegis_metadata: read-only
+
+behavioral:
+  core: |
+    When discussing or working on Aegis:
+    1. Separate deterministic rule-floor claims from predictive/AWM claims.
+    2. Do not train on unjoined or ambiguous labels; action_failed=null is truth-preserving, not a nuisance.
+    3. Prefer exact tool_use_id joins; fuzzy joins are opt-in and must stay conservative.
+    4. Treat SwarmLab retests as evidence-backed release gates, not proof that runtime enforcement is already wired.
+    5. Check branch/WIP before editing; active real-data benchmark work may be uncommitted.
+  overlays: []
+
+verification:
+  checklist:
+    - "Checked /Users/beauxwalton/Dev/aegis as canonical local path"
+    - "Kept predictive claims tied to real-data benchmark evidence"
+    - "Preserved fail-open hook behaviour"
+    - "Did not guess labels when decision/outcome joins are absent or ambiguous"

@@ -38,6 +38,11 @@ function str(obj: Record<string, unknown>, key: string): string | undefined {
  *
  * No throws — safe to unit test in isolation.
  */
+export function toolUseIdFromHookInput(hookInput: unknown): string | undefined {
+  const root = asRecord(hookInput);
+  return str(root, 'tool_use_id');
+}
+
 export function toToolCall(hookInput: unknown): ToolCall {
   const root = asRecord(hookInput);
   const input = asRecord(root.tool_input);

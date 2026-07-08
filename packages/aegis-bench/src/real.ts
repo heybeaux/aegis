@@ -45,8 +45,8 @@ const COLD_START_BASE_RATES: Record<Severity | 'none', number> = {
 /** pFailure at/above which an engine intervenes (predicts failure). */
 const ASK_THRESHOLD = DEFAULT_PREDICTION_THRESHOLDS.askAtOrAbove;
 
-/** The two engines this axis compares. */
-export type RealEngine = 'regex' | 'regex+awm';
+/** The engines this axis compares. */
+export type RealEngine = 'regex' | 'regex+awm' | 'regex+awm-core';
 
 /** Minimal shape of a frozen `aegis-label` row we read from the dataset JSONL. */
 export interface FrozenRowLike {
@@ -202,15 +202,12 @@ export function parseDataset(jsonl: string): FrozenRowLike[] {
     .map((l) => JSON.parse(l) as FrozenRowLike);
 }
 
-/**
- * Run the real-data benchmark over a JSONL dataset of frozen `aegis-label` rows.
- * Throws if any scored row is not `dataSource:'real'` (honesty guard — this axis
- * must never silently score synthetic data and call it real).
- */
-export function runRealBenchmark(datasetPath: string): RealBenchmarkResult {
-  const all = parseDataset(readFileSync(datasetPath, 'utf8'));
-
-  // Honesty guard: every row must be real.
+/** Shared honesty guard: validates all rows are real. Returns scored subset. */
+function validateAndScore(all: FrozenRowLike[], datasetPath: string): {
+  scored: FrozenRowLike[];
+  excluded: number;
+  actualFailures: number;
+} {
   for (const r of all) {
     if (r.dataSource !== 'real') {
       throw new Error(
@@ -220,10 +217,22 @@ export function runRealBenchmark(datasetPath: string): RealBenchmarkResult {
       );
     }
   }
-
   const scored = all.filter((r) => r.action_failed !== null);
-  const excluded = all.length - scored.length;
-  const actualFailures = scored.filter((r) => r.action_failed === 1).length;
+  return {
+    scored,
+    excluded: all.length - scored.length,
+    actualFailures: scored.filter((r) => r.action_failed === 1).length,
+  };
+}
+
+/**
+ * Run the real-data benchmark over a JSONL dataset of frozen `aegis-label` rows.
+ * Throws if any scored row is not `dataSource:'real'` (honesty guard — this axis
+ * must never silently score synthetic data and call it real).
+ */
+export function runRealBenchmark(datasetPath: string): RealBenchmarkResult {
+  const all = parseDataset(readFileSync(datasetPath, 'utf8'));
+  const { scored, excluded, actualFailures } = validateAndScore(all, datasetPath);
 
   const regex = metricsFor('regex', scored, regexPredictsFailure);
   const awm = metricsFor('regex+awm', scored, awmPredictsFailure);
@@ -239,6 +248,45 @@ export function runRealBenchmark(datasetPath: string): RealBenchmarkResult {
     excludedRows: excluded,
     actualFailures,
     engines: [regex, awm],
+    recallLift,
+    extraFailuresCaught,
+  };
+}
+
+/**
+ * Run the real-data benchmark with three engines: `regex` (rule floor),
+ * `regex+awm` (synthetic stub), and `regex+awm-core` (real Oracle).
+ *
+ * The Oracle runs sequentially over the scored rows, recording each ground-truth
+ * outcome so its Bayesian beliefs calibrate as the run progresses — identical to
+ * how PriorStore accumulates in the stub. This is the apples-to-apples delta.
+ *
+ * The primary recallLift and extraFailuresCaught compare awm-core vs the rule floor.
+ */
+export async function runRealBenchmarkWithCore(datasetPath: string): Promise<RealBenchmarkResult> {
+  const { runAwmCoreSequential } = await import('./engines/awm-core.js');
+  const all = parseDataset(readFileSync(datasetPath, 'utf8'));
+  const { scored, excluded, actualFailures } = validateAndScore(all, datasetPath);
+
+  const regex = metricsFor('regex', scored, regexPredictsFailure);
+  const awm = metricsFor('regex+awm', scored, awmPredictsFailure);
+
+  // Oracle runs sequentially over scored rows, calibrating as it goes.
+  const coreVerdicts = await runAwmCoreSequential(scored);
+  let coreIdx = 0;
+  const awmCore = metricsFor('regex+awm-core', scored, () => coreVerdicts[coreIdx++]);
+
+  const extraFailuresCaught = awmCore.tp - regex.tp;
+  const recallLift = regex.fn === 0 ? 0 : extraFailuresCaught / regex.fn;
+
+  return {
+    dataSource: 'real',
+    datasetPath,
+    totalRows: all.length,
+    scoredRows: scored.length,
+    excludedRows: excluded,
+    actualFailures,
+    engines: [regex, awm, awmCore],
     recallLift,
     extraFailuresCaught,
   };

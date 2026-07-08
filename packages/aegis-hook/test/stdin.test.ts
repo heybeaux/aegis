@@ -1,5 +1,13 @@
 import { describe, it, expect } from 'vitest';
-import { toToolCall } from '../src/stdin.js';
+import { toToolCall, toolUseIdFromHookInput } from '../src/stdin.js';
+
+describe('toolUseIdFromHookInput', () => {
+  it('extracts Claude Code tool_use_id for exact decision/outcome joins', () => {
+    expect(toolUseIdFromHookInput({ tool_use_id: 'toolu_abc123' })).toBe('toolu_abc123');
+    expect(toolUseIdFromHookInput({ tool_use_id: 42 })).toBeUndefined();
+    expect(toolUseIdFromHookInput(null)).toBeUndefined();
+  });
+});
 
 describe('toToolCall', () => {
   it('maps a Bash command', () => {

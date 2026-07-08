@@ -92,6 +92,21 @@ export {
   type AdversarialFamily,
 } from './corpus/adversarial.js';
 
+
+// ---- SwarmLab evidence gate (completed retests -> release gate) ----
+export {
+  SWARMLAB_EVIDENCE_CASES,
+  evaluateSwarmLabEvidence,
+  type StackProject,
+  type EvidenceStatus,
+  type Comparator,
+  type EvidenceMetric,
+  type SwarmLabEvidenceCase,
+  type EvidenceMetricResult,
+  type EvidenceCaseResult,
+  type EvidenceGateResult,
+} from './swarmlab-evidence.js';
+
 // ---- PRNG (exposed so downstream can reproduce seeded draws) ----
 export { mulberry32, type Rng } from './prng.js';
 

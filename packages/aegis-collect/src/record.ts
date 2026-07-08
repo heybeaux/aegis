@@ -41,11 +41,14 @@ function makeDecisionId(timestamp: string, call: ToolCall): string {
  * @param evaluation  - The Evaluation returned by evaluate().
  * @param toolUseId   - Optional tool_use_id from Claude Code's hook payload
  *                      (primary join key with outcomes).
+ * @param model       - Optional model identity (e.g. "VibeThinker-3B") for
+ *                      multi-model benchmarking. Stored verbatim on the row.
  */
 export function recordDecision(
   call: ToolCall,
   evaluation: Evaluation,
   toolUseId?: string,
+  model?: string,
 ): void {
   try {
     const dir = collectDir();
@@ -61,6 +64,7 @@ export function recordDecision(
       ...(toolUseId !== undefined ? { toolUseId } : {}),
       ...shape,
       action: evaluation.action,
+      ...(model !== undefined ? { model } : {}),
     };
 
     appendFileSync(join(dir, 'decisions.jsonl'), JSON.stringify(row) + '\n', 'utf8');

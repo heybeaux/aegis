@@ -13,7 +13,7 @@
 
 import { resolve } from 'node:path';
 import { evaluate } from '@heybeaux/lattice-aegis';
-import { readStdin, toToolCall } from './stdin.js';
+import { readStdin, toToolCall, toolUseIdFromHookInput } from './stdin.js';
 import { loadAllPacks } from './rules.js';
 import { decide } from './decide.js';
 import { installHook } from './install.js';
@@ -71,13 +71,7 @@ function main(): void {
   const evaluation = evaluate(call, loadAllPacks(), { preprocess: true });
 
   // Extract tool_use_id for join key (best-effort; undefined when absent).
-  const toolUseId: string | undefined =
-    raw !== null && typeof raw === 'object' && !Array.isArray(raw)
-      ? (() => {
-          const v = (raw as Record<string, unknown>)['tool_use_id'];
-          return typeof v === 'string' ? v : undefined;
-        })()
-      : undefined;
+  const toolUseId = toolUseIdFromHookInput(raw);
 
   // Record the decision for training data collection. Wrapped in its own
   // try/catch so a collector bug can never reach the hook's exit logic.

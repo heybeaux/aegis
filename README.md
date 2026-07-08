@@ -115,14 +115,19 @@ aegis/
 
 ## Benchmarking
 
-Aegis measures itself on two axes:
+Aegis measures itself on three axes:
 
 - **Parity axis** — replays AutoHarness's own `test_risk.py` cases to prove the reactive rule engine is at least as good as the reactive-only state of the art. Currently **44/44 applicable cases (100%)**.
 - **Real-data axis** — driven by the live `action_failed` labels collected from real tool calls. This is where the predictive layer earns its keep over time.
+- **SwarmLab evidence gate** — turns completed SwarmLab retests (`RT-01`..`RT-07`) into deterministic release checks so stack changes cannot regress already-proven fixes. This is a release gate, not a learned predictor.
 
 ```bash
-pnpm --filter aegis-bench test
+pnpm --filter @heybeaux/aegis-bench test
+pnpm run bench:swarmlab-evidence
+pnpm run release:check
 ```
+
+See [`docs/aegis-release-gates-2026-07-07.md`](docs/aegis-release-gates-2026-07-07.md) for the first end-to-end SwarmLab → Aegis release loop.
 
 ## Development
 

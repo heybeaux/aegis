@@ -128,6 +128,7 @@ function buildDataset(): void {
       decision,
       action_failed,
       joinMethod,
+      ...(decision.model !== undefined ? { model: decision.model } : {}),
     };
 
     datasetRows.push(row);

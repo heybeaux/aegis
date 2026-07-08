@@ -42,7 +42,7 @@ Truth rule: ambiguous or missing outcomes produce `action_failed=null`, never a 
 
 ## SwarmLab evidence integration
 
-`packages/aegis-bench/src/swarmlab-evidence.ts` is the first concrete bridge from completed SwarmLab experiments into Aegis. It encodes RT-01..RT-07 as deterministic release gates:
+`packages/aegis-bench/src/swarmlab-evidence.ts` is the first concrete bridge from completed SwarmLab experiments into Aegis. It encodes RT-01..RT-08 as deterministic release gates:
 
 - RT-01 typed payload contracts
 - RT-02 pinned criterion + drift audit
@@ -51,8 +51,9 @@ Truth rule: ambiguous or missing outcomes produce `action_failed=null`, never a 
 - RT-05 persistent capability trust transfer
 - RT-06 evidence-capped probation
 - RT-07 value-echo handoff guards
+- RT-08 verification-tier high-risk audit consumption
 
-RT-01..RT-06 are benchmark/release criteria and a clean source of future predictor/rule features. RT-07 is now also runtime-enforced: deep delegation handoffs (`delegationDepth >= 2`) without a `value-echo` manifest escalate to `ask` via `swarmlab.rt07.deep-handoff-requires-value-echo`.
+RT-01..RT-06 are benchmark/release criteria and a clean source of future predictor/rule features. RT-07 is now also runtime-enforced: deep delegation handoffs (`delegationDepth >= 2`) without a `value-echo` manifest escalate to `ask` via `swarmlab.rt07.deep-handoff-requires-value-echo`. RT-08 is also runtime-enforced: high-risk audits attempting to certify `cross_model_adversarial` or `unsupported_claim_only` support escalate to `ask` via `swarmlab.rt08.high-risk-audit-requires-grounded-support`. SwarmLab retest `gsv-mrc3huyf` reran exp-17 with the real Aegis evaluator in the path and measured downstream audit escape 0.188 → 0.063 at governance cost tax 0.106.
 
 ## Development rules
 
@@ -79,5 +80,5 @@ pnpm --filter @heybeaux/aegis-collect typecheck
 - Run a real `dataset-live.jsonl` rebuild and verify exact join coverage rises when both hooks carry `tool_use_id`.
 - Promote SwarmLab evidence gate into CLI/report output if desired.
 - Decide which remaining SwarmLab gate classes become deterministic runtime rules versus benchmark-only release checks.
-- Add Engram verification-tier features once the fact store exists.
+- Add Engram/Parliament verification-envelope features once the fact store exists; Aegis currently proves the RT-08 audit gate, not the whole schema rollout.
 - Keep AWM core comparisons honest: prediction before recording each row outcome.

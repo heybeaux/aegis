@@ -3,8 +3,8 @@
 **Purpose:** Predictive governance harness for AI agents. Aegis combines a deterministic rule gate, live decision/outcome collection, real-data labels, AWM-backed prediction, and SwarmLab-derived benchmark/release gates.
 **Repo:** https://github.com/heybeaux/aegis
 **Status:** active
-**Phase:** rule floor live; AWM/real-data benchmark scaling in progress
-**Last verified:** 2026-07-07
+**Phase:** rule floor live; RT-07/RT-08 SwarmLab runtime policies landed; AWM/real-data benchmark scaling in progress
+**Last verified:** 2026-07-08
 
 ## Runtime
 
@@ -40,14 +40,14 @@
 - `ask` in the PreToolUse hook now pauses by exiting non-zero, writes a pending one-shot approval record, and resumes only after `aegis-hook approve <approval-id>` followed by retrying the exact same tool call.
 - Live collection writes to `~/.aegis/decisions.jsonl`, `outcomes.jsonl`, and `dataset-live.jsonl` outside the repo.
 - Exact decision/outcome joins depend on `tool_use_id` being recorded on both PreToolUse and PostToolUse payloads. Fuzzy joins are opt-in and must stay truth-conservative.
-- The SwarmLab evidence gate is not a predictor. It is a deterministic release gate over completed retests; RT-07 additionally has runtime enforcement for deep handoffs missing value-echo manifests.
+- The SwarmLab evidence gate is not a predictor. It is a deterministic release gate over completed retests; RT-07 additionally has runtime enforcement for deep handoffs missing value-echo manifests, and RT-08 asks when high-risk audits try to certify cross-model-only/unsupported verification support.
 
 ## Harness axes
 
 1. **Rule floor / parity:** AutoHarness-style regression corpus; catches known dangerous tool calls.
 2. **Synthetic tool-use lift:** seeded synthetic episodes; proves the benchmark machinery and over-time scoring.
 3. **Real-data axis:** frozen `action_failed` rows from live decisions/outcomes; compares regex floor, synthetic AWM stub, and AWM core when enabled.
-4. **SwarmLab evidence gate:** completed retests RT-01..RT-07 turned into deterministic release-gate metrics.
+4. **SwarmLab evidence gate:** completed retests RT-01..RT-08 turned into deterministic release-gate metrics, with RT-08 also measured through an Aegis-wrapped SwarmLab retest.
 
 ## Current SwarmLab-derived gate classes
 
@@ -58,6 +58,7 @@
 - persistent capability trust transfer regression
 - evidence-capped probation trust policy regression
 - value-echo handoff guard regression — RT-07 now also runtime policy (`swarmlab.rt07.deep-handoff-requires-value-echo`)
+- verification-tier high-risk audit regression — RT-08 now also runtime policy (`swarmlab.rt08.high-risk-audit-requires-grounded-support`), proven in SwarmLab `gsv-mrc3huyf`
 
 ## Where to learn more
 

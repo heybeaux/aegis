@@ -6,4 +6,4 @@ Aegis is the predictive governance harness for the heybeaux stack. It gates tool
 **Repo:** https://github.com/heybeaux/aegis
 **Relates to:** SwarmLab supplies replay-verified evidence; AWM supplies prediction machinery; Sonder/AOP supply signed event substrate; Lattice owns policy; Engram/Parliament provide fact/trust grounding.
 
-Current phase: reactive rule floor working; real-data/predictive layer in progress; SwarmLab evidence gate added in `@heybeaux/aegis-bench`; RT-07 value-echo handoff policy is now runtime-enforced as an `ask` escalation for deep presence-only handoffs.
+Current phase: reactive rule floor working; real-data/predictive layer in progress; SwarmLab evidence gate added in `@heybeaux/aegis-bench`; RT-07 value-echo handoff policy and RT-08 high-risk verification-tier audit policy are runtime-enforced as `ask` escalations. RT-08 has a replay-verified Aegis-wrapped SwarmLab retest proving audit escape reduction.

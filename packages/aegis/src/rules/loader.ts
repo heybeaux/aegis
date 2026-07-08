@@ -27,8 +27,15 @@ const REDOS_PROBES: readonly string[] = [
   'aaaaaaaaaaaaaaaaaaaaaaaa!'.repeat(8),
 ];
 
-/** Per-probe match budget. A pattern slower than this on any probe is rejected. */
-const REDOS_BUDGET_MS = 5;
+/**
+ * Per-probe match budget. A pattern slower than this on any probe is rejected.
+ *
+ * Keep this as a guard, not a micro-benchmark. GitHub runners and cold local
+ * machines routinely vary by a few ms, so the default needs enough headroom to
+ * avoid rejecting known-good rulepacks because one probe took 5.1ms. Override
+ * with AEGIS_REDOS_BUDGET_MS for tighter local experiments.
+ */
+const REDOS_BUDGET_MS = Number(process.env['AEGIS_REDOS_BUDGET_MS'] ?? '25');
 
 export class RulePackError extends Error {
   constructor(

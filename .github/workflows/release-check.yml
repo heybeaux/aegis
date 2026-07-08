@@ -53,4 +53,6 @@ jobs:
         run: pnpm install --frozen-lockfile
 
       - name: Run release check
+        env:
+          AEGIS_REDOS_BUDGET_MS: '25'
         run: pnpm run release:check

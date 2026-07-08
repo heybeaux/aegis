@@ -37,6 +37,10 @@ const repoRoot = resolve(__dirname, '..');
 const MLX_LM = process.env['MLX_LM'] ?? join(homedir(), 'radioconda/bin/mlx_lm.generate');
 const MODEL_PATH = process.env['MODEL_PATH'] ?? join(homedir(), 'models/VibeThinker-3B');
 const MODEL_NAME = process.env['MODEL_NAME'] ?? 'VibeThinker-3B';
+// Instruct models (Gemma/Qwen/Nemotron) need their chat template; VibeThinker
+// was driven raw. Default keeps the original raw behavior; set to '0' to apply
+// the model's chat template via mlx_lm.
+const IGNORE_CHAT_TEMPLATE = (process.env['IGNORE_CHAT_TEMPLATE'] ?? '1') !== '0';
 
 // Isolated collect dir per run so we don't pollute the live session logs.
 const RUN_ID = new Date().toISOString().replace(/[:.]/g, '-');
@@ -1222,9 +1226,13 @@ function runModel(prompt: string): string {
   const tmpPrompt = join(COLLECT_DIR, 'prompt.txt');
   writeFileSync(tmpPrompt, prompt, 'utf8');
 
+  const args = ['--model', MODEL_PATH, '--prompt', '-', '--max-tokens', '1200', '--temp', '0.0'];
+  if (IGNORE_CHAT_TEMPLATE) {
+    args.splice(4, 0, '--ignore-chat-template');
+  }
   const result = spawnSync(
     MLX_LM,
-    ['--model', MODEL_PATH, '--prompt', '-', '--ignore-chat-template', '--max-tokens', '1200', '--temp', '0.0'],
+    args,
     { input: prompt, encoding: 'utf8', timeout: 300_000, maxBuffer: 10 * 1024 * 1024 },
   );
 

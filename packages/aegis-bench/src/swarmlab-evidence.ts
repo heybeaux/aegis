@@ -100,7 +100,7 @@ function caseStatus(metrics: readonly EvidenceMetricResult[]): EvidenceStatus {
  * Completed SwarmLab retests that already proved stack changes against real packages.
  *
  * Sources:
- * - /Users/beauxwalton/projects/swarmlab/SYNTHESIS.md RT-01..RT-07
+ * - /Users/beauxwalton/projects/swarmlab/SYNTHESIS.md RT-01..RT-08
  * - /Users/beauxwalton/projects/swarmlab/docs/STACK-LIFECYCLE.md current priority list
  */
 export const SWARMLAB_EVIDENCE_CASES: readonly SwarmLabEvidenceCase[] = [
@@ -208,6 +208,24 @@ export const SWARMLAB_EVIDENCE_CASES: readonly SwarmLabEvidenceCase[] = [
       { name: 'deepSurvivalWithValueEcho', before: 0.390, after: 1, threshold: 1, comparator: 'eq' },
       { name: 'valueEchoReinterpretRecovery', after: 1, threshold: 1, comparator: 'eq' },
       { name: 'falseFlagRate', after: 0, threshold: 0, comparator: 'eq' },
+    ],
+  },
+  {
+    id: 'RT-08',
+    source: 'exp-17 ground-store verification tiers',
+    finding: 'Evidence is not a boolean; high-risk audits cannot trust cross-model-only support.',
+    owners: ['engram', 'parliament', 'aegis'],
+    change:
+      'Verification envelopes carry support tier/freshness, and high-risk audits refuse cross-model-only facts.',
+    runIds: ['gsv-mr9bvkkk'],
+    implementationRefs: ['swarmlab exp-17; schema/policy recommendation pending stack owner patch'],
+    implementationStatus: 'pending',
+    aegisMapping:
+      'release gate honesty: verification-tier policy must distinguish provenance/retrieval support from cross-model-only agreement',
+    metrics: [
+      { name: 'operationalFalseSupportRate', after: 0, threshold: 0, comparator: 'eq' },
+      { name: 'staleSupportRate', after: 0, threshold: 0, comparator: 'eq' },
+      { name: 'highRiskAuditEscapeRate', after: 0.063, threshold: 0.063, comparator: 'lte' },
     ],
   },
 ];

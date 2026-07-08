@@ -9,20 +9,24 @@ describe('SwarmLab evidence gate', () => {
   it('surfaces pending stack mappings without overstating verified coverage', () => {
     const result = evaluateSwarmLabEvidence();
     expect(result.status).toBe('partial');
-    expect(result.total).toBe(7);
+    expect(result.total).toBe(8);
     expect(result.passed).toBe(6);
     expect(result.failed).toBe(0);
-    expect(result.partial).toBe(1);
-    expect(result.pendingImplementation).toBe(1);
+    expect(result.partial).toBe(2);
+    expect(result.pendingImplementation).toBe(2);
 
     const rt06 = result.cases.find((c) => c.id === 'RT-06');
     expect(rt06?.status).toBe('partial');
     expect(rt06?.implementationStatus).toBe('pending');
+
+    const rt08 = result.cases.find((c) => c.id === 'RT-08');
+    expect(rt08?.status).toBe('partial');
+    expect(rt08?.implementationStatus).toBe('pending');
   });
 
   it('covers the currently proven stack failure classes', () => {
     const ids = SWARMLAB_EVIDENCE_CASES.map((c) => c.id);
-    expect(ids).toEqual(['RT-01', 'RT-02', 'RT-03', 'RT-04', 'RT-05', 'RT-06', 'RT-07']);
+    expect(ids).toEqual(['RT-01', 'RT-02', 'RT-03', 'RT-04', 'RT-05', 'RT-06', 'RT-07', 'RT-08']);
 
     const mappings = SWARMLAB_EVIDENCE_CASES.map((c) => c.aegisMapping).join('\n');
     expect(mappings).toContain('payload contract');
@@ -32,6 +36,7 @@ describe('SwarmLab evidence gate', () => {
     expect(mappings).toContain('persistent capability facts');
     expect(mappings).toContain('trust policies');
     expect(mappings).toContain('value-echo manifests');
+    expect(mappings).toContain('verification-tier policy');
   });
 
   it('fails loudly when a proven metric regresses', () => {

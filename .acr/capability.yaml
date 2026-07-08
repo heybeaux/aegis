@@ -9,6 +9,7 @@ provides:
   - tool-use-benchmark
   - live-label-pipeline
   - swarmlab-evidence-gate
+  - swarmlab-runtime-policy
 
 requires:
   tools: []
@@ -38,7 +39,7 @@ budget:
 activation:
   triggers:
     - type: pattern
-      match: "(aegis|governance harness|aegis-bench|aegis-hook|aegis-collect|action_failed|tool_use_id|SwarmLab evidence gate)"
+      match: "(aegis|governance harness|aegis-bench|aegis-hook|aegis-collect|action_failed|tool_use_id|SwarmLab evidence gate|value-echo|handoff policy)"
   trigger_logic: OR
   co_activates:
     - swarmlab
@@ -57,7 +58,7 @@ behavioral:
     1. Separate deterministic rule-floor claims from predictive/AWM claims.
     2. Do not train on unjoined or ambiguous labels; action_failed=null is truth-preserving, not a nuisance.
     3. Prefer exact tool_use_id joins; fuzzy joins are opt-in and must stay conservative.
-    4. Treat SwarmLab retests as evidence-backed release gates, not proof that runtime enforcement is already wired.
+    4. Treat SwarmLab retests as evidence-backed release gates; RT-07 is also runtime-wired as a value-echo handoff policy.
     5. Check branch/WIP before editing; active real-data benchmark work may be uncommitted.
   overlays: []
 

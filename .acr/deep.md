@@ -52,7 +52,7 @@ Truth rule: ambiguous or missing outcomes produce `action_failed=null`, never a 
 - RT-06 evidence-capped probation
 - RT-07 value-echo handoff guards
 
-These are not runtime enforcement yet. They are benchmark/release criteria and a clean source of future predictor/rule features.
+RT-01..RT-06 are benchmark/release criteria and a clean source of future predictor/rule features. RT-07 is now also runtime-enforced: deep delegation handoffs (`delegationDepth >= 2`) without a `value-echo` manifest escalate to `ask` via `swarmlab.rt07.deep-handoff-requires-value-echo`.
 
 ## Development rules
 
@@ -78,6 +78,6 @@ pnpm --filter @heybeaux/aegis-collect typecheck
 
 - Run a real `dataset-live.jsonl` rebuild and verify exact join coverage rises when both hooks carry `tool_use_id`.
 - Promote SwarmLab evidence gate into CLI/report output if desired.
-- Decide which SwarmLab gate classes become deterministic runtime rules versus benchmark-only release checks.
+- Decide which remaining SwarmLab gate classes become deterministic runtime rules versus benchmark-only release checks.
 - Add Engram verification-tier features once the fact store exists.
 - Keep AWM core comparisons honest: prediction before recording each row outcome.

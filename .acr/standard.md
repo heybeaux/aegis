@@ -40,7 +40,7 @@
 - `ask` in the current PreToolUse hook degrades to allow-with-warning because the hook protocol only blocks or allows.
 - Live collection writes to `~/.aegis/decisions.jsonl`, `outcomes.jsonl`, and `dataset-live.jsonl` outside the repo.
 - Exact decision/outcome joins depend on `tool_use_id` being recorded on both PreToolUse and PostToolUse payloads. Fuzzy joins are opt-in and must stay truth-conservative.
-- The SwarmLab evidence gate is not a predictor. It is a deterministic release gate over completed retests.
+- The SwarmLab evidence gate is not a predictor. It is a deterministic release gate over completed retests; RT-07 additionally has runtime enforcement for deep handoffs missing value-echo manifests.
 
 ## Harness axes
 
@@ -57,7 +57,7 @@
 - fact-checked evidence / ground-store regression
 - persistent capability trust transfer regression
 - evidence-capped probation trust policy regression
-- value-echo handoff guard regression
+- value-echo handoff guard regression — RT-07 now also runtime policy (`swarmlab.rt07.deep-handoff-requires-value-echo`)
 
 ## Where to learn more
 

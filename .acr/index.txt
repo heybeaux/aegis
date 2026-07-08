@@ -1,0 +1,1 @@
+aegis: predictive governance harness — rule gates, live decision/outcome labels, SwarmLab evidence release gates

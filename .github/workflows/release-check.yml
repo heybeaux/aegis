@@ -1,0 +1,47 @@
+name: release-check
+
+on:
+  pull_request:
+  push:
+    branches: [main]
+
+jobs:
+  release-check:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+
+    steps:
+      - name: Checkout Aegis
+        uses: actions/checkout@v4
+        with:
+          path: aegis
+
+      # @heybeaux/aegis-bench depends on @heybeaux/awm-core via
+      # file:../../../../awm/packages/core. From packages/aegis-bench inside
+      # the checked-out repo, that resolves to ../awm/packages/core relative
+      # to the workspace parent, so we checkout AWM as a sibling of aegis/.
+      - name: Checkout AWM sibling dependency
+        uses: actions/checkout@v4
+        with:
+          repository: heybeaux/awm
+          path: awm
+
+      - name: Setup pnpm
+        uses: pnpm/action-setup@v4
+        with:
+          version: 8.15.6
+
+      - name: Setup Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+          cache: pnpm
+          cache-dependency-path: aegis/pnpm-lock.yaml
+
+      - name: Install dependencies
+        working-directory: aegis
+        run: pnpm install --frozen-lockfile
+
+      - name: Run release check
+        working-directory: aegis
+        run: pnpm run release:check

@@ -22,7 +22,8 @@ export type RuleCategory =
   | 'file_read'
   | 'secrets'
   | 'injection'
-  | 'pii';
+  | 'pii'
+  | 'swarmlab';
 
 /** Which assembled string a rule tests. */
 export type MatchTarget = 'command' | 'content' | 'path' | 'argv';
@@ -75,6 +76,15 @@ export interface CompiledRule {
 }
 
 /** Inputs the evaluator tests rules against. Assembled by the host/hook. */
+export interface HandoffMetadata {
+  /** Delegation depth of the handoff tree. RT-07 requires value echo at depth >= 2. */
+  delegationDepth?: number;
+  /** Requirement manifest tier carried at the handoff boundary. */
+  manifestTier?: 'none' | 'presence' | 'value-echo';
+  /** Number of requirements/items represented by the handoff manifest. */
+  requirementCount?: number;
+}
+
 export interface ToolCall {
   /** Claude Code / OpenClaw tool name, e.g. "Bash", "Write", "Edit", "Read". */
   tool: string;
@@ -86,6 +96,8 @@ export interface ToolCall {
   paths?: string[];
   /** Raw argv, for argv-target rules. */
   argv?: string[];
+  /** Optional structured handoff/delegation metadata from Sonder/AOP/Lattice. */
+  handoff?: HandoffMetadata;
 }
 
 /** One rule that fired during evaluation. */

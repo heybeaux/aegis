@@ -157,3 +157,47 @@ describe('isSafeCommand', () => {
     expect(isSafeCommand('catastrophe')).toBe(false);
   });
 });
+
+
+describe('evaluate — SwarmLab-derived policy gates', () => {
+  const compiled = loadPack(pack);
+
+  it('RT-07 asks when a deep handoff lacks a value-echo manifest', () => {
+    const r = evaluate(
+      {
+        tool: 'Delegate',
+        handoff: { delegationDepth: 3, manifestTier: 'presence', requirementCount: 7 },
+      },
+      compiled,
+    );
+    expect(r.action).toBe('ask');
+    expect(r.decidedBy).toBe('severity');
+    expect(r.matches.map((m) => m.id)).toContain(
+      'swarmlab.rt07.deep-handoff-requires-value-echo',
+    );
+    expect(r.reason).toContain('SwarmLab RT-07');
+  });
+
+  it('RT-07 allows deep handoffs when value echo is present', () => {
+    const r = evaluate(
+      {
+        tool: 'Delegate',
+        handoff: { delegationDepth: 3, manifestTier: 'value-echo', requirementCount: 7 },
+      },
+      compiled,
+    );
+    expect(r.action).toBe('allow');
+    expect(r.matches).toHaveLength(0);
+  });
+
+  it('RT-07 does not tax shallow presence-only handoffs', () => {
+    const r = evaluate(
+      {
+        tool: 'Delegate',
+        handoff: { delegationDepth: 1, manifestTier: 'presence', requirementCount: 3 },
+      },
+      compiled,
+    );
+    expect(r.action).toBe('allow');
+  });
+});

@@ -77,6 +77,24 @@ function matchesRule(compiled: CompiledRule, call: ToolCall): boolean {
   return false;
 }
 
+function swarmlabPolicyHits(call: ToolCall): RuleHit[] {
+  const h = call.handoff;
+  if (!h) return [];
+  const depth = h.delegationDepth ?? 0;
+  const tier = h.manifestTier ?? 'none';
+  if (depth >= 2 && tier !== 'value-echo') {
+    return [
+      {
+        id: 'swarmlab.rt07.deep-handoff-requires-value-echo',
+        severity: 'medium',
+        category: 'swarmlab',
+        target: 'argv',
+      },
+    ];
+  }
+  return [];
+}
+
 function predictionAction(
   prediction: Prediction | undefined,
   thresholds: PredictionThresholds,
@@ -131,6 +149,15 @@ export function evaluate(
   const hits: RuleHit[] = [];
   let maxSeverity: Severity | null = null;
   let topReason = '';
+
+  for (const hit of swarmlabPolicyHits(call)) {
+    hits.push(hit);
+    if (maxSeverity === null || SEVERITY_RANK[hit.severity] > SEVERITY_RANK[maxSeverity]) {
+      maxSeverity = hit.severity;
+      topReason =
+        'SwarmLab RT-07: delegation depth >= 2 requires a value-echo handoff manifest';
+    }
+  }
 
   for (const testCall of callsToTest) {
     for (const compiled of compiledRules) {

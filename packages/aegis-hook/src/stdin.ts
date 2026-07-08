@@ -28,6 +28,33 @@ function str(obj: Record<string, unknown>, key: string): string | undefined {
   return typeof v === 'string' ? v : undefined;
 }
 
+/** Pull a finite number field if present. */
+function num(obj: Record<string, unknown>, key: string): number | undefined {
+  const v = obj[key];
+  return typeof v === 'number' && Number.isFinite(v) ? v : undefined;
+}
+
+function manifestTier(value: unknown): NonNullable<ToolCall['handoff']>['manifestTier'] | undefined {
+  return value === 'none' || value === 'presence' || value === 'value-echo' ? value : undefined;
+}
+
+function toHandoff(root: Record<string, unknown>, input: Record<string, unknown>): ToolCall['handoff'] | undefined {
+  const raw = asRecord(root.handoff);
+  const inputRaw = asRecord(input.handoff);
+  const source = Object.keys(inputRaw).length > 0 ? inputRaw : raw;
+  if (Object.keys(source).length === 0) return undefined;
+
+  const handoff: NonNullable<ToolCall['handoff']> = {};
+  handoff.delegationDepth =
+    num(source, 'delegationDepth') ?? num(source, 'delegation_depth') ?? num(source, 'depth');
+  handoff.manifestTier =
+    manifestTier(source.manifestTier) ?? manifestTier(source.manifest_tier) ?? manifestTier(source.manifest);
+  handoff.requirementCount =
+    num(source, 'requirementCount') ?? num(source, 'requirement_count') ?? num(source, 'requirements');
+
+  return Object.values(handoff).some((v) => v !== undefined) ? handoff : undefined;
+}
+
 /**
  * Pure mapping from a raw Claude Code hook payload to an Aegis ToolCall.
  *
@@ -35,6 +62,7 @@ function str(obj: Record<string, unknown>, key: string): string | undefined {
  * - `tool_input.command` -> `command` (Bash).
  * - `tool_input.content` (Write) or `new_string` (Edit) -> `content`.
  * - `tool_input.file_path` (Write/Edit/Read) -> `paths: [...]`.
+ * - `handoff` or `tool_input.handoff` -> structured handoff metadata for SwarmLab-derived gates.
  *
  * No throws — safe to unit test in isolation.
  */
@@ -62,6 +90,8 @@ export function toToolCall(hookInput: unknown): ToolCall {
   if (command !== undefined) call.command = command;
   if (content !== undefined) call.content = content;
   if (paths.length > 0) call.paths = paths;
+  const handoff = toHandoff(root, input);
+  if (handoff !== undefined) call.handoff = handoff;
   return call;
 }
 

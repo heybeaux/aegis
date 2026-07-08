@@ -50,6 +50,30 @@ describe('toToolCall', () => {
     expect(call).toEqual({ tool: 'Read', paths: ['/home/u/.ssh/id_rsa'] });
   });
 
+  it('maps structured handoff metadata for SwarmLab RT-07 gates', () => {
+    const call = toToolCall({
+      tool_name: 'Delegate',
+      handoff: {
+        delegation_depth: 3,
+        manifest_tier: 'presence',
+        requirement_count: 7,
+      },
+    });
+    expect(call).toEqual({
+      tool: 'Delegate',
+      handoff: { delegationDepth: 3, manifestTier: 'presence', requirementCount: 7 },
+    });
+  });
+
+  it('prefers tool_input.handoff when both root and tool_input handoff metadata exist', () => {
+    const call = toToolCall({
+      tool_name: 'Delegate',
+      handoff: { delegationDepth: 1, manifestTier: 'presence' },
+      tool_input: { handoff: { delegationDepth: 2, manifestTier: 'value-echo' } },
+    });
+    expect(call.handoff).toEqual({ delegationDepth: 2, manifestTier: 'value-echo' });
+  });
+
   it('is defensive against malformed / empty input', () => {
     expect(toToolCall(undefined)).toEqual({ tool: '' });
     expect(toToolCall(null)).toEqual({ tool: '' });
@@ -60,5 +84,11 @@ describe('toToolCall', () => {
     expect(toToolCall({ tool_name: 'Bash', tool_input: { command: 42 } })).toEqual({
       tool: 'Bash',
     });
+    expect(
+      toToolCall({
+        tool_name: 'Delegate',
+        handoff: { delegationDepth: 'deep', manifestTier: 'semantic-ish' },
+      }),
+    ).toEqual({ tool: 'Delegate' });
   });
 });

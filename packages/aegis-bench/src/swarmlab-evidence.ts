@@ -196,8 +196,8 @@ export const SWARMLAB_EVIDENCE_CASES: readonly SwarmLabEvidenceCase[] = [
     owners: ['sonder', 'aop', 'lattice', 'aegis'],
     change: 'Value-echo requirement manifest for handoffs at delegation depth >= 2.',
     runIds: ['hg-mr853iu8', 'hg-llm-mr85fdgv'],
-    implementationRefs: ['swarmlab exp-16; AOP/Sonder/Lattice policy recommendation pending'],
-    aegisMapping: 'release gate: deep delegation handoffs require value-echo manifests, not presence-only ids',
+    implementationRefs: ['swarmlab exp-16', 'aegis runtime policy swarmlab.rt07.deep-handoff-requires-value-echo'],
+    aegisMapping: 'runtime policy + release gate: deep delegation handoffs require value-echo manifests, not presence-only ids',
     metrics: [
       { name: 'deepSurvivalWithValueEcho', before: 0.390, after: 1, threshold: 1, comparator: 'eq' },
       { name: 'valueEchoReinterpretRecovery', after: 1, threshold: 1, comparator: 'eq' },

@@ -17,14 +17,14 @@ jobs:
           path: aegis
 
       # @heybeaux/aegis-bench depends on @heybeaux/awm-core via
-      # file:../../../../awm/packages/core. From packages/aegis-bench inside
-      # the checked-out repo, that resolves to ../awm/packages/core relative
-      # to the workspace parent, so we checkout AWM as a sibling of aegis/.
+      # file:../../../../awm/packages/core. pnpm resolves the lockfile entry
+      # as ../../awm/packages/core from the repo root. With this checkout
+      # layout, that path is /home/runner/work/aegis/awm/packages/core.
       - name: Checkout AWM sibling dependency
         uses: actions/checkout@v4
         with:
           repository: heybeaux/awm
-          path: awm
+          path: ../awm
 
       - name: Setup pnpm
         uses: pnpm/action-setup@v4

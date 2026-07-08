@@ -85,6 +85,22 @@ export interface HandoffMetadata {
   requirementCount?: number;
 }
 
+export interface VerificationMetadata {
+  /** Verification tier attached to a fact/claim before a high-risk audit consumes it. */
+  tier?:
+    | 'human_attestation'
+    | 'provenance_chain'
+    | 'retrieval_grounded'
+    | 'cross_model_adversarial'
+    | 'unsupported_claim_only';
+  /** Verification status attached to the fact/claim. */
+  status?: 'supported' | 'unsupported' | 'contradicted' | 'needs_human';
+  /** Whether this claim is being consumed by a high-risk audit/release decision. */
+  highRiskAudit?: boolean;
+  /** Whether the verifier panel had correlated-error risk. */
+  correlatedVerifierRisk?: boolean;
+}
+
 export interface ToolCall {
   /** Claude Code / OpenClaw tool name, e.g. "Bash", "Write", "Edit", "Read". */
   tool: string;
@@ -98,6 +114,8 @@ export interface ToolCall {
   argv?: string[];
   /** Optional structured handoff/delegation metadata from Sonder/AOP/Lattice. */
   handoff?: HandoffMetadata;
+  /** Optional structured verification metadata from Engram/Parliament/SwarmLab RT-08. */
+  verification?: VerificationMetadata;
 }
 
 /** One rule that fired during evaluation. */

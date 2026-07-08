@@ -9,7 +9,17 @@
 
 export { toToolCall, toolUseIdFromHookInput, readStdin } from './stdin.js';
 export { loadAllPacks } from './rules.js';
-export { decide, type Decision } from './decide.js';
+export { decide, type Decision, type DecideOptions } from './decide.js';
+export {
+  approvalId,
+  approvalPaths,
+  approvalSignature,
+  approvePending,
+  consumeApproval,
+  requestApproval,
+  type ApprovalRecord,
+  type ApprovalPaths,
+} from './approval.js';
 export {
   buildHookConfig,
   mergeIntoSettings,

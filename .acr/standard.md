@@ -37,7 +37,7 @@
 
 - The current active branch may not be `main`; check `git status` before edits. As of 2026-07-07 the working branch was `feat/awm-dataset-scale` with WIP real-data benchmark changes.
 - Do not claim the predictive layer is proven unless the real-data axis has calibrated held-out results. The deterministic rule floor is proven; prediction is still being earned.
-- `ask` in the current PreToolUse hook degrades to allow-with-warning because the hook protocol only blocks or allows.
+- `ask` in the PreToolUse hook now pauses by exiting non-zero, writes a pending one-shot approval record, and resumes only after `aegis-hook approve <approval-id>` followed by retrying the exact same tool call.
 - Live collection writes to `~/.aegis/decisions.jsonl`, `outcomes.jsonl`, and `dataset-live.jsonl` outside the repo.
 - Exact decision/outcome joins depend on `tool_use_id` being recorded on both PreToolUse and PostToolUse payloads. Fuzzy joins are opt-in and must stay truth-conservative.
 - The SwarmLab evidence gate is not a predictor. It is a deterministic release gate over completed retests; RT-07 additionally has runtime enforcement for deep handoffs missing value-echo manifests.

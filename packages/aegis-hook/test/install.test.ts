@@ -12,7 +12,7 @@ describe('buildHookConfig', () => {
       hooks: {
         PreToolUse: [
           {
-            matcher: 'Bash|Write|Edit|Read',
+            matcher: 'Bash|Write|Edit|Read|Task|Delegate',
             hooks: [{ type: 'command', command: 'node /abs/path/to/dist/cli.js' }],
           },
         ],
@@ -60,7 +60,7 @@ describe('mergeIntoSettings', () => {
     expect(merged.hooks?.PreToolUse).toEqual([
       { matcher: 'Grep', hooks: [{ type: 'command', command: 'node other.js' }] },
       {
-        matcher: 'Bash|Write|Edit|Read',
+        matcher: 'Bash|Write|Edit|Read|Task|Delegate',
         hooks: [{ type: 'command', command: 'node /abs/dist/cli.js' }],
       },
     ]);
@@ -71,7 +71,7 @@ describe('mergeIntoSettings', () => {
   it('creates PreToolUse when settings has no hooks at all', () => {
     const merged = mergeIntoSettings({}, buildHookConfig({ command: 'node x.js' }));
     expect(merged.hooks?.PreToolUse).toHaveLength(1);
-    expect(merged.hooks?.PreToolUse?.[0]?.matcher).toBe('Bash|Write|Edit|Read');
+    expect(merged.hooks?.PreToolUse?.[0]?.matcher).toBe('Bash|Write|Edit|Read|Task|Delegate');
   });
 
   it('is idempotent: re-merging the same command does NOT stack a duplicate', () => {
@@ -119,7 +119,7 @@ describe('installHook (disk)', () => {
     expect(written.hooks.PreToolUse[1].matcher).toBe('Write|Edit|MultiEdit');
     // Ours appended at the end.
     expect(written.hooks.PreToolUse[2]).toEqual({
-      matcher: 'Bash|Write|Edit|Read',
+      matcher: 'Bash|Write|Edit|Read|Task|Delegate',
       hooks: [{ type: 'command', command: 'node /abs/dist/cli.js' }],
     });
     // Unrelated keys + events untouched.

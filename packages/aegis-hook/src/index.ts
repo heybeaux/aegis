@@ -7,7 +7,7 @@
  * @packageDocumentation
  */
 
-export { toToolCall, readStdin } from './stdin.js';
+export { toToolCall, toolUseIdFromHookInput, readStdin } from './stdin.js';
 export { loadAllPacks } from './rules.js';
 export { decide, type Decision } from './decide.js';
 export {

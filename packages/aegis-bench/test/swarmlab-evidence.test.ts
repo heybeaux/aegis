@@ -2,6 +2,7 @@ import { describe, expect, it } from 'vitest';
 import {
   SWARMLAB_EVIDENCE_CASES,
   evaluateSwarmLabEvidence,
+  swarmLabEvidenceToMarkdown,
   type SwarmLabEvidenceCase,
 } from '../src/swarmlab-evidence.js';
 
@@ -37,6 +38,12 @@ describe('SwarmLab evidence gate', () => {
     expect(mappings).toContain('trust policies');
     expect(mappings).toContain('value-echo manifests');
     expect(mappings).toContain('verification-tier policy');
+  });
+
+  it('renders a report banner matching the evaluated evidence range', () => {
+    const markdown = swarmLabEvidenceToMarkdown(evaluateSwarmLabEvidence());
+    expect(markdown).toContain('REPLAY-VERIFIED SWARMLAB RETESTS (RT-01..RT-08)');
+    expect(markdown).not.toContain('RT-01..RT-07');
   });
 
   it('fails loudly when a proven metric regresses', () => {

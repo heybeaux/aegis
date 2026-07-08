@@ -281,9 +281,13 @@ function fmt(n: number, unit?: string): string {
 
 export function swarmLabEvidenceToMarkdown(result: EvidenceGateResult): string {
   const lines: string[] = [];
+  const firstCaseId = result.cases.at(0)?.id ?? 'none';
+  const lastCaseId = result.cases.at(-1)?.id ?? 'none';
+  const caseRange = firstCaseId === lastCaseId ? firstCaseId : `${firstCaseId}..${lastCaseId}`;
+
   lines.push('# Aegis SwarmLab Evidence Gate');
   lines.push('');
-  lines.push('> DATA: REPLAY-VERIFIED SWARMLAB RETESTS (RT-01..RT-07)');
+  lines.push(`> DATA: REPLAY-VERIFIED SWARMLAB RETESTS (${caseRange})`);
   lines.push('> predictor: NONE — deterministic release gate, not a learned model');
   lines.push('');
   lines.push(

@@ -8,7 +8,8 @@
  *
  * FAIL OPEN: any unexpected fault — empty/unparseable stdin, a rulepack load
  * failure, a bug here — logs to stderr and exits 0. A broken governance hook must
- * never brick the user's Claude Code session; only a clean Aegis `deny` blocks.
+ * never brick the user's Claude Code session; only clean Aegis `deny` and `ask`
+ * decisions block/pause.
  */
 
 import { resolve } from 'node:path';
@@ -17,6 +18,7 @@ import { readStdin, toToolCall, toolUseIdFromHookInput } from './stdin.js';
 import { loadAllPacks } from './rules.js';
 import { decide } from './decide.js';
 import { installHook } from './install.js';
+import { approvePending } from './approval.js';
 import { recordDecision } from '@heybeaux/aegis-collect';
 
 /**
@@ -45,10 +47,34 @@ function runInstall(argv: readonly string[]): void {
   process.exit(0);
 }
 
+function runApprove(argv: readonly string[]): void {
+  const id = argv[0];
+  if (id === undefined) {
+    process.stderr.write('[aegis-hook] usage: aegis-hook approve <approval-id>\n');
+    process.exit(1);
+  }
+  try {
+    const record = approvePending(id);
+    process.stdout.write(
+      `[aegis-hook] approved once: ${record.id}\n` +
+        `[aegis-hook] retry the exact same tool call to consume this approval.\n`,
+    );
+    process.exit(0);
+  } catch (err) {
+    const msg = err instanceof Error ? err.message : String(err);
+    process.stderr.write(`[aegis-hook] approval failed: ${msg}\n`);
+    process.exit(1);
+  }
+}
+
 function main(): void {
   const argv = process.argv.slice(2);
   if (argv[0] === 'install') {
     runInstall(argv.slice(1));
+    return;
+  }
+  if (argv[0] === 'approve') {
+    runApprove(argv.slice(1));
     return;
   }
 
@@ -81,7 +107,7 @@ function main(): void {
     // Intentionally swallowed — fail-open.
   }
 
-  const { exitCode, stderr } = decide(evaluation);
+  const { exitCode, stderr } = decide(evaluation, { call });
   if (stderr) process.stderr.write(stderr + '\n');
   process.exit(exitCode);
 }

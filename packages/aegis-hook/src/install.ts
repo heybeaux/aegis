@@ -6,7 +6,7 @@
  *   {
  *     "hooks": {
  *       "PreToolUse": [
- *         { "matcher": "Bash|Write|Edit|Read",
+ *         { "matcher": "Bash|Write|Edit|Read|Task|Delegate",
  *           "hooks": [ { "type": "command", "command": "<bin>" } ] }
  *       ]
  *     }
@@ -49,8 +49,8 @@ export interface Settings {
   [key: string]: unknown;
 }
 
-/** Default matcher: the four tools Aegis governs. */
-const DEFAULT_MATCHER = 'Bash|Write|Edit|Read';
+/** Default matcher: tools Aegis governs, including delegation handoff boundaries. */
+const DEFAULT_MATCHER = 'Bash|Write|Edit|Read|Task|Delegate';
 
 /**
  * Build the correct nested PreToolUse hook fragment for settings.json.

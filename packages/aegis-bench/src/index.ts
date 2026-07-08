@@ -99,6 +99,7 @@ export {
   evaluateSwarmLabEvidence,
   type StackProject,
   type EvidenceStatus,
+  type ImplementationStatus,
   type Comparator,
   type EvidenceMetric,
   type SwarmLabEvidenceCase,

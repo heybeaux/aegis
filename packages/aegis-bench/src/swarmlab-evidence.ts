@@ -10,6 +10,7 @@
 export type StackProject = 'sonder' | 'aop' | 'parliament' | 'engram' | 'lattice' | 'aegis';
 
 export type EvidenceStatus = 'passed' | 'failed' | 'partial';
+export type ImplementationStatus = 'landed' | 'pending';
 
 export type Comparator = 'lte' | 'gte' | 'eq';
 
@@ -43,6 +44,8 @@ export interface SwarmLabEvidenceCase {
   runIds: string[];
   /** Commit/PR/source reference for the real stack patch, when known. */
   implementationRefs: string[];
+  /** Whether the stack-facing patch is landed yet or still only a recommendation. */
+  implementationStatus?: ImplementationStatus;
   /** What this becomes inside Aegis. */
   aegisMapping: string;
   /** Metrics that must remain green for the evidence case to pass. */
@@ -59,6 +62,7 @@ export interface EvidenceCaseResult {
   owners: StackProject[];
   source: string;
   finding: string;
+  implementationStatus: ImplementationStatus;
   aegisMapping: string;
   failedMetrics: string[];
   metrics: EvidenceMetricResult[];
@@ -70,6 +74,7 @@ export interface EvidenceGateResult {
   passed: number;
   failed: number;
   partial: number;
+  pendingImplementation: number;
   cases: EvidenceCaseResult[];
 }
 
@@ -182,6 +187,7 @@ export const SWARMLAB_EVIDENCE_CASES: readonly SwarmLabEvidenceCase[] = [
     change: 'Evidence-capped probation: retry only while failures-successes stays inside a bounded evidence cap.',
     runIds: ['exp-15 evidence-capped probation retest'],
     implementationRefs: ['swarmlab exp-15; policy recommendation pending stack owner patch'],
+    implementationStatus: 'pending',
     aegisMapping: 'release gate: trust policies must recover capable workers without reopening incapable-worker leakage',
     metrics: [
       { name: 'capableExcludedRate', after: 0, threshold: 0, comparator: 'eq' },
@@ -210,17 +216,20 @@ export function evaluateSwarmLabEvidence(
   cases: readonly SwarmLabEvidenceCase[] = SWARMLAB_EVIDENCE_CASES,
 ): EvidenceGateResult {
   const results: EvidenceCaseResult[] = cases.map((c) => {
+    const implementationStatus = c.implementationStatus ?? 'landed';
     const metrics = c.metrics.map((m) => ({
       ...m,
       passed: compare(m.after, m.threshold, m.comparator),
     }));
-    const status = caseStatus(metrics);
+    const metricStatus = caseStatus(metrics);
+    const status = implementationStatus === 'pending' && metricStatus === 'passed' ? 'partial' : metricStatus;
     return {
       id: c.id,
       status,
       owners: [...c.owners],
       source: c.source,
       finding: c.finding,
+      implementationStatus,
       aegisMapping: c.aegisMapping,
       failedMetrics: metrics.filter((m) => !m.passed).map((m) => m.name),
       metrics,
@@ -230,12 +239,14 @@ export function evaluateSwarmLabEvidence(
   const passed = results.filter((r) => r.status === 'passed').length;
   const failed = results.filter((r) => r.status === 'failed').length;
   const partial = results.filter((r) => r.status === 'partial').length;
+  const pendingImplementation = results.filter((r) => r.implementationStatus === 'pending').length;
   return {
     status: failed === 0 && partial === 0 ? 'passed' : failed > 0 ? 'failed' : 'partial',
     total: results.length,
     passed,
     failed,
     partial,
+    pendingImplementation,
     cases: results,
   };
 }
@@ -259,16 +270,17 @@ export function swarmLabEvidenceToMarkdown(result: EvidenceGateResult): string {
   lines.push('');
   lines.push(
     `Status: **${result.status.toUpperCase()}** · ${result.passed}/${result.total} passed · ` +
-      `${result.partial} partial · ${result.failed} failed`,
+      `${result.partial} partial · ${result.failed} failed · ` +
+      `${result.pendingImplementation} pending implementation`,
   );
   lines.push('');
   lines.push('## Case summary');
   lines.push('');
-  lines.push('| id | status | owners | source | release-gate mapping |');
-  lines.push('|---|---|---|---|---|');
+  lines.push('| id | status | impl | owners | source | release-gate mapping |');
+  lines.push('|---|---|---|---|---|---|');
   for (const c of result.cases) {
     lines.push(
-      `| ${c.id} | ${c.status} | ${c.owners.join(', ')} | ${c.source} | ${c.aegisMapping} |`,
+      `| ${c.id} | ${c.status} | ${c.implementationStatus} | ${c.owners.join(', ')} | ${c.source} | ${c.aegisMapping} |`,
     );
   }
   lines.push('');

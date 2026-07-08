@@ -43,6 +43,12 @@ jobs:
           cache: pnpm
           cache-dependency-path: pnpm-lock.yaml
 
+      - name: Build AWM core dependency
+        working-directory: _deps/awm
+        run: |
+          pnpm install --no-frozen-lockfile
+          pnpm --filter @heybeaux/awm-core build
+
       - name: Install dependencies
         run: pnpm install --frozen-lockfile
 

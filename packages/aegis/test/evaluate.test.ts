@@ -200,4 +200,56 @@ describe('evaluate — SwarmLab-derived policy gates', () => {
     );
     expect(r.action).toBe('allow');
   });
+
+  it('RT-08 asks when a high-risk audit tries to certify cross-model-only support', () => {
+    const r = evaluate(
+      {
+        tool: 'AuditClaim',
+        verification: {
+          highRiskAudit: true,
+          status: 'supported',
+          tier: 'cross_model_adversarial',
+          correlatedVerifierRisk: true,
+        },
+      },
+      compiled,
+    );
+    expect(r.action).toBe('ask');
+    expect(r.decidedBy).toBe('severity');
+    expect(r.matches.map((m) => m.id)).toContain(
+      'swarmlab.rt08.high-risk-audit-requires-grounded-support',
+    );
+    expect(r.reason).toContain('SwarmLab RT-08');
+  });
+
+  it('RT-08 allows high-risk audits with grounded support', () => {
+    const r = evaluate(
+      {
+        tool: 'AuditClaim',
+        verification: {
+          highRiskAudit: true,
+          status: 'supported',
+          tier: 'retrieval_grounded',
+        },
+      },
+      compiled,
+    );
+    expect(r.action).toBe('allow');
+    expect(r.matches).toHaveLength(0);
+  });
+
+  it('RT-08 does not tax low-risk cross-model-only support', () => {
+    const r = evaluate(
+      {
+        tool: 'AuditClaim',
+        verification: {
+          highRiskAudit: false,
+          status: 'supported',
+          tier: 'cross_model_adversarial',
+        },
+      },
+      compiled,
+    );
+    expect(r.action).toBe('allow');
+  });
 });

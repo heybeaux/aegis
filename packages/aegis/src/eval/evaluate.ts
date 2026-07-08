@@ -78,21 +78,36 @@ function matchesRule(compiled: CompiledRule, call: ToolCall): boolean {
 }
 
 function swarmlabPolicyHits(call: ToolCall): RuleHit[] {
+  const hits: RuleHit[] = [];
   const h = call.handoff;
-  if (!h) return [];
-  const depth = h.delegationDepth ?? 0;
-  const tier = h.manifestTier ?? 'none';
-  if (depth >= 2 && tier !== 'value-echo') {
-    return [
-      {
+  if (h) {
+    const depth = h.delegationDepth ?? 0;
+    const tier = h.manifestTier ?? 'none';
+    if (depth >= 2 && tier !== 'value-echo') {
+      hits.push({
         id: 'swarmlab.rt07.deep-handoff-requires-value-echo',
         severity: 'medium',
         category: 'swarmlab',
         target: 'argv',
-      },
-    ];
+      });
+    }
   }
-  return [];
+
+  const v = call.verification;
+  if (
+    v?.highRiskAudit === true &&
+    v.status === 'supported' &&
+    (v.tier === 'cross_model_adversarial' || v.tier === 'unsupported_claim_only')
+  ) {
+    hits.push({
+      id: 'swarmlab.rt08.high-risk-audit-requires-grounded-support',
+      severity: 'medium',
+      category: 'swarmlab',
+      target: 'argv',
+    });
+  }
+
+  return hits;
 }
 
 function predictionAction(
@@ -154,8 +169,9 @@ export function evaluate(
     hits.push(hit);
     if (maxSeverity === null || SEVERITY_RANK[hit.severity] > SEVERITY_RANK[maxSeverity]) {
       maxSeverity = hit.severity;
-      topReason =
-        'SwarmLab RT-07: delegation depth >= 2 requires a value-echo handoff manifest';
+      topReason = hit.id.includes('rt08')
+        ? 'SwarmLab RT-08: high-risk audits require grounded support, not cross-model-only agreement'
+        : 'SwarmLab RT-07: delegation depth >= 2 requires a value-echo handoff manifest';
     }
   }
 

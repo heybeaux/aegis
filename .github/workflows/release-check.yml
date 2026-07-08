@@ -13,18 +13,23 @@ jobs:
     steps:
       - name: Checkout Aegis
         uses: actions/checkout@v4
-        with:
-          path: aegis
 
-      # @heybeaux/aegis-bench depends on @heybeaux/awm-core via
-      # file:../../../../awm/packages/core. pnpm resolves the lockfile entry
-      # as ../../awm/packages/core from the repo root. With this checkout
-      # layout, that path is /home/runner/work/aegis/awm/packages/core.
-      - name: Checkout AWM sibling dependency
+      - name: Checkout AWM dependency
         uses: actions/checkout@v4
         with:
           repository: heybeaux/awm
-          path: ../awm
+          path: _deps/awm
+
+      # @heybeaux/aegis-bench depends on @heybeaux/awm-core through a local
+      # file: path. Under GitHub Actions the repo root is $GITHUB_WORKSPACE;
+      # the lockfile resolves that package at ../../awm/packages/core. The
+      # checkout action cannot write outside $GITHUB_WORKSPACE, so we checkout
+      # AWM inside _deps/ and create the expected sibling symlink explicitly.
+      - name: Link AWM at lockfile path
+        run: |
+          mkdir -p "$(dirname "$GITHUB_WORKSPACE/../../awm")"
+          ln -sfn "$GITHUB_WORKSPACE/_deps/awm" "$GITHUB_WORKSPACE/../../awm"
+          test -f "$GITHUB_WORKSPACE/../../awm/packages/core/package.json"
 
       - name: Setup pnpm
         uses: pnpm/action-setup@v4
@@ -36,12 +41,10 @@ jobs:
         with:
           node-version: '22'
           cache: pnpm
-          cache-dependency-path: aegis/pnpm-lock.yaml
+          cache-dependency-path: pnpm-lock.yaml
 
       - name: Install dependencies
-        working-directory: aegis
         run: pnpm install --frozen-lockfile
 
       - name: Run release check
-        working-directory: aegis
         run: pnpm run release:check

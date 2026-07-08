@@ -6,7 +6,9 @@
     "build": "pnpm -r build",
     "test": "pnpm -r test",
     "lint": "pnpm -r lint",
-    "typecheck": "pnpm -r typecheck"
+    "typecheck": "pnpm -r typecheck",
+    "bench:swarmlab-evidence": "pnpm --filter @heybeaux/aegis-bench build && node packages/aegis-bench/dist/cli.js swarmlab-evidence --out /tmp/aegis-swarmlab-evidence --format both",
+    "release:check": "pnpm typecheck && pnpm test && pnpm run bench:swarmlab-evidence"
   },
   "engines": {
     "node": ">=20.0.0"

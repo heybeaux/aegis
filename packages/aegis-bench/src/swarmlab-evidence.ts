@@ -217,15 +217,19 @@ export const SWARMLAB_EVIDENCE_CASES: readonly SwarmLabEvidenceCase[] = [
     owners: ['engram', 'parliament', 'aegis'],
     change:
       'Verification envelopes carry support tier/freshness, and high-risk audits refuse cross-model-only facts.',
-    runIds: ['gsv-mr9bvkkk'],
-    implementationRefs: ['swarmlab exp-17; schema/policy recommendation pending stack owner patch'],
-    implementationStatus: 'pending',
+    runIds: ['gsv-mrek72m0'],
+    implementationRefs: [
+      'aegis#7 runtime policy swarmlab.rt08.high-risk-audit-requires-grounded-support',
+      'aegis#8 regression floor coverage for RT-08 runtime policy',
+      'swarmlab exp-17 Aegis-wrapped retest gsv-mrek72m0 using file:/Users/beauxwalton/Dev/aegis/packages/aegis',
+    ],
     aegisMapping:
-      'release gate honesty: verification-tier policy must distinguish provenance/retrieval support from cross-model-only agreement',
+      'runtime policy + release gate: verification-tier policy must distinguish provenance/retrieval support from cross-model-only agreement',
     metrics: [
       { name: 'operationalFalseSupportRate', after: 0, threshold: 0, comparator: 'eq' },
       { name: 'staleSupportRate', after: 0, threshold: 0, comparator: 'eq' },
-      { name: 'highRiskAuditEscapeRate', after: 0.063, threshold: 0.063, comparator: 'lte' },
+      { name: 'highRiskAuditEscapeRate', before: 0.188, after: 0.063, threshold: 0.063, comparator: 'lte' },
+      { name: 'aegisGovernanceCostTax', after: 0.106, threshold: 0.106, comparator: 'lte' },
     ],
   },
 ];

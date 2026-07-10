@@ -11,18 +11,20 @@ describe('SwarmLab evidence gate', () => {
     const result = evaluateSwarmLabEvidence();
     expect(result.status).toBe('partial');
     expect(result.total).toBe(8);
-    expect(result.passed).toBe(6);
+    expect(result.passed).toBe(7);
     expect(result.failed).toBe(0);
-    expect(result.partial).toBe(2);
-    expect(result.pendingImplementation).toBe(2);
+    expect(result.partial).toBe(1);
+    expect(result.pendingImplementation).toBe(1);
 
     const rt06 = result.cases.find((c) => c.id === 'RT-06');
     expect(rt06?.status).toBe('partial');
     expect(rt06?.implementationStatus).toBe('pending');
 
     const rt08 = result.cases.find((c) => c.id === 'RT-08');
-    expect(rt08?.status).toBe('partial');
-    expect(rt08?.implementationStatus).toBe('pending');
+    expect(rt08?.status).toBe('passed');
+    expect(rt08?.implementationStatus).toBe('landed');
+    expect(rt08?.metrics.find((m) => m.name === 'highRiskAuditEscapeRate')?.before).toBe(0.188);
+    expect(rt08?.metrics.find((m) => m.name === 'aegisGovernanceCostTax')?.after).toBe(0.106);
   });
 
   it('covers the currently proven stack failure classes', () => {
@@ -38,6 +40,7 @@ describe('SwarmLab evidence gate', () => {
     expect(mappings).toContain('trust policies');
     expect(mappings).toContain('value-echo manifests');
     expect(mappings).toContain('verification-tier policy');
+    expect(mappings).toContain('runtime policy');
   });
 
   it('renders a report banner matching the evaluated evidence range', () => {

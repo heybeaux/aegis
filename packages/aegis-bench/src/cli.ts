@@ -218,7 +218,8 @@ function runSwarmLabEvidence(args: CliArgs): void {
 
   process.stdout.write(
     `SwarmLab evidence gate: ${result.status.toUpperCase()} ` +
-      `(${result.passed}/${result.total} passed, partial=${result.partial}, failed=${result.failed}, pending=${result.pendingImplementation})\n` +
+      `(${result.passed}/${result.total} passed, partial=${result.partial}, failed=${result.failed}, ` +
+      `pending=${result.pendingImplementation}, provisional=${result.provisionalEvidence})\n` +
       `Wrote: ${written.join(', ')}\n`,
   );
 }

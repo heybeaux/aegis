@@ -15,14 +15,17 @@ describe('SwarmLab evidence gate', () => {
     expect(result.failed).toBe(0);
     expect(result.partial).toBe(1);
     expect(result.pendingImplementation).toBe(1);
+    expect(result.provisionalEvidence).toBe(1);
 
     const rt06 = result.cases.find((c) => c.id === 'RT-06');
     expect(rt06?.status).toBe('partial');
     expect(rt06?.implementationStatus).toBe('pending');
+    expect(rt06?.evidenceTier).toBe('in_sample');
 
     const rt08 = result.cases.find((c) => c.id === 'RT-08');
     expect(rt08?.status).toBe('passed');
     expect(rt08?.implementationStatus).toBe('landed');
+    expect(rt08?.evidenceTier).toBe('verified');
     expect(rt08?.metrics.find((m) => m.name === 'highRiskAuditEscapeRate')?.before).toBe(0.188);
     expect(rt08?.metrics.find((m) => m.name === 'aegisGovernanceCostTax')?.after).toBe(0.106);
   });
@@ -47,6 +50,8 @@ describe('SwarmLab evidence gate', () => {
     const markdown = swarmLabEvidenceToMarkdown(evaluateSwarmLabEvidence());
     expect(markdown).toContain('REPLAY-VERIFIED SWARMLAB RETESTS (RT-01..RT-08)');
     expect(markdown).not.toContain('RT-01..RT-07');
+    expect(markdown).toContain('1 provisional evidence tier');
+    expect(markdown).toContain('| RT-06 | partial | pending | in_sample |');
   });
 
   it('fails loudly when a proven metric regresses', () => {
@@ -66,5 +71,17 @@ describe('SwarmLab evidence gate', () => {
     const rt07 = result.cases.find((c) => c.id === 'RT-07');
     expect(rt07?.status).toBe('partial');
     expect(rt07?.failedMetrics).toEqual(['deepSurvivalWithValueEcho']);
+  });
+
+  it('keeps a landed case partial when the evidence tier still needs holdout confirmation', () => {
+    const mutated: SwarmLabEvidenceCase[] = SWARMLAB_EVIDENCE_CASES.map((c) =>
+      c.id === 'RT-06' ? { ...c, implementationStatus: 'landed' } : c,
+    );
+
+    const result = evaluateSwarmLabEvidence(mutated);
+    const rt06 = result.cases.find((c) => c.id === 'RT-06');
+    expect(rt06?.implementationStatus).toBe('landed');
+    expect(rt06?.evidenceTier).toBe('in_sample');
+    expect(rt06?.status).toBe('partial');
   });
 });

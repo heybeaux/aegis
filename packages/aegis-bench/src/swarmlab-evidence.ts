@@ -11,6 +11,7 @@ export type StackProject = 'sonder' | 'aop' | 'parliament' | 'engram' | 'lattice
 
 export type EvidenceStatus = 'passed' | 'failed' | 'partial';
 export type ImplementationStatus = 'landed' | 'pending';
+export type EvidenceTier = 'verified' | 'in_sample' | 'exhibition_only' | 'needs_holdout';
 
 export type Comparator = 'lte' | 'gte' | 'eq';
 
@@ -46,6 +47,8 @@ export interface SwarmLabEvidenceCase {
   implementationRefs: string[];
   /** Whether the stack-facing patch is landed yet or still only a recommendation. */
   implementationStatus?: ImplementationStatus;
+  /** Verification tier carried from SwarmLab's CLAIMS.json ledger. */
+  evidenceTier?: EvidenceTier;
   /** What this becomes inside Aegis. */
   aegisMapping: string;
   /** Metrics that must remain green for the evidence case to pass. */
@@ -63,6 +66,7 @@ export interface EvidenceCaseResult {
   source: string;
   finding: string;
   implementationStatus: ImplementationStatus;
+  evidenceTier: EvidenceTier;
   aegisMapping: string;
   failedMetrics: string[];
   metrics: EvidenceMetricResult[];
@@ -75,6 +79,7 @@ export interface EvidenceGateResult {
   failed: number;
   partial: number;
   pendingImplementation: number;
+  provisionalEvidence: number;
   cases: EvidenceCaseResult[];
 }
 
@@ -188,6 +193,7 @@ export const SWARMLAB_EVIDENCE_CASES: readonly SwarmLabEvidenceCase[] = [
     runIds: ['exp-15 evidence-capped probation retest'],
     implementationRefs: ['swarmlab exp-15; policy recommendation pending stack owner patch'],
     implementationStatus: 'pending',
+    evidenceTier: 'in_sample',
     aegisMapping: 'release gate: trust policies must recover capable workers without reopening incapable-worker leakage',
     metrics: [
       { name: 'capableExcludedRate', after: 0, threshold: 0, comparator: 'eq' },
@@ -203,6 +209,7 @@ export const SWARMLAB_EVIDENCE_CASES: readonly SwarmLabEvidenceCase[] = [
     change: 'Value-echo requirement manifest for handoffs at delegation depth >= 2.',
     runIds: ['hg-mr853iu8', 'hg-llm-mr85fdgv'],
     implementationRefs: ['swarmlab exp-16', 'aegis runtime policy swarmlab.rt07.deep-handoff-requires-value-echo'],
+    evidenceTier: 'verified',
     aegisMapping: 'runtime policy + release gate: deep delegation handoffs require value-echo manifests, not presence-only ids',
     metrics: [
       { name: 'deepSurvivalWithValueEcho', before: 0.390, after: 1, threshold: 1, comparator: 'eq' },
@@ -223,6 +230,7 @@ export const SWARMLAB_EVIDENCE_CASES: readonly SwarmLabEvidenceCase[] = [
       'aegis#8 regression floor coverage for RT-08 runtime policy',
       'swarmlab exp-17 Aegis-wrapped retest gsv-mrek72m0 using file:/Users/beauxwalton/Dev/aegis/packages/aegis',
     ],
+    evidenceTier: 'verified',
     aegisMapping:
       'runtime policy + release gate: verification-tier policy must distinguish provenance/retrieval support from cross-model-only agreement',
     metrics: [
@@ -239,12 +247,18 @@ export function evaluateSwarmLabEvidence(
 ): EvidenceGateResult {
   const results: EvidenceCaseResult[] = cases.map((c) => {
     const implementationStatus = c.implementationStatus ?? 'landed';
+    const evidenceTier = c.evidenceTier ?? 'verified';
     const metrics = c.metrics.map((m) => ({
       ...m,
       passed: compare(m.after, m.threshold, m.comparator),
     }));
     const metricStatus = caseStatus(metrics);
-    const status = implementationStatus === 'pending' && metricStatus === 'passed' ? 'partial' : metricStatus;
+    const hasPendingImplementation = implementationStatus === 'pending';
+    const hasProvisionalEvidence = evidenceTier !== 'verified';
+    const status =
+      metricStatus !== 'passed' || (!hasPendingImplementation && !hasProvisionalEvidence)
+        ? metricStatus
+        : 'partial';
     return {
       id: c.id,
       status,
@@ -252,6 +266,7 @@ export function evaluateSwarmLabEvidence(
       source: c.source,
       finding: c.finding,
       implementationStatus,
+      evidenceTier,
       aegisMapping: c.aegisMapping,
       failedMetrics: metrics.filter((m) => !m.passed).map((m) => m.name),
       metrics,
@@ -262,6 +277,7 @@ export function evaluateSwarmLabEvidence(
   const failed = results.filter((r) => r.status === 'failed').length;
   const partial = results.filter((r) => r.status === 'partial').length;
   const pendingImplementation = results.filter((r) => r.implementationStatus === 'pending').length;
+  const provisionalEvidence = results.filter((r) => r.evidenceTier !== 'verified').length;
   return {
     status: failed === 0 && partial === 0 ? 'passed' : failed > 0 ? 'failed' : 'partial',
     total: results.length,
@@ -269,6 +285,7 @@ export function evaluateSwarmLabEvidence(
     failed,
     partial,
     pendingImplementation,
+    provisionalEvidence,
     cases: results,
   };
 }
@@ -296,17 +313,18 @@ export function swarmLabEvidenceToMarkdown(result: EvidenceGateResult): string {
   lines.push('');
   lines.push(
     `Status: **${result.status.toUpperCase()}** · ${result.passed}/${result.total} passed · ` +
-      `${result.partial} partial · ${result.failed} failed · ` +
-      `${result.pendingImplementation} pending implementation`,
+    `${result.partial} partial · ${result.failed} failed · ` +
+      `${result.pendingImplementation} pending implementation · ` +
+      `${result.provisionalEvidence} provisional evidence tier`,
   );
   lines.push('');
   lines.push('## Case summary');
   lines.push('');
-  lines.push('| id | status | impl | owners | source | release-gate mapping |');
-  lines.push('|---|---|---|---|---|---|');
+  lines.push('| id | status | impl | evidence | owners | source | release-gate mapping |');
+  lines.push('|---|---|---|---|---|---|---|');
   for (const c of result.cases) {
     lines.push(
-      `| ${c.id} | ${c.status} | ${c.implementationStatus} | ${c.owners.join(', ')} | ${c.source} | ${c.aegisMapping} |`,
+      `| ${c.id} | ${c.status} | ${c.implementationStatus} | ${c.evidenceTier} | ${c.owners.join(', ')} | ${c.source} | ${c.aegisMapping} |`,
     );
   }
   lines.push('');

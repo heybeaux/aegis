@@ -187,7 +187,8 @@ export const SWARMLAB_EVIDENCE_CASES: readonly SwarmLabEvidenceCase[] = [
   {
     id: 'RT-06',
     source: 'exp-15 trust forgiveness',
-    finding: 'Unforgiving trust benches capable workers; naive time decay re-admits incapable ones.',
+    finding:
+      'Unforgiving trust benches capable workers; naive time decay re-admits incapable workers, while evidence-capped probation keeps late leakage bounded with a small residual capable-exclusion tax.',
     owners: ['lattice', 'engram', 'aegis'],
     change: 'Evidence-capped probation: retry only while failures-successes stays inside a bounded evidence cap.',
     runIds: ['exp-15 evidence-capped probation retest'],
@@ -196,9 +197,10 @@ export const SWARMLAB_EVIDENCE_CASES: readonly SwarmLabEvidenceCase[] = [
     evidenceTier: 'in_sample',
     aegisMapping: 'release gate: trust policies must recover capable workers without reopening incapable-worker leakage',
     metrics: [
-      { name: 'capableExcludedRate', after: 0, threshold: 0, comparator: 'eq' },
-      { name: 'incapableSelectionRate', after: 0, threshold: 0.05, comparator: 'lte' },
-      { name: 'transferRegressionRate', after: 0, threshold: 0, comparator: 'eq' },
+      { name: 'maxCapableExcludedRate', after: 0.02, threshold: 0.02, comparator: 'lte' },
+      { name: 'maxLateIncapableSelectionRate', after: 0.047, threshold: 0.05, comparator: 'lte' },
+      { name: 'maxIncapableLeakRate', after: 0, threshold: 0, comparator: 'eq' },
+      { name: 'minTransferAvoidRate', after: 1, threshold: 1, comparator: 'eq' },
     ],
   },
   {

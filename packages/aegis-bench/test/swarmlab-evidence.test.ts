@@ -21,6 +21,38 @@ describe('SwarmLab evidence gate', () => {
     expect(rt06?.status).toBe('partial');
     expect(rt06?.implementationStatus).toBe('pending');
     expect(rt06?.evidenceTier).toBe('in_sample');
+    expect(rt06?.metrics).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          name: 'maxCapableExcludedRate',
+          after: 0.02,
+          threshold: 0.02,
+          comparator: 'lte',
+          passed: true,
+        }),
+        expect.objectContaining({
+          name: 'maxLateIncapableSelectionRate',
+          after: 0.047,
+          threshold: 0.05,
+          comparator: 'lte',
+          passed: true,
+        }),
+        expect.objectContaining({
+          name: 'maxIncapableLeakRate',
+          after: 0,
+          threshold: 0,
+          comparator: 'eq',
+          passed: true,
+        }),
+        expect.objectContaining({
+          name: 'minTransferAvoidRate',
+          after: 1,
+          threshold: 1,
+          comparator: 'eq',
+          passed: true,
+        }),
+      ]),
+    );
 
     const rt08 = result.cases.find((c) => c.id === 'RT-08');
     expect(rt08?.status).toBe('passed');

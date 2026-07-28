@@ -226,11 +226,11 @@ export const SWARMLAB_EVIDENCE_CASES: readonly SwarmLabEvidenceCase[] = [
     owners: ['engram', 'parliament', 'aegis'],
     change:
       'Verification envelopes carry support tier/freshness, and high-risk audits refuse cross-model-only facts.',
-    runIds: ['gsv-mrek72m0'],
+    runIds: ['gsv-mrc3huyf'],
     implementationRefs: [
       'aegis#7 runtime policy swarmlab.rt08.high-risk-audit-requires-grounded-support',
       'aegis#8 regression floor coverage for RT-08 runtime policy',
-      'swarmlab exp-17 Aegis-wrapped retest gsv-mrek72m0 using file:/Users/beauxwalton/Dev/aegis/packages/aegis',
+      'swarmlab exp-17 Aegis-wrapped retest gsv-mrc3huyf using file:/Users/beauxwalton/Dev/aegis/packages/aegis',
     ],
     evidenceTier: 'verified',
     aegisMapping:

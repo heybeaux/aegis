@@ -55,9 +55,14 @@ describe('SwarmLab evidence gate', () => {
     );
 
     const rt08 = result.cases.find((c) => c.id === 'RT-08');
+    const rt08Source = SWARMLAB_EVIDENCE_CASES.find((c) => c.id === 'RT-08');
     expect(rt08?.status).toBe('passed');
     expect(rt08?.implementationStatus).toBe('landed');
     expect(rt08?.evidenceTier).toBe('verified');
+    expect(rt08Source?.runIds).toEqual(['gsv-mrc3huyf']);
+    expect(rt08Source?.implementationRefs).toContain(
+      'swarmlab exp-17 Aegis-wrapped retest gsv-mrc3huyf using file:/Users/beauxwalton/Dev/aegis/packages/aegis',
+    );
     expect(rt08?.metrics.find((m) => m.name === 'highRiskAuditEscapeRate')?.before).toBe(0.188);
     expect(rt08?.metrics.find((m) => m.name === 'aegisGovernanceCostTax')?.after).toBe(0.106);
   });

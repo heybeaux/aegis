@@ -39,10 +39,10 @@ It runs:
 
 ## Current measured result
 
-Latest local smoke after adding RT-08 coverage honesty:
+Latest local smoke after landing RT-06 against merged Lattice trust:
 
 ```text
-SwarmLab evidence gate: PARTIAL (6/8 passed, partial=2, failed=0, pending=2)
+SwarmLab evidence gate: PASSED (8/8 passed, partial=0, failed=0, pending=0, provisional=0)
 ```
 
 Covered retests:
@@ -52,12 +52,12 @@ Covered retests:
 - `RT-03` — Engram versioned facts + anti-entropy
 - `RT-04` — fact-checked evidence audit
 - `RT-05` — persistent capability trust transfer
-- `RT-06` — evidence-capped probation (`pending` stack mapping)
+- `RT-06` — evidence-capped probation
 - `RT-07` — value-echo handoff guards
-- `RT-08` — verification tiers / audit consumption (`pending` stack mapping)
+- `RT-08` — verification tiers / audit consumption
 
-The `partial` status is intentional honesty, not a broken gate: Aegis now acknowledges replay-verified
-SwarmLab evidence that still lacks a landed harness mapping, instead of overstating coverage.
+The gate only reports `passed` when replay-verified SwarmLab evidence is tied to landed stack
+implementation refs. Provisional or pending mappings stay `partial` instead of overstating coverage.
 
 ## Release meaning
 

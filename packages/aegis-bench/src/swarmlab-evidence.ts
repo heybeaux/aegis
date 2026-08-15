@@ -191,10 +191,14 @@ export const SWARMLAB_EVIDENCE_CASES: readonly SwarmLabEvidenceCase[] = [
       'Unforgiving trust benches capable workers; naive time decay re-admits incapable workers, while evidence-capped probation keeps late leakage bounded with a small residual capable-exclusion tax.',
     owners: ['lattice', 'engram', 'aegis'],
     change: 'Evidence-capped probation: retry only while failures-successes stays inside a bounded evidence cap.',
-    runIds: ['exp-15 evidence-capped probation retest'],
-    implementationRefs: ['swarmlab exp-15; policy recommendation pending stack owner patch'],
-    implementationStatus: 'pending',
-    evidenceTier: 'in_sample',
+    runIds: ['tf-msv0gfsa', 'tf-msv0frlb', 'tf-msv0fryh', 'tf-msv0fsbq', 'tf-msv0fsp2', 'tf-msv0ft24'],
+    implementationRefs: [
+      'lattice PR #42 merged at 1f21d06833f7842c02544029636debebaf3a88d7',
+      'swarmlab PR #3 merged at f731e5388d447c7c1400bd1408a697af15225e15',
+      'swarmlab exp-15 canonical retest tf-msv0gfsa plus five-seed holdout tf-msv0frlb/tf-msv0fryh/tf-msv0fsbq/tf-msv0fsp2/tf-msv0ft24',
+    ],
+    implementationStatus: 'landed',
+    evidenceTier: 'verified',
     aegisMapping: 'release gate: trust policies must recover capable workers without reopening incapable-worker leakage',
     metrics: [
       { name: 'maxCapableExcludedRate', after: 0.02, threshold: 0.02, comparator: 'lte' },

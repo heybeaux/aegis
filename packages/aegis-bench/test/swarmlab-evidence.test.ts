@@ -7,20 +7,35 @@ import {
 } from '../src/swarmlab-evidence.js';
 
 describe('SwarmLab evidence gate', () => {
-  it('surfaces pending stack mappings without overstating verified coverage', () => {
+  it('passes when all stack mappings are landed with verified evidence', () => {
     const result = evaluateSwarmLabEvidence();
-    expect(result.status).toBe('partial');
+    expect(result.status).toBe('passed');
     expect(result.total).toBe(8);
-    expect(result.passed).toBe(7);
+    expect(result.passed).toBe(8);
     expect(result.failed).toBe(0);
-    expect(result.partial).toBe(1);
-    expect(result.pendingImplementation).toBe(1);
-    expect(result.provisionalEvidence).toBe(1);
+    expect(result.partial).toBe(0);
+    expect(result.pendingImplementation).toBe(0);
+    expect(result.provisionalEvidence).toBe(0);
 
     const rt06 = result.cases.find((c) => c.id === 'RT-06');
-    expect(rt06?.status).toBe('partial');
-    expect(rt06?.implementationStatus).toBe('pending');
-    expect(rt06?.evidenceTier).toBe('in_sample');
+    const rt06Source = SWARMLAB_EVIDENCE_CASES.find((c) => c.id === 'RT-06');
+    expect(rt06?.status).toBe('passed');
+    expect(rt06?.implementationStatus).toBe('landed');
+    expect(rt06?.evidenceTier).toBe('verified');
+    expect(rt06Source?.runIds).toEqual([
+      'tf-msv0gfsa',
+      'tf-msv0frlb',
+      'tf-msv0fryh',
+      'tf-msv0fsbq',
+      'tf-msv0fsp2',
+      'tf-msv0ft24',
+    ]);
+    expect(rt06Source?.implementationRefs).toContain(
+      'lattice PR #42 merged at 1f21d06833f7842c02544029636debebaf3a88d7',
+    );
+    expect(rt06Source?.implementationRefs).toContain(
+      'swarmlab PR #3 merged at f731e5388d447c7c1400bd1408a697af15225e15',
+    );
     expect(rt06?.metrics).toEqual(
       expect.arrayContaining([
         expect.objectContaining({
@@ -87,8 +102,8 @@ describe('SwarmLab evidence gate', () => {
     const markdown = swarmLabEvidenceToMarkdown(evaluateSwarmLabEvidence());
     expect(markdown).toContain('REPLAY-VERIFIED SWARMLAB RETESTS (RT-01..RT-08)');
     expect(markdown).not.toContain('RT-01..RT-07');
-    expect(markdown).toContain('1 provisional evidence tier');
-    expect(markdown).toContain('| RT-06 | partial | pending | in_sample |');
+    expect(markdown).toContain('0 provisional evidence tier');
+    expect(markdown).toContain('| RT-06 | passed | landed | verified |');
   });
 
   it('fails loudly when a proven metric regresses', () => {
@@ -112,7 +127,7 @@ describe('SwarmLab evidence gate', () => {
 
   it('keeps a landed case partial when the evidence tier still needs holdout confirmation', () => {
     const mutated: SwarmLabEvidenceCase[] = SWARMLAB_EVIDENCE_CASES.map((c) =>
-      c.id === 'RT-06' ? { ...c, implementationStatus: 'landed' } : c,
+      c.id === 'RT-06' ? { ...c, evidenceTier: 'in_sample' } : c,
     );
 
     const result = evaluateSwarmLabEvidence(mutated);
@@ -120,5 +135,24 @@ describe('SwarmLab evidence gate', () => {
     expect(rt06?.implementationStatus).toBe('landed');
     expect(rt06?.evidenceTier).toBe('in_sample');
     expect(rt06?.status).toBe('partial');
+  });
+
+  it('keeps a verified case partial until the stack mapping lands', () => {
+    const mutated: SwarmLabEvidenceCase[] = SWARMLAB_EVIDENCE_CASES.map((c) =>
+      c.id === 'RT-06'
+        ? {
+            ...c,
+            implementationStatus: 'pending',
+          }
+        : c,
+    );
+
+    const result = evaluateSwarmLabEvidence(mutated);
+    const rt06 = result.cases.find((c) => c.id === 'RT-06');
+    expect(rt06?.implementationStatus).toBe('pending');
+    expect(rt06?.evidenceTier).toBe('verified');
+    expect(rt06?.status).toBe('partial');
+    expect(result.pendingImplementation).toBe(1);
+    expect(result.provisionalEvidence).toBe(0);
   });
 });

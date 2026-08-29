@@ -1,6 +1,6 @@
 {
   "dataSource": "real",
-  "datasetPath": "/Users/beauxwalton/Dev/aegis/packages/aegis-bench/results/real-2026-06-16-scaled.dataset.jsonl",
+  "datasetPath": "packages/aegis-bench/results/real-2026-06-16-scaled.dataset.jsonl",
   "totalRows": 186,
   "scoredRows": 186,
   "excludedRows": 0,
@@ -18,28 +18,17 @@
       "accuracy": 0.532258064516129
     },
     {
-      "engine": "regex+awm",
-      "tp": 50,
-      "fp": 100,
-      "fn": 5,
-      "tn": 31,
-      "precision": 0.3333333333333333,
-      "recall": 0.9090909090909091,
-      "f1": 0.4878048780487804,
-      "accuracy": 0.43548387096774194
-    },
-    {
-      "engine": "regex+awm-core",
-      "tp": 48,
-      "fp": 86,
-      "fn": 7,
-      "tn": 45,
-      "precision": 0.3582089552238806,
-      "recall": 0.8727272727272727,
-      "f1": 0.5079365079365078,
-      "accuracy": 0.5
+      "engine": "regex+predictor",
+      "tp": 45,
+      "fp": 78,
+      "fn": 10,
+      "tn": 53,
+      "precision": 0.36585365853658536,
+      "recall": 0.8181818181818182,
+      "f1": 0.5056179775280899,
+      "accuracy": 0.5268817204301075
     }
   ],
-  "recallLift": 0.3,
-  "extraFailuresCaught": 3
+  "recallLift": 0,
+  "extraFailuresCaught": 0
 }

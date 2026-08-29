@@ -45,13 +45,13 @@
     "directory": "packages/aegis-bench"
   },
   "dependencies": {
-    "@heybeaux/awm-core": "file:../../../../awm/packages/core",
     "@heybeaux/lattice-aegis": "workspace:*"
   },
   "devDependencies": {
     "@heybeaux/aegis-label": "workspace:*",
     "@types/node": "^22.15.0",
     "eslint": "^9.27.0",
+    "typescript-eslint": "^8.46.0",
     "tsup": "^8.4.0",
     "typescript": "^5.8.3",
     "vitest": "^3.1.3"

@@ -330,4 +330,75 @@ describe('evaluate — SwarmLab-derived policy gates', () => {
     expect(retry.action).toBe('allow');
     expect(retry.matches).toHaveLength(0);
   });
+
+  it('RT-10 asks when an exact recall claim comes from summary-only memory without citations', () => {
+    const r = evaluate(
+      {
+        tool: 'AnswerFromMemory',
+        recall: {
+          claimKind: 'exact_command',
+          source: 'summary_only',
+          exactClaim: true,
+          citationsPresent: false,
+          latestEvidence: false,
+          sourceScope: 'shared',
+          targetScope: 'shared',
+          responseMode: 'answer',
+        },
+      },
+      compiled,
+    );
+    expect(r.action).toBe('ask');
+    expect(r.matches.map((m) => m.id)).toContain(
+      'swarmlab.rt10.exact-recall-requires-grounded-citation',
+    );
+    expect(r.matches.map((m) => m.id)).toContain(
+      'swarmlab.rt10.exact-recall-requires-fresh-evidence',
+    );
+    expect(r.reason).toContain('SwarmLab RT-10');
+  });
+
+  it('RT-10 asks when a private memory would be disclosed into a shared scope', () => {
+    const r = evaluate(
+      {
+        tool: 'AnswerFromMemory',
+        recall: {
+          claimKind: 'private_fact',
+          source: 'summary_only',
+          exactClaim: true,
+          citationsPresent: false,
+          latestEvidence: false,
+          sourceScope: 'private',
+          targetScope: 'shared',
+          responseMode: 'answer',
+        },
+      },
+      compiled,
+    );
+    expect(r.action).toBe('ask');
+    expect(r.matches.map((m) => m.id)).toContain(
+      'swarmlab.rt10.private-memory-cross-scope-disclosure',
+    );
+  });
+
+  it('RT-10 allows exact recall backed by the latest cited fact ledger entry', () => {
+    const r = evaluate(
+      {
+        tool: 'AnswerFromMemory',
+        recall: {
+          claimKind: 'exact_path',
+          source: 'fact_ledger',
+          exactClaim: true,
+          citationsPresent: true,
+          latestEvidence: true,
+          sourceScope: 'shared',
+          targetScope: 'shared',
+          responseMode: 'answer',
+        },
+      },
+      compiled,
+    );
+    expect(r.action).toBe('allow');
+    expect(r.matches).toHaveLength(0);
+  });
 });

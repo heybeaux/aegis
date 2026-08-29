@@ -111,6 +111,37 @@ describe('toToolCall', () => {
     });
   });
 
+  it('maps structured recall metadata for SwarmLab RT-10 gates', () => {
+    const call = toToolCall({
+      tool_name: 'AnswerFromMemory',
+      tool_input: {
+        recall: {
+          claim_kind: 'exact_command',
+          source: 'summary_only',
+          exact_claim: true,
+          citations_present: false,
+          latest_evidence: false,
+          source_scope: 'shared',
+          target_scope: 'shared',
+          response_mode: 'answer',
+        },
+      },
+    });
+    expect(call).toEqual({
+      tool: 'AnswerFromMemory',
+      recall: {
+        claimKind: 'exact_command',
+        source: 'summary_only',
+        exactClaim: true,
+        citationsPresent: false,
+        latestEvidence: false,
+        sourceScope: 'shared',
+        targetScope: 'shared',
+        responseMode: 'answer',
+      },
+    });
+  });
+
   it('is defensive against malformed / empty input', () => {
     expect(toToolCall(undefined)).toEqual({ tool: '' });
     expect(toToolCall(null)).toEqual({ tool: '' });

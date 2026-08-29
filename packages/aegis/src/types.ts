@@ -128,6 +128,33 @@ export interface CompletionMetadata {
   idempotencyKeyPresent?: boolean;
 }
 
+export interface RecallMetadata {
+  /** What kind of memory claim the caller is about to make. */
+  claimKind?:
+    | 'exact_path'
+    | 'exact_command'
+    | 'exact_identifier'
+    | 'negative_constraint'
+    | 'private_fact'
+    | 'exact_date'
+    | 'high_level_summary'
+    | 'rejected_option';
+  /** Which memory source currently backs the claim. */
+  source?: 'raw_context' | 'summary_only' | 'retrieved_evidence' | 'fact_ledger';
+  /** Whether the caller is making an exact factual claim rather than a high-level summary. */
+  exactClaim?: boolean;
+  /** Whether the final answer carries a grounding citation/receipt. */
+  citationsPresent?: boolean;
+  /** Whether the supporting evidence is the latest corrected version. */
+  latestEvidence?: boolean;
+  /** Scope of the recalled fact. */
+  sourceScope?: 'public' | 'shared' | 'private';
+  /** Scope of the destination context. */
+  targetScope?: 'public' | 'shared' | 'private';
+  /** Whether the caller plans to answer or refuse. */
+  responseMode?: 'answer' | 'refuse';
+}
+
 export interface ToolCall {
   /** Claude Code / OpenClaw tool name, e.g. "Bash", "Write", "Edit", "Read". */
   tool: string;
@@ -145,6 +172,8 @@ export interface ToolCall {
   verification?: VerificationMetadata;
   /** Optional structured completion metadata from SwarmLab RT-09. */
   completion?: CompletionMetadata;
+  /** Optional structured recall metadata from SwarmLab RT-10. */
+  recall?: RecallMetadata;
 }
 
 /** One rule that fired during evaluation. */

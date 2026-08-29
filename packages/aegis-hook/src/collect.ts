@@ -5,6 +5,16 @@ type RecordDecisionFn = (
   evaluation: Evaluation,
   toolUseId?: string,
   model?: string,
+  shadow?: {
+    enabled: true;
+    action: 'allow' | 'ask' | 'deny';
+    reason: string;
+    decidedBy: string;
+    approvalId?: string;
+    predictorActionKey?: string;
+    predictorMode?: 'live' | 'fallback';
+    predictorState?: 'ok' | 'timeout' | 'error';
+  },
 ) => void;
 
 const dynamicImport = new Function(
@@ -18,6 +28,7 @@ export async function recordDecisionSafely(
   call: ToolCall,
   evaluation: Evaluation,
   toolUseId?: string,
+  shadow?: Parameters<RecordDecisionFn>[4],
 ): Promise<void> {
   if (cached === undefined) {
     try {
@@ -32,7 +43,7 @@ export async function recordDecisionSafely(
 
   if (cached === null) return;
   try {
-    cached(call, evaluation, toolUseId);
+    cached(call, evaluation, toolUseId, undefined, shadow);
   } catch {
     // Collection is strictly fail-open.
   }

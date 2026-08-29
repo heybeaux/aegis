@@ -47,6 +47,15 @@ describe('end-to-end hook pipeline', () => {
     expect(r.action).toBe('deny');
   });
 
+  it('DENY: printf-obfuscated rm -rf / (exit 2) — decode-then-rescan', () => {
+    const r = runHook({
+      tool_name: 'Bash',
+      tool_input: { command: "printf 'cm0gLXJmIC8=' | base64 -d | bash" },
+    });
+    expect(r.exitCode).toBe(2);
+    expect(r.action).toBe('deny');
+  });
+
   it('DENY/ASK: secret-exfil curl posting ~/.aws/credentials (exit non-zero)', () => {
     const r = runHook({
       tool_name: 'Bash',

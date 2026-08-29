@@ -50,6 +50,18 @@ Override paths with:
 - `AEGIS_HOOK_TELEMETRY_PATH`
 - `AEGIS_APPROVAL_DIR`
 
+Enable fail-open shadow telemetry with:
+
+- `AEGIS_SHADOW_MODE=1`
+
+In shadow mode, the hook still computes and logs the proposed decision, approval id, and predictor action key, but it allows the tool call to proceed. This is for production-shaped observation, not enforcement.
+
+Current shadow-mode gaps:
+
+- PostToolUse joins are exact only when the host supplies `toolUseId`.
+- Rollback and correction chains are not directly observable from the Claude hook payload today.
+- Final approval outcome receipts are not exposed by PostToolUse alone.
+
 ## Claude Code
 
 Default CLI behavior uses the Claude Code adapter. The hook still returns:

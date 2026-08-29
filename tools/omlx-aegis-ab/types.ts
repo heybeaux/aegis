@@ -1,4 +1,8 @@
-export type ConditionName = 'no_gate' | 'aegis_rules' | 'aegis_prediction';
+export type ConditionName =
+  | 'no_gate'
+  | 'static_guardrails'
+  | 'aegis_rules'
+  | 'aegis_production_history';
 
 export type ScenarioCategory =
   | 'benign'
@@ -95,7 +99,7 @@ export interface ReplayPrediction {
 export interface PredictionTrace {
   pFailure: number;
   confidence: number;
-  source: 'harness_stub';
+  source: 'deterministic_stub' | 'production_prior' | 'production_fallback';
   rationale: string;
 }
 
@@ -182,6 +186,7 @@ export interface ProtocolQualification {
   validToolCalls: number;
   protocolFailures: number;
   selfRefusals: number;
+  finished: boolean;
 }
 
 export interface CapturedTurn {
@@ -213,8 +218,10 @@ export interface ReplayTurnOutcome {
 }
 
 export interface ScenarioOutcome {
-  qualifiedForReplay: boolean;
+  modelProtocolQualified: boolean;
   qualification: ProtocolQualification;
+  eligibleForInterceptionScoring: boolean;
+  eligibleDangerousProposalCount: number;
   finished: boolean;
   finishSummary?: string;
   success: boolean;
@@ -275,8 +282,9 @@ export interface ConditionMetrics {
   model: string;
   condition: ConditionName;
   scenarios: number;
-  qualifiedScenarios: number;
+  modelProtocolQualifiedScenarios: number;
   qualifiedCalls: number;
+  pairedDangerousDenominator: number;
   unsafeProposedCount: number;
   unsafeWouldExecuteWithoutGateCount: number;
   unsafePreventedByAegisCount: number;
@@ -295,25 +303,49 @@ export interface ConditionMetrics {
   totalPromptTokens: number;
   totalCompletionTokens: number;
   totalTokens: number;
+  validity:
+    | 'no_evidence'
+    | 'inconclusive_single_pair'
+    | 'below_minimum_threshold'
+    | 'minimum_evidence_met';
 }
 
 export interface ScenarioDelta {
   model: string;
   repetition: number;
   scenarioId: string;
-  qualifiedForReplay: boolean;
+  modelProtocolQualified: boolean;
   promptFingerprint: string;
-  unsafeWouldExecuteWithoutGateCount: number;
+  baselineEligibleDangerousProposalCount: number;
   unsafePreventedByRulesCount: number;
-  unsafePreventedByPredictionCount: number;
+  unsafePreventedByProductionHistoryCount: number;
   benignCompletedNoGate: boolean;
   benignCompletedRules: boolean;
-  benignCompletedPrediction: boolean;
+  benignCompletedProductionHistory: boolean;
   protocolFailureCount: number;
   modelSelfRefusalCount: number;
   retriesNoGate: number;
   retriesRules: number;
-  retriesPrediction: number;
+  retriesProductionHistory: number;
+}
+
+export interface DeterministicCorpusCase {
+  id: string;
+  title: string;
+  action: ActionEnvelope;
+}
+
+export interface DeterministicCaseResult {
+  condition: ConditionName;
+  action: 'allow' | 'ask' | 'deny';
+  reason: string;
+  prediction?: PredictionTrace;
+}
+
+export interface DeterministicSuiteCaseResult {
+  id: string;
+  title: string;
+  results: DeterministicCaseResult[];
 }
 
 export interface QualificationCheck {

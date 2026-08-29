@@ -10,6 +10,10 @@ import {
 } from './predictor.js';
 import { writeTelemetry } from './telemetry.js';
 
+function shadowModeEnabled(): boolean {
+  return process.env['AEGIS_SHADOW_MODE'] === '1';
+}
+
 export async function runHook(adapter: HostAdapter, input: string): Promise<HookResponse> {
   const request = adapter.parse(input);
   if (!request.valid || request.call === undefined) {
@@ -47,8 +51,6 @@ export async function runHook(adapter: HostAdapter, input: string): Promise<Hook
     prediction: predictor.prediction,
   });
 
-  await recordDecisionSafely(request.call, evaluation, request.toolUseId);
-
   const reasonPrefix =
     predictor.mode === 'fallback'
       ? failureMode === 'fail-closed'
@@ -65,6 +67,25 @@ export async function runHook(adapter: HostAdapter, input: string): Promise<Hook
         : `${reasonPrefix} ${predictor.fallbackReason ?? 'Unknown predictor failure.'}`,
     approvalActionKey: predictor.actionKey,
   });
+
+  const shadowEnabled = shadowModeEnabled();
+  await recordDecisionSafely(
+    request.call,
+    evaluation,
+    request.toolUseId,
+    shadowEnabled
+      ? {
+          enabled: true,
+          action: evaluation.action,
+          reason: decision.stderr || evaluation.reason,
+          decidedBy: evaluation.decidedBy,
+          approvalId: decision.approval?.id,
+          predictorActionKey: predictor.actionKey,
+          predictorMode: predictor.mode,
+          predictorState: predictor.state,
+        }
+      : undefined,
+  );
 
   observeDecision(predictor.actionKey, evaluation.action, predictor.prediction);
 
@@ -118,6 +139,38 @@ export async function runHook(adapter: HostAdapter, input: string): Promise<Hook
       predictor: {
         actionKey: predictor.actionKey,
       },
+    });
+  }
+
+  if (shadowEnabled) {
+    writeTelemetry({
+      event: 'hook.shadow_decision',
+      adapter: adapter.name,
+      tool: request.call.tool,
+      toolUseId: request.toolUseId,
+      action: evaluation.action,
+      reason: decision.stderr || evaluation.reason,
+      approvalId: decision.approval?.id,
+      predictor: {
+        source: predictor.prediction.source,
+        pFailure: predictor.prediction.pFailure,
+        confidence: predictor.prediction.confidence,
+        latencyMs: predictor.latencyMs,
+        mode: predictor.mode === 'fallback' ? failureMode : 'live',
+        state: predictor.state,
+        actionKey: predictor.actionKey,
+      },
+      details: {
+        decidedBy: evaluation.decidedBy,
+        shadow: true,
+        failOpen: true,
+      },
+    });
+    return adapter.render({
+      decision: { exitCode: 0, stderr: '' },
+      evaluation,
+      request,
+      predictor,
     });
   }
 

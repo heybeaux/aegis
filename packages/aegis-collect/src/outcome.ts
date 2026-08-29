@@ -81,6 +81,8 @@ function runOutcome(): void {
       ...(toolUseId !== undefined ? { toolUseId } : {}),
       isError,
       ...(error !== undefined ? { error } : {}),
+      exactJoinEligible: toolUseId !== undefined,
+      observationGaps: ['rollback_unobserved', 'correction_unobserved', 'approval_outcome_unobserved'],
     };
 
     const dir = collectDir();

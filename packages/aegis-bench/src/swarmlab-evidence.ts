@@ -105,7 +105,7 @@ function caseStatus(metrics: readonly EvidenceMetricResult[]): EvidenceStatus {
  * Completed SwarmLab retests that already proved stack changes against real packages.
  *
  * Sources:
- * - /Users/beauxwalton/projects/swarmlab/SYNTHESIS.md RT-01..RT-08
+ * - /Users/beauxwalton/projects/swarmlab/SYNTHESIS.md RT-01..RT-09
  * - /Users/beauxwalton/projects/swarmlab/docs/STACK-LIFECYCLE.md current priority list
  */
 export const SWARMLAB_EVIDENCE_CASES: readonly SwarmLabEvidenceCase[] = [
@@ -244,6 +244,28 @@ export const SWARMLAB_EVIDENCE_CASES: readonly SwarmLabEvidenceCase[] = [
       { name: 'staleSupportRate', after: 0, threshold: 0, comparator: 'eq' },
       { name: 'highRiskAuditEscapeRate', before: 0.188, after: 0.063, threshold: 0.063, comparator: 'lte' },
       { name: 'aegisGovernanceCostTax', after: 0.106, threshold: 0.106, comparator: 'lte' },
+    ],
+  },
+  {
+    id: 'RT-09',
+    source: 'exp-18 receipt honesty',
+    finding: 'Process success and success text are not completion receipts; ambiguous retries need idempotency boundaries.',
+    owners: ['aegis'],
+    change:
+      'Completion metadata + runtime asks for insufficient final receipts and non-idempotent ambiguous retries.',
+    runIds: ['rh-mteig1r7', 'rh-mteiw0l8'],
+    implementationRefs: [
+      'aegis commit 3ffb1f79a3a731d5d165efa0a807a28ca8fa70a3',
+      'swarmlab exp-18 baseline rh-mteig1r7 and committed rerun rh-mteiw0l8',
+    ],
+    evidenceTier: 'verified',
+    aegisMapping:
+      'runtime policy + release gate: completion claims require desired-state receipts; ambiguous external retries require idempotency evidence',
+    metrics: [
+      { name: 'aegisFalseDoneRate', before: 0.417, after: 0, threshold: 0, comparator: 'eq' },
+      { name: 'aegisDuplicateSideEffectRate', before: 0.083, after: 0, threshold: 0, comparator: 'eq' },
+      { name: 'aegisReceiptSufficiency', before: 0.083, after: 1, threshold: 1, comparator: 'eq' },
+      { name: 'aegisSafeSuccessAskRate', after: 0, threshold: 0, comparator: 'eq' },
     ],
   },
 ];

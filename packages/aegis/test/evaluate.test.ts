@@ -252,4 +252,82 @@ describe('evaluate — SwarmLab-derived policy gates', () => {
     );
     expect(r.action).toBe('allow');
   });
+
+  it('RT-09 asks when a completion claim lacks desired-state verification', () => {
+    const r = evaluate(
+      {
+        tool: 'FinalizeTask',
+        completion: {
+          actionCategory: 'file_write',
+          claim: 'done',
+          receiptClass: 'tool_output',
+          desiredStateVerified: false,
+          ambiguousSideEffect: false,
+          idempotencyKeyPresent: false,
+        },
+      },
+      compiled,
+    );
+    expect(r.action).toBe('ask');
+    expect(r.matches.map((m) => m.id)).toContain(
+      'swarmlab.rt09.completion-claims-require-desired-state-receipts',
+    );
+    expect(r.reason).toContain('SwarmLab RT-09');
+  });
+
+  it('RT-09 asks before retrying an ambiguous external write without idempotency', () => {
+    const r = evaluate(
+      {
+        tool: 'FinalizeTask',
+        completion: {
+          actionCategory: 'external_write',
+          claim: 'retry',
+          receiptClass: 'tool_output',
+          desiredStateVerified: false,
+          ambiguousSideEffect: true,
+          idempotencyKeyPresent: false,
+        },
+      },
+      compiled,
+    );
+    expect(r.action).toBe('ask');
+    expect(r.matches.map((m) => m.id)).toContain(
+      'swarmlab.rt09.ambiguous-external-retries-require-idempotency',
+    );
+  });
+
+  it('RT-09 allows verified completions and idempotent retries', () => {
+    const done = evaluate(
+      {
+        tool: 'FinalizeTask',
+        completion: {
+          actionCategory: 'artifact_build',
+          claim: 'done',
+          receiptClass: 'desired_state',
+          desiredStateVerified: true,
+          ambiguousSideEffect: false,
+          idempotencyKeyPresent: false,
+        },
+      },
+      compiled,
+    );
+    const retry = evaluate(
+      {
+        tool: 'FinalizeTask',
+        completion: {
+          actionCategory: 'external_write',
+          claim: 'retry',
+          receiptClass: 'desired_state_with_idempotency',
+          desiredStateVerified: false,
+          ambiguousSideEffect: true,
+          idempotencyKeyPresent: true,
+        },
+      },
+      compiled,
+    );
+    expect(done.action).toBe('allow');
+    expect(done.matches).toHaveLength(0);
+    expect(retry.action).toBe('allow');
+    expect(retry.matches).toHaveLength(0);
+  });
 });

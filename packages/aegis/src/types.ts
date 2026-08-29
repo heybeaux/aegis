@@ -101,6 +101,33 @@ export interface VerificationMetadata {
   correlatedVerifierRisk?: boolean;
 }
 
+export interface CompletionMetadata {
+  /** What category of task is being finalized or retried. */
+  actionCategory?:
+    | 'file_write'
+    | 'artifact_build'
+    | 'test_run'
+    | 'external_write'
+    | 'job_schedule'
+    | 'issue_update'
+    | 'message_send';
+  /** Whether the caller is claiming done, failed, or wants to retry. */
+  claim?: 'done' | 'failed' | 'retry';
+  /** Which receipt class currently backs that claim. */
+  receiptClass?:
+    | 'self_report'
+    | 'process'
+    | 'tool_output'
+    | 'desired_state'
+    | 'desired_state_with_idempotency';
+  /** Whether the desired end state has actually been verified. */
+  desiredStateVerified?: boolean;
+  /** Whether a failure/timeout may have happened after a side effect landed. */
+  ambiguousSideEffect?: boolean;
+  /** Whether the external write is protected by an idempotency key. */
+  idempotencyKeyPresent?: boolean;
+}
+
 export interface ToolCall {
   /** Claude Code / OpenClaw tool name, e.g. "Bash", "Write", "Edit", "Read". */
   tool: string;
@@ -116,6 +143,8 @@ export interface ToolCall {
   handoff?: HandoffMetadata;
   /** Optional structured verification metadata from Engram/Parliament/SwarmLab RT-08. */
   verification?: VerificationMetadata;
+  /** Optional structured completion metadata from SwarmLab RT-09. */
+  completion?: CompletionMetadata;
 }
 
 /** One rule that fired during evaluation. */

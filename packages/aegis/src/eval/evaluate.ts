@@ -107,7 +107,48 @@ function swarmlabPolicyHits(call: ToolCall): RuleHit[] {
     });
   }
 
+  const c = call.completion;
+  if (
+    c !== undefined &&
+    (c.claim === 'done' || c.claim === 'failed') &&
+    c.desiredStateVerified !== true
+  ) {
+    hits.push({
+      id: 'swarmlab.rt09.completion-claims-require-desired-state-receipts',
+      severity: 'medium',
+      category: 'swarmlab',
+      target: 'argv',
+    });
+  }
+
+  if (
+    c !== undefined &&
+    c.claim === 'retry' &&
+    c.ambiguousSideEffect === true &&
+    c.idempotencyKeyPresent !== true
+  ) {
+    hits.push({
+      id: 'swarmlab.rt09.ambiguous-external-retries-require-idempotency',
+      severity: 'medium',
+      category: 'swarmlab',
+      target: 'argv',
+    });
+  }
+
   return hits;
+}
+
+function swarmlabReason(id: string): string {
+  if (id.includes('rt09.completion-claims')) {
+    return 'SwarmLab RT-09: completion claims require desired-state receipts, not process or success-text alone';
+  }
+  if (id.includes('rt09.ambiguous-external-retries')) {
+    return 'SwarmLab RT-09: ambiguous external retries require idempotency evidence before they are safe to repeat';
+  }
+  if (id.includes('rt08')) {
+    return 'SwarmLab RT-08: high-risk audits require grounded support, not cross-model-only agreement';
+  }
+  return 'SwarmLab RT-07: delegation depth >= 2 requires a value-echo handoff manifest';
 }
 
 function predictionAction(
@@ -169,9 +210,7 @@ export function evaluate(
     hits.push(hit);
     if (maxSeverity === null || SEVERITY_RANK[hit.severity] > SEVERITY_RANK[maxSeverity]) {
       maxSeverity = hit.severity;
-      topReason = hit.id.includes('rt08')
-        ? 'SwarmLab RT-08: high-risk audits require grounded support, not cross-model-only agreement'
-        : 'SwarmLab RT-07: delegation depth >= 2 requires a value-echo handoff manifest';
+      topReason = swarmlabReason(hit.id);
     }
   }
 

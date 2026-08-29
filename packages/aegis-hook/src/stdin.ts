@@ -94,6 +94,36 @@ function receiptClass(
     : undefined;
 }
 
+function recallClaimKind(value: unknown): NonNullable<ToolCall['recall']>['claimKind'] | undefined {
+  return value === 'exact_path' ||
+    value === 'exact_command' ||
+    value === 'exact_identifier' ||
+    value === 'negative_constraint' ||
+    value === 'private_fact' ||
+    value === 'exact_date' ||
+    value === 'high_level_summary' ||
+    value === 'rejected_option'
+    ? value
+    : undefined;
+}
+
+function recallSource(value: unknown): NonNullable<ToolCall['recall']>['source'] | undefined {
+  return value === 'raw_context' ||
+    value === 'summary_only' ||
+    value === 'retrieved_evidence' ||
+    value === 'fact_ledger'
+    ? value
+    : undefined;
+}
+
+function memoryScope(value: unknown): NonNullable<ToolCall['recall']>['sourceScope'] | undefined {
+  return value === 'public' || value === 'shared' || value === 'private' ? value : undefined;
+}
+
+function responseMode(value: unknown): NonNullable<ToolCall['recall']>['responseMode'] | undefined {
+  return value === 'answer' || value === 'refuse' ? value : undefined;
+}
+
 function toHandoff(root: Record<string, unknown>, input: Record<string, unknown>): ToolCall['handoff'] | undefined {
   const raw = asRecord(root.handoff);
   const inputRaw = asRecord(input.handoff);
@@ -177,6 +207,40 @@ function toCompletion(
   return Object.values(completion).some((v) => v !== undefined) ? completion : undefined;
 }
 
+function toRecall(root: Record<string, unknown>, input: Record<string, unknown>): ToolCall['recall'] | undefined {
+  const raw = asRecord(root.recall);
+  const inputRaw = asRecord(input.recall);
+  const source = Object.keys(inputRaw).length > 0 ? inputRaw : raw;
+  if (Object.keys(source).length === 0) return undefined;
+
+  const recall: NonNullable<ToolCall['recall']> = {};
+  recall.claimKind =
+    recallClaimKind(source.claimKind) ??
+    recallClaimKind(source.claim_kind) ??
+    recallClaimKind(source.kind);
+  recall.source =
+    recallSource(source.source) ??
+    recallSource(source.evidenceSource) ??
+    recallSource(source.evidence_source);
+  recall.exactClaim = bool(source, 'exactClaim') ?? bool(source, 'exact_claim');
+  recall.citationsPresent =
+    bool(source, 'citationsPresent') ?? bool(source, 'citations_present') ?? bool(source, 'cited');
+  recall.latestEvidence =
+    bool(source, 'latestEvidence') ?? bool(source, 'latest_evidence') ?? bool(source, 'fresh');
+  recall.sourceScope =
+    memoryScope(source.sourceScope) ?? memoryScope(source.source_scope) ?? memoryScope(source.scope);
+  recall.targetScope =
+    memoryScope(source.targetScope) ??
+    memoryScope(source.target_scope) ??
+    memoryScope(source.destinationScope);
+  recall.responseMode =
+    responseMode(source.responseMode) ??
+    responseMode(source.response_mode) ??
+    responseMode(source.mode);
+
+  return Object.values(recall).some((v) => v !== undefined) ? recall : undefined;
+}
+
 /**
  * Pure mapping from a raw Claude Code hook payload to an Aegis ToolCall.
  *
@@ -218,6 +282,8 @@ export function toToolCall(hookInput: unknown): ToolCall {
   if (verification !== undefined) call.verification = verification;
   const completion = toCompletion(root, input);
   if (completion !== undefined) call.completion = completion;
+  const recall = toRecall(root, input);
+  if (recall !== undefined) call.recall = recall;
   return call;
 }
 

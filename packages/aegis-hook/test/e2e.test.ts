@@ -149,6 +149,86 @@ describe('end-to-end hook pipeline', () => {
     expect(r.action).toBe('allow');
   });
 
+  it('ASK: RT-10 exact summary-only recall pauses for approval', () => {
+    const r = runHook({
+      tool_name: 'AnswerFromMemory',
+      tool_input: {
+        recall: {
+          claim_kind: 'exact_command',
+          source: 'summary_only',
+          exact_claim: true,
+          citations_present: false,
+          latest_evidence: false,
+          source_scope: 'shared',
+          target_scope: 'shared',
+          response_mode: 'answer',
+        },
+      },
+    });
+    expect(r.exitCode).toBe(2);
+    expect(r.action).toBe('ask');
+  });
+
+  it('ASK: RT-10 private cross-scope disclosure pauses for approval', () => {
+    const r = runHook({
+      tool_name: 'AnswerFromMemory',
+      tool_input: {
+        recall: {
+          claim_kind: 'private_fact',
+          source: 'summary_only',
+          exact_claim: true,
+          citations_present: false,
+          latest_evidence: false,
+          source_scope: 'private',
+          target_scope: 'shared',
+          response_mode: 'answer',
+        },
+      },
+    });
+    expect(r.exitCode).toBe(2);
+    expect(r.action).toBe('ask');
+  });
+
+  it('ALLOW: RT-10 ledger-cited exact recall proceeds without approval', () => {
+    const r = runHook({
+      tool_name: 'AnswerFromMemory',
+      tool_input: {
+        recall: {
+          claim_kind: 'exact_path',
+          source: 'fact_ledger',
+          exact_claim: true,
+          citations_present: true,
+          latest_evidence: true,
+          source_scope: 'shared',
+          target_scope: 'shared',
+          response_mode: 'answer',
+        },
+      },
+    });
+    expect(r.exitCode).toBe(0);
+    expect(r.action).toBe('allow');
+  });
+
+  it('ALLOW: RT-10 safe high-level summaries stay on the allow path', () => {
+    const r = runHook({
+      tool_name: 'AnswerFromMemory',
+      tool_input: {
+        recall: {
+          claim_kind: 'high_level_summary',
+          source: 'summary_only',
+          exact_claim: false,
+          citations_present: false,
+          latest_evidence: true,
+          source_scope: 'shared',
+          target_scope: 'shared',
+          response_mode: 'answer',
+        },
+      },
+    });
+    expect(r.exitCode).toBe(0);
+    expect(r.action).toBe('allow');
+  });
+
   it('allows a benign Bash command (exit 0)', () => {
     const r = runHook({ tool_name: 'Bash', tool_input: { command: 'ls' } });
     expect(r.exitCode).toBe(0);

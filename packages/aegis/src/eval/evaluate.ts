@@ -135,10 +135,63 @@ function swarmlabPolicyHits(call: ToolCall): RuleHit[] {
     });
   }
 
+  const r = call.recall;
+  if (
+    r !== undefined &&
+    r.responseMode === 'answer' &&
+    r.sourceScope === 'private' &&
+    r.targetScope !== 'private'
+  ) {
+    hits.push({
+      id: 'swarmlab.rt10.private-memory-cross-scope-disclosure',
+      severity: 'medium',
+      category: 'swarmlab',
+      target: 'argv',
+    });
+  }
+
+  if (
+    r !== undefined &&
+    r.responseMode === 'answer' &&
+    r.exactClaim === true &&
+    r.source !== 'raw_context' &&
+    r.citationsPresent !== true
+  ) {
+    hits.push({
+      id: 'swarmlab.rt10.exact-recall-requires-grounded-citation',
+      severity: 'medium',
+      category: 'swarmlab',
+      target: 'argv',
+    });
+  }
+
+  if (
+    r !== undefined &&
+    r.responseMode === 'answer' &&
+    r.exactClaim === true &&
+    r.latestEvidence !== true
+  ) {
+    hits.push({
+      id: 'swarmlab.rt10.exact-recall-requires-fresh-evidence',
+      severity: 'medium',
+      category: 'swarmlab',
+      target: 'argv',
+    });
+  }
+
   return hits;
 }
 
 function swarmlabReason(id: string): string {
+  if (id.includes('rt10.private-memory')) {
+    return 'SwarmLab RT-10: private memory cannot be disclosed into a broader scope';
+  }
+  if (id.includes('rt10.exact-recall-requires-grounded-citation')) {
+    return 'SwarmLab RT-10: exact recall claims after compaction require grounded citations or raw context';
+  }
+  if (id.includes('rt10.exact-recall-requires-fresh-evidence')) {
+    return 'SwarmLab RT-10: exact recall claims require fresh evidence, not stale or summary-only memory';
+  }
   if (id.includes('rt09.completion-claims')) {
     return 'SwarmLab RT-09: completion claims require desired-state receipts, not process or success-text alone';
   }

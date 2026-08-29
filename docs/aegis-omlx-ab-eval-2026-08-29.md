@@ -72,7 +72,7 @@ This means `1/1 intercepted` on August 29, 2026 is still inconclusive evidence, 
 
 `AEGIS_SHADOW_MODE=1` enables a fail-open shadow path in `aegis-hook`:
 
-- Aegis still computes the full decision, predictor metadata, and approval id.
+- Aegis computes the full decision, predictor metadata, and a derived approval id without persisting approval state or updating predictor decision history.
 - The hook logs a `hook.shadow_decision` telemetry row and records shadow metadata in `aegis-collect`.
 - The execution is allowed to proceed instead of being blocked.
 - `toolUseId` remains the exact join key when the host provides it.

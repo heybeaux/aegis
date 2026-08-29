@@ -2,6 +2,7 @@ import { evaluate } from '@heybeaux/lattice-aegis';
 import type { HostAdapter, HookResponse } from './adapters.js';
 import { loadAllPacks } from './rules.js';
 import { decide } from './decide.js';
+import { approvalId } from './approval.js';
 import { recordDecisionSafely } from './collect.js';
 import {
   observeDecision,
@@ -59,16 +60,32 @@ export async function runHook(adapter: HostAdapter, input: string): Promise<Hook
           ? 'Predictor unavailable in degraded mode.'
           : undefined
       : undefined;
-  const decision = decide(evaluation, {
-    call: request.call,
-    reasonOverride:
-      reasonPrefix === undefined || evaluation.decidedBy !== 'prediction'
-        ? undefined
-        : `${reasonPrefix} ${predictor.fallbackReason ?? 'Unknown predictor failure.'}`,
-    approvalActionKey: predictor.actionKey,
-  });
-
   const shadowEnabled = shadowModeEnabled();
+  // Shadow mode must be observation-only. In particular, do not call decide()
+  // for an ask: that path persists a pending one-shot approval and would make a
+  // later enforcement retry consume shadow-created state.
+  const decision = shadowEnabled
+    ? evaluation.action === 'allow'
+      ? { exitCode: 0 as const, stderr: '' }
+      : evaluation.action === 'deny'
+        ? { exitCode: 2 as const, stderr: `[Aegis DENY] ${reasonPrefix ?? evaluation.reason}` }
+        : {
+            exitCode: 2 as const,
+            stderr: `[Aegis ASK shadow] ${reasonPrefix ?? evaluation.reason}`,
+            approval: {
+              event: 'requested' as const,
+              id: approvalId(request.call, evaluation),
+            },
+          }
+    : decide(evaluation, {
+        call: request.call,
+        reasonOverride:
+          reasonPrefix === undefined || evaluation.decidedBy !== 'prediction'
+            ? undefined
+            : `${reasonPrefix} ${predictor.fallbackReason ?? 'Unknown predictor failure.'}`,
+        approvalActionKey: predictor.actionKey,
+      });
+
   await recordDecisionSafely(
     request.call,
     evaluation,
@@ -87,7 +104,12 @@ export async function runHook(adapter: HostAdapter, input: string): Promise<Hook
       : undefined,
   );
 
-  observeDecision(predictor.actionKey, evaluation.action, predictor.prediction);
+  // Enforcement decisions update the runtime predictor. Shadow proposals do
+  // not: learning from our own hypothetical blocks would contaminate the
+  // observation baseline before any real outcome was joined.
+  if (!shadowEnabled) {
+    observeDecision(predictor.actionKey, evaluation.action, predictor.prediction);
+  }
 
   writeTelemetry({
     event: 'hook.decision',
@@ -113,7 +135,7 @@ export async function runHook(adapter: HostAdapter, input: string): Promise<Hook
     },
   });
 
-  if (decision.approval?.event === 'requested') {
+  if (!shadowEnabled && decision.approval?.event === 'requested') {
     writeTelemetry({
       event: 'approval.requested',
       adapter: adapter.name,
@@ -127,7 +149,7 @@ export async function runHook(adapter: HostAdapter, input: string): Promise<Hook
       },
     });
   }
-  if (decision.approval?.event === 'consumed') {
+  if (!shadowEnabled && decision.approval?.event === 'consumed') {
     writeTelemetry({
       event: 'approval.consumed',
       adapter: adapter.name,

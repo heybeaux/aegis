@@ -54,7 +54,7 @@ Enable fail-open shadow telemetry with:
 
 - `AEGIS_SHADOW_MODE=1`
 
-In shadow mode, the hook still computes and logs the proposed decision, approval id, and predictor action key, but it allows the tool call to proceed. This is for production-shaped observation, not enforcement.
+In shadow mode, the hook computes and logs the proposed decision, derived approval id, and predictor action key, but it allows the tool call to proceed. It does not persist pending approvals or update predictor decision history, so observation cannot contaminate later enforcement state. This is for production-shaped observation, not enforcement.
 
 Current shadow-mode gaps:
 

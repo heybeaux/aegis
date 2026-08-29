@@ -1,4 +1,4 @@
-import { mkdtempSync, readFileSync, rmSync } from 'node:fs';
+import { existsSync, mkdtempSync, readFileSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { afterEach, describe, expect, it } from 'vitest';
@@ -128,7 +128,7 @@ describe('runHook', () => {
     }
   });
 
-  it('shadow mode logs the proposed block but allows execution fail-open', async () => {
+  it('shadow mode logs the proposed block, allows execution, and leaves no approval state', async () => {
     const home = withTempAegisHome();
     process.env['AEGIS_SHADOW_MODE'] = '1';
     try {
@@ -142,6 +142,7 @@ describe('runHook', () => {
       const telemetry = readFileSync(join(home, 'hook-runtime.jsonl'), 'utf8');
       expect(telemetry).toContain('"event":"hook.shadow_decision"');
       expect(telemetry).toContain('"toolUseId":"toolu_shadow"');
+      expect(existsSync(join(home, 'approvals'))).toBe(false);
     } finally {
       rmSync(home, { recursive: true, force: true });
     }

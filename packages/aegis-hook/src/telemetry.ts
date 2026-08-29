@@ -7,6 +7,7 @@ export interface TelemetryEvent {
   event:
     | 'hook.invalid_input'
     | 'hook.decision'
+    | 'hook.shadow_decision'
     | 'predictor.fallback'
     | 'approval.requested'
     | 'approval.approved'

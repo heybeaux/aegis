@@ -111,6 +111,28 @@ describe('recordDecision', () => {
     expect('toolUseId' in row).toBe(false);
   });
 
+  it('records shadow decision metadata when provided', () => {
+    recordDecision(BASH_CALL, ALLOW_EVAL, 'toolu_shadow', undefined, {
+      enabled: true,
+      action: 'ask',
+      reason: 'shadow only',
+      decidedBy: 'prediction',
+      approvalId: 'aegis_deadbeefdeadbeef',
+      predictorActionKey: 'action-key-1',
+      predictorMode: 'live',
+      predictorState: 'ok',
+    });
+
+    const file = join(tmpDir, 'decisions.jsonl');
+    const row: DecisionRow = JSON.parse(readFileSync(file, 'utf8').trim());
+    expect(row.shadow).toMatchObject({
+      enabled: true,
+      action: 'ask',
+      approvalId: 'aegis_deadbeefdeadbeef',
+      predictorActionKey: 'action-key-1',
+    });
+  });
+
   it('appends multiple rows (one per call)', () => {
     recordDecision(BASH_CALL, ALLOW_EVAL);
     recordDecision(RM_CALL, DENY_EVAL);

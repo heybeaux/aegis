@@ -49,6 +49,7 @@ export function recordDecision(
   evaluation: Evaluation,
   toolUseId?: string,
   model?: string,
+  shadow?: DecisionRow['shadow'],
 ): void {
   try {
     const dir = collectDir();
@@ -65,6 +66,7 @@ export function recordDecision(
       ...shape,
       action: evaluation.action,
       ...(model !== undefined ? { model } : {}),
+      ...(shadow !== undefined ? { shadow } : {}),
     };
 
     appendFileSync(join(dir, 'decisions.jsonl'), JSON.stringify(row) + '\n', 'utf8');

@@ -76,6 +76,17 @@ export interface DecisionRow {
   pFailure?: number;
   /** Identity of the model that generated this tool call (e.g. "VibeThinker-3B"). */
   model?: string;
+  /** Optional fail-open shadow decision recorded while allowing execution. */
+  shadow?: {
+    enabled: true;
+    action: GateAction;
+    reason: string;
+    decidedBy: string;
+    approvalId?: string;
+    predictorActionKey?: string;
+    predictorMode?: 'live' | 'fallback';
+    predictorState?: 'ok' | 'timeout' | 'error';
+  };
 }
 
 /** One PostToolUse/PostToolUseFailure outcome recorded by the outcome CLI. */
@@ -95,6 +106,13 @@ export interface OutcomeRow {
   isError: boolean;
   /** Error string if available. */
   error?: string;
+  /** True when exact join on toolUseId is possible for this outcome row. */
+  exactJoinEligible: boolean;
+  /**
+   * Current observability gaps from Claude's hook surface.
+   * We do not currently observe rollback, correction, or final approval outcome receipts here.
+   */
+  observationGaps: Array<'rollback_unobserved' | 'correction_unobserved' | 'approval_outcome_unobserved'>;
 }
 
 /** A joined row ready for AWM training. */

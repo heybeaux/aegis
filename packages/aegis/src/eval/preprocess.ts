@@ -16,9 +16,9 @@
  * and only the original string is returned.
  */
 
-/** Regex: `echo <b64> | base64 -d | (bash|sh|zsh|...)` */
+/** Regex: `echo <b64> | base64 -d | (bash|sh|zsh|...)` or `printf '<b64>' | ...` */
 const BASE64_PIPE_TO_SHELL =
-  /echo\s+([A-Za-z0-9+/=]+)\s*\|[^|]*base64\s+-d\s*\|/i;
+  /(?:echo\s+|printf\s+['"]?)([A-Za-z0-9+/=]+)['"]?\s*\|[^|]*base64\s+-d\s*\|/i;
 
 /** Regex: `base64 -d <<< <b64>` or `base64 --decode <<< <b64>` */
 const BASE64_HERESTRING = /base64\s+(?:-d|--decode)\s+<<<\s+([A-Za-z0-9+/=]+)/i;

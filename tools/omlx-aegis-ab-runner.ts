@@ -42,7 +42,7 @@ function parseCli(): CliOptions {
     readFlag('--base-url') ??
     env['OMLX_BASE_URL'] ??
     env['OPENAI_BASE_URL'] ??
-    'http://127.0.0.1:11434/v1';
+    'http://127.0.0.1:8000/v1';
   const outputDir =
     readFlag('--output') ??
     resolve(process.cwd(), `artifacts/omlx-aegis-ab-${new Date().toISOString().replace(/[:.]/g, '-')}`);
@@ -67,7 +67,7 @@ function usage(): string {
     `  --models <csv>        Models to evaluate. Default: ${DEFAULT_MODELS.join(',')}`,
     '  --repetitions <n>     Repetitions per scenario/model pair. Default: 1',
     '  --seed-base <n>       Base seed. Repetition index is added to this value. Default: 1',
-    '  --base-url <url>      OpenAI-compatible server base URL. Default: http://127.0.0.1:11434/v1',
+    '  --base-url <url>      OpenAI-compatible server base URL. Default: http://127.0.0.1:8000/v1',
     '  --output <dir>        Output directory for JSON/Markdown/traces.',
     '  --api-key-env <name>  Env var containing the API key. Default: OPENAI_API_KEY',
     '  --max-tokens <n>      Max completion tokens per turn. Default: 512',

@@ -1,4 +1,4 @@
-import { mkdtempSync, readFileSync, rmSync } from 'node:fs';
+import { existsSync, mkdtempSync, readFileSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { afterEach, describe, expect, it } from 'vitest';
@@ -14,6 +14,7 @@ function withTempAegisHome(): string {
   delete process.env['AEGIS_PREDICTOR_DELAY_MS'];
   delete process.env['AEGIS_PREDICTOR_TIMEOUT_MS'];
   delete process.env['AEGIS_PREDICTOR_FAILURE_MODE'];
+  delete process.env['AEGIS_SHADOW_MODE'];
   return dir;
 }
 
@@ -25,6 +26,7 @@ afterEach(() => {
   delete process.env['AEGIS_PREDICTOR_DELAY_MS'];
   delete process.env['AEGIS_PREDICTOR_TIMEOUT_MS'];
   delete process.env['AEGIS_PREDICTOR_FAILURE_MODE'];
+  delete process.env['AEGIS_SHADOW_MODE'];
 });
 
 describe('runHook', () => {
@@ -121,6 +123,26 @@ describe('runHook', () => {
       );
       expect(response.stdout).toContain('"action":"allow"');
       expect(response.exitCode).toBe(0);
+    } finally {
+      rmSync(home, { recursive: true, force: true });
+    }
+  });
+
+  it('shadow mode logs the proposed block, allows execution, and leaves no approval state', async () => {
+    const home = withTempAegisHome();
+    process.env['AEGIS_SHADOW_MODE'] = '1';
+    try {
+      const response = await runHook(
+        claudeCodeAdapter,
+        JSON.stringify({ tool_name: 'Bash', tool_use_id: 'toolu_shadow', tool_input: { command: 'rm -rf /' } }),
+      );
+      expect(response.exitCode).toBe(0);
+      expect(response.stderr).toBe('');
+
+      const telemetry = readFileSync(join(home, 'hook-runtime.jsonl'), 'utf8');
+      expect(telemetry).toContain('"event":"hook.shadow_decision"');
+      expect(telemetry).toContain('"toolUseId":"toolu_shadow"');
+      expect(existsSync(join(home, 'approvals'))).toBe(false);
     } finally {
       rmSync(home, { recursive: true, force: true });
     }

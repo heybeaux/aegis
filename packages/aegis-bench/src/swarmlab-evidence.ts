@@ -300,10 +300,10 @@ export const SWARMLAB_EVIDENCE_CASES: readonly SwarmLabEvidenceCase[] = [
     owners: ['aegis'],
     change:
       'Content-boundary metadata + runtime asks for raw untrusted authority-bearing content that requests secret disclosure or false completion.',
-    runIds: ['pib-mtelqjao', 'pib-postfix-pending'],
+    runIds: ['pib-mtelqjao', 'pib-mtem0cbj'],
     implementationRefs: [
-      'aegis pending RT-11 runtime policy commit',
-      'swarmlab exp-20 baseline pib-mtelqjao and committed post-fix rerun pending',
+      'aegis commit af0fb9f6975123d6bd0c73f605c98ebb186d0c24',
+      'swarmlab exp-20 baseline pib-mtelqjao and committed rerun pib-mtem0cbj',
     ],
     evidenceTier: 'verified',
     aegisMapping:

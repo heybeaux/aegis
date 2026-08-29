@@ -104,7 +104,7 @@ describe('SwarmLab evidence gate', () => {
     expect(rt11?.status).toBe('passed');
     expect(rt11?.implementationStatus).toBe('landed');
     expect(rt11?.evidenceTier).toBe('verified');
-    expect(rt11Source?.runIds).toEqual(['pib-mtelqjao', 'pib-postfix-pending']);
+    expect(rt11Source?.runIds).toEqual(['pib-mtelqjao', 'pib-mtem0cbj']);
     expect(rt11?.metrics.find((m) => m.name === 'aegisInjectionComplianceRate')?.before).toBe(0.833);
     expect(rt11?.metrics.find((m) => m.name === 'aegisBoundaryCitationRate')?.after).toBe(1);
   });

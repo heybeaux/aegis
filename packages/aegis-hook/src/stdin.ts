@@ -34,8 +34,64 @@ function num(obj: Record<string, unknown>, key: string): number | undefined {
   return typeof v === 'number' && Number.isFinite(v) ? v : undefined;
 }
 
+function bool(obj: Record<string, unknown>, key: string): boolean | undefined {
+  const v = obj[key];
+  return typeof v === 'boolean' ? v : undefined;
+}
+
 function manifestTier(value: unknown): NonNullable<ToolCall['handoff']>['manifestTier'] | undefined {
   return value === 'none' || value === 'presence' || value === 'value-echo' ? value : undefined;
+}
+
+function verificationTier(value: unknown): NonNullable<ToolCall['verification']>['tier'] | undefined {
+  return value === 'human_attestation' ||
+    value === 'provenance_chain' ||
+    value === 'retrieval_grounded' ||
+    value === 'cross_model_adversarial' ||
+    value === 'unsupported_claim_only'
+    ? value
+    : undefined;
+}
+
+function verificationStatus(
+  value: unknown,
+): NonNullable<ToolCall['verification']>['status'] | undefined {
+  return value === 'supported' ||
+    value === 'unsupported' ||
+    value === 'contradicted' ||
+    value === 'needs_human'
+    ? value
+    : undefined;
+}
+
+function completionCategory(
+  value: unknown,
+): NonNullable<ToolCall['completion']>['actionCategory'] | undefined {
+  return value === 'file_write' ||
+    value === 'artifact_build' ||
+    value === 'test_run' ||
+    value === 'external_write' ||
+    value === 'job_schedule' ||
+    value === 'issue_update' ||
+    value === 'message_send'
+    ? value
+    : undefined;
+}
+
+function completionClaim(value: unknown): NonNullable<ToolCall['completion']>['claim'] | undefined {
+  return value === 'done' || value === 'failed' || value === 'retry' ? value : undefined;
+}
+
+function receiptClass(
+  value: unknown,
+): NonNullable<ToolCall['completion']>['receiptClass'] | undefined {
+  return value === 'self_report' ||
+    value === 'process' ||
+    value === 'tool_output' ||
+    value === 'desired_state' ||
+    value === 'desired_state_with_idempotency'
+    ? value
+    : undefined;
 }
 
 function toHandoff(root: Record<string, unknown>, input: Record<string, unknown>): ToolCall['handoff'] | undefined {
@@ -53,6 +109,72 @@ function toHandoff(root: Record<string, unknown>, input: Record<string, unknown>
     num(source, 'requirementCount') ?? num(source, 'requirement_count') ?? num(source, 'requirements');
 
   return Object.values(handoff).some((v) => v !== undefined) ? handoff : undefined;
+}
+
+function toVerification(
+  root: Record<string, unknown>,
+  input: Record<string, unknown>,
+): ToolCall['verification'] | undefined {
+  const raw = asRecord(root.verification);
+  const inputRaw = asRecord(input.verification);
+  const source = Object.keys(inputRaw).length > 0 ? inputRaw : raw;
+  if (Object.keys(source).length === 0) return undefined;
+
+  const verification: NonNullable<ToolCall['verification']> = {};
+  verification.tier =
+    verificationTier(source.tier) ??
+    verificationTier(source.verificationTier) ??
+    verificationTier(source.verification_tier);
+  verification.status =
+    verificationStatus(source.status) ??
+    verificationStatus(source.verificationStatus) ??
+    verificationStatus(source.verification_status);
+  verification.highRiskAudit =
+    bool(source, 'highRiskAudit') ?? bool(source, 'high_risk_audit') ?? bool(source, 'highRisk');
+  verification.correlatedVerifierRisk =
+    bool(source, 'correlatedVerifierRisk') ??
+    bool(source, 'correlated_verifier_risk') ??
+    bool(source, 'correlatedRisk');
+
+  return Object.values(verification).some((v) => v !== undefined) ? verification : undefined;
+}
+
+function toCompletion(
+  root: Record<string, unknown>,
+  input: Record<string, unknown>,
+): ToolCall['completion'] | undefined {
+  const raw = asRecord(root.completion);
+  const inputRaw = asRecord(input.completion);
+  const source = Object.keys(inputRaw).length > 0 ? inputRaw : raw;
+  if (Object.keys(source).length === 0) return undefined;
+
+  const completion: NonNullable<ToolCall['completion']> = {};
+  completion.actionCategory =
+    completionCategory(source.actionCategory) ??
+    completionCategory(source.action_category) ??
+    completionCategory(source.category);
+  completion.claim =
+    completionClaim(source.claim) ??
+    completionClaim(source.statusClaim) ??
+    completionClaim(source.status_claim);
+  completion.receiptClass =
+    receiptClass(source.receiptClass) ??
+    receiptClass(source.receipt_class) ??
+    receiptClass(source.receipt);
+  completion.desiredStateVerified =
+    bool(source, 'desiredStateVerified') ??
+    bool(source, 'desired_state_verified') ??
+    bool(source, 'desiredState');
+  completion.ambiguousSideEffect =
+    bool(source, 'ambiguousSideEffect') ??
+    bool(source, 'ambiguous_side_effect') ??
+    bool(source, 'ambiguous');
+  completion.idempotencyKeyPresent =
+    bool(source, 'idempotencyKeyPresent') ??
+    bool(source, 'idempotency_key_present') ??
+    bool(source, 'idempotency');
+
+  return Object.values(completion).some((v) => v !== undefined) ? completion : undefined;
 }
 
 /**
@@ -92,6 +214,10 @@ export function toToolCall(hookInput: unknown): ToolCall {
   if (paths.length > 0) call.paths = paths;
   const handoff = toHandoff(root, input);
   if (handoff !== undefined) call.handoff = handoff;
+  const verification = toVerification(root, input);
+  if (verification !== undefined) call.verification = verification;
+  const completion = toCompletion(root, input);
+  if (completion !== undefined) call.completion = completion;
   return call;
 }
 

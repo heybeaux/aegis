@@ -74,6 +74,43 @@ describe('toToolCall', () => {
     expect(call.handoff).toEqual({ delegationDepth: 2, manifestTier: 'value-echo' });
   });
 
+  it('maps structured verification and completion metadata for SwarmLab RT-08/RT-09 gates', () => {
+    const call = toToolCall({
+      tool_name: 'FinalizeTask',
+      verification: {
+        high_risk_audit: true,
+        verification_tier: 'retrieval_grounded',
+        verification_status: 'supported',
+      },
+      tool_input: {
+        completion: {
+          action_category: 'external_write',
+          claim: 'retry',
+          receipt_class: 'desired_state_with_idempotency',
+          desired_state_verified: false,
+          ambiguous_side_effect: true,
+          idempotency_key_present: true,
+        },
+      },
+    });
+    expect(call).toEqual({
+      tool: 'FinalizeTask',
+      verification: {
+        highRiskAudit: true,
+        status: 'supported',
+        tier: 'retrieval_grounded',
+      },
+      completion: {
+        actionCategory: 'external_write',
+        claim: 'retry',
+        receiptClass: 'desired_state_with_idempotency',
+        desiredStateVerified: false,
+        ambiguousSideEffect: true,
+        idempotencyKeyPresent: true,
+      },
+    });
+  });
+
   it('is defensive against malformed / empty input', () => {
     expect(toToolCall(undefined)).toEqual({ tool: '' });
     expect(toToolCall(null)).toEqual({ tool: '' });

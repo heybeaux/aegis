@@ -113,6 +113,42 @@ describe('end-to-end hook pipeline', () => {
     expect(r.action).toBe('allow');
   });
 
+  it('ASK: RT-09 completion claims without desired-state receipts pause for approval', () => {
+    const r = runHook({
+      tool_name: 'FinalizeTask',
+      tool_input: {
+        completion: {
+          action_category: 'file_write',
+          claim: 'done',
+          receipt_class: 'tool_output',
+          desired_state_verified: false,
+          ambiguous_side_effect: false,
+          idempotency_key_present: false,
+        },
+      },
+    });
+    expect(r.exitCode).toBe(2);
+    expect(r.action).toBe('ask');
+  });
+
+  it('ALLOW: RT-09 verified completion claims proceed without approval', () => {
+    const r = runHook({
+      tool_name: 'FinalizeTask',
+      tool_input: {
+        completion: {
+          action_category: 'artifact_build',
+          claim: 'done',
+          receipt_class: 'desired_state',
+          desired_state_verified: true,
+          ambiguous_side_effect: false,
+          idempotency_key_present: false,
+        },
+      },
+    });
+    expect(r.exitCode).toBe(0);
+    expect(r.action).toBe('allow');
+  });
+
   it('allows a benign Bash command (exit 0)', () => {
     const r = runHook({ tool_name: 'Bash', tool_input: { command: 'ls' } });
     expect(r.exitCode).toBe(0);

@@ -179,10 +179,32 @@ function swarmlabPolicyHits(call: ToolCall): RuleHit[] {
     });
   }
 
+  const b = call.contentBoundary;
+  if (b !== undefined && b.trust === 'untrusted' && b.parserMode !== 'structured') {
+    const signals = new Set(b.instructionSignals ?? []);
+    const authoritySpoofed =
+      signals.has('authority_spoof') || signals.has('tool_output_spoof');
+    const riskyRedirect =
+      signals.has('action_request') ||
+      signals.has('secret_request') ||
+      signals.has('completion_override');
+    if (authoritySpoofed && riskyRedirect) {
+      hits.push({
+        id: 'swarmlab.rt11.untrusted-boundaries-require-structured-extraction',
+        severity: 'medium',
+        category: 'swarmlab',
+        target: 'argv',
+      });
+    }
+  }
+
   return hits;
 }
 
 function swarmlabReason(id: string): string {
+  if (id.includes('rt11.untrusted-boundaries')) {
+    return 'SwarmLab RT-11: untrusted authority-bearing content requires structured extraction before it can redirect the task';
+  }
   if (id.includes('rt10.private-memory')) {
     return 'SwarmLab RT-10: private memory cannot be disclosed into a broader scope';
   }

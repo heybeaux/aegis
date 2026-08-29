@@ -124,6 +124,68 @@ function responseMode(value: unknown): NonNullable<ToolCall['recall']>['response
   return value === 'answer' || value === 'refuse' ? value : undefined;
 }
 
+function boundarySourceType(
+  value: unknown,
+): NonNullable<ToolCall['contentBoundary']>['sourceType'] | undefined {
+  return value === 'github_issue' ||
+    value === 'json' ||
+    value === 'log' ||
+    value === 'web_page' ||
+    value === 'trace' ||
+    value === 'chat_quote'
+    ? value
+    : undefined;
+}
+
+function boundaryTrust(
+  value: unknown,
+): NonNullable<ToolCall['contentBoundary']>['trust'] | undefined {
+  return value === 'trusted' || value === 'untrusted' ? value : undefined;
+}
+
+function boundaryParserMode(
+  value: unknown,
+): NonNullable<ToolCall['contentBoundary']>['parserMode'] | undefined {
+  return value === 'raw' || value === 'structured' ? value : undefined;
+}
+
+function instructionSignal(
+  value: unknown,
+):
+  | NonNullable<NonNullable<ToolCall['contentBoundary']>['instructionSignals']>[number]
+  | undefined {
+  return value === 'authority_spoof' ||
+    value === 'action_request' ||
+    value === 'secret_request' ||
+    value === 'completion_override' ||
+    value === 'tool_output_spoof'
+    ? value
+    : undefined;
+}
+
+function proposedAction(
+  value: unknown,
+): NonNullable<ToolCall['contentBoundary']>['proposedAction'] | undefined {
+  return value === 'answer' || value === 'mark_done' || value === 'exfiltrate_secret'
+    ? value
+    : undefined;
+}
+
+function instructionSignals(
+  value: unknown,
+): NonNullable<ToolCall['contentBoundary']>['instructionSignals'] | undefined {
+  if (!Array.isArray(value)) return undefined;
+  const parsed = value
+    .map((item) => instructionSignal(item))
+    .filter(
+      (
+        item,
+      ): item is NonNullable<NonNullable<ToolCall['contentBoundary']>['instructionSignals']>[number] =>
+        item !== undefined,
+    );
+  return parsed.length > 0 ? parsed : undefined;
+}
+
 function toHandoff(root: Record<string, unknown>, input: Record<string, unknown>): ToolCall['handoff'] | undefined {
   const raw = asRecord(root.handoff);
   const inputRaw = asRecord(input.handoff);
@@ -241,6 +303,40 @@ function toRecall(root: Record<string, unknown>, input: Record<string, unknown>)
   return Object.values(recall).some((v) => v !== undefined) ? recall : undefined;
 }
 
+function toContentBoundary(
+  root: Record<string, unknown>,
+  input: Record<string, unknown>,
+): ToolCall['contentBoundary'] | undefined {
+  const raw = asRecord(root.contentBoundary ?? root.content_boundary);
+  const inputRaw = asRecord(input.contentBoundary ?? input.content_boundary);
+  const source = Object.keys(inputRaw).length > 0 ? inputRaw : raw;
+  if (Object.keys(source).length === 0) return undefined;
+
+  const contentBoundary: NonNullable<ToolCall['contentBoundary']> = {};
+  contentBoundary.sourceType =
+    boundarySourceType(source.sourceType) ??
+    boundarySourceType(source.source_type) ??
+    boundarySourceType(source.kind);
+  contentBoundary.trust =
+    boundaryTrust(source.trust) ??
+    boundaryTrust(source.trustLevel) ??
+    boundaryTrust(source.trust_level);
+  contentBoundary.parserMode =
+    boundaryParserMode(source.parserMode) ??
+    boundaryParserMode(source.parser_mode) ??
+    boundaryParserMode(source.mode);
+  contentBoundary.instructionSignals =
+    instructionSignals(source.instructionSignals) ??
+    instructionSignals(source.instruction_signals) ??
+    instructionSignals(source.signals);
+  contentBoundary.proposedAction =
+    proposedAction(source.proposedAction) ??
+    proposedAction(source.proposed_action) ??
+    proposedAction(source.action);
+
+  return Object.values(contentBoundary).some((v) => v !== undefined) ? contentBoundary : undefined;
+}
+
 /**
  * Pure mapping from a raw Claude Code hook payload to an Aegis ToolCall.
  *
@@ -284,6 +380,8 @@ export function toToolCall(hookInput: unknown): ToolCall {
   if (completion !== undefined) call.completion = completion;
   const recall = toRecall(root, input);
   if (recall !== undefined) call.recall = recall;
+  const contentBoundary = toContentBoundary(root, input);
+  if (contentBoundary !== undefined) call.contentBoundary = contentBoundary;
   return call;
 }
 

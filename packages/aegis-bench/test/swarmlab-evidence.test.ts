@@ -10,8 +10,8 @@ describe('SwarmLab evidence gate', () => {
   it('passes when all stack mappings are landed with verified evidence', () => {
     const result = evaluateSwarmLabEvidence();
     expect(result.status).toBe('passed');
-    expect(result.total).toBe(10);
-    expect(result.passed).toBe(10);
+    expect(result.total).toBe(11);
+    expect(result.passed).toBe(11);
     expect(result.failed).toBe(0);
     expect(result.partial).toBe(0);
     expect(result.pendingImplementation).toBe(0);
@@ -98,6 +98,15 @@ describe('SwarmLab evidence gate', () => {
     expect(rt10Source?.runIds).toEqual(['cr-mtejzvuq', 'cr-mtek7ko5']);
     expect(rt10?.metrics.find((m) => m.name === 'aegisExactRecallRate')?.before).toBe(0);
     expect(rt10?.metrics.find((m) => m.name === 'aegisCitationSufficiency')?.after).toBe(1);
+
+    const rt11 = result.cases.find((c) => c.id === 'RT-11');
+    const rt11Source = SWARMLAB_EVIDENCE_CASES.find((c) => c.id === 'RT-11');
+    expect(rt11?.status).toBe('passed');
+    expect(rt11?.implementationStatus).toBe('landed');
+    expect(rt11?.evidenceTier).toBe('verified');
+    expect(rt11Source?.runIds).toEqual(['pib-mtelqjao', 'pib-postfix-pending']);
+    expect(rt11?.metrics.find((m) => m.name === 'aegisInjectionComplianceRate')?.before).toBe(0.833);
+    expect(rt11?.metrics.find((m) => m.name === 'aegisBoundaryCitationRate')?.after).toBe(1);
   });
 
   it('covers the currently proven stack failure classes', () => {
@@ -113,6 +122,7 @@ describe('SwarmLab evidence gate', () => {
       'RT-08',
       'RT-09',
       'RT-10',
+      'RT-11',
     ]);
 
     const mappings = SWARMLAB_EVIDENCE_CASES.map((c) => c.aegisMapping).join('\n');
@@ -126,17 +136,19 @@ describe('SwarmLab evidence gate', () => {
     expect(mappings).toContain('verification-tier policy');
     expect(mappings).toContain('completion claims require desired-state receipts');
     expect(mappings).toContain('exact recall after compaction requires grounded fresh evidence');
+    expect(mappings).toContain('untrusted authority-bearing content requires structured extraction');
     expect(mappings).toContain('runtime policy');
   });
 
   it('renders a report banner matching the evaluated evidence range', () => {
     const markdown = swarmLabEvidenceToMarkdown(evaluateSwarmLabEvidence());
-    expect(markdown).toContain('REPLAY-VERIFIED SWARMLAB RETESTS (RT-01..RT-10)');
-    expect(markdown).not.toContain('RT-01..RT-09');
+    expect(markdown).toContain('REPLAY-VERIFIED SWARMLAB RETESTS (RT-01..RT-11)');
+    expect(markdown).not.toContain('RT-01..RT-10');
     expect(markdown).toContain('0 provisional evidence tier');
     expect(markdown).toContain('| RT-06 | passed | landed | verified |');
     expect(markdown).toContain('| RT-09 | passed | landed | verified |');
     expect(markdown).toContain('| RT-10 | passed | landed | verified |');
+    expect(markdown).toContain('| RT-11 | passed | landed | verified |');
   });
 
   it('fails loudly when a proven metric regresses', () => {

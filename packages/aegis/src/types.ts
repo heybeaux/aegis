@@ -155,6 +155,25 @@ export interface RecallMetadata {
   responseMode?: 'answer' | 'refuse';
 }
 
+export interface ContentBoundaryMetadata {
+  /** Which untrusted content surface the agent is consuming. */
+  sourceType?: 'github_issue' | 'json' | 'log' | 'web_page' | 'trace' | 'chat_quote';
+  /** Whether the content should be treated as trusted instructions or untrusted data. */
+  trust?: 'trusted' | 'untrusted';
+  /** Whether the caller is still ingesting the document raw or has switched to extraction mode. */
+  parserMode?: 'raw' | 'structured';
+  /** Signals that the content is trying to pose as authority or redirect the task. */
+  instructionSignals?: (
+    | 'authority_spoof'
+    | 'action_request'
+    | 'secret_request'
+    | 'completion_override'
+    | 'tool_output_spoof'
+  )[];
+  /** What action the caller is about to take because of the content. */
+  proposedAction?: 'answer' | 'mark_done' | 'exfiltrate_secret';
+}
+
 export interface ToolCall {
   /** Claude Code / OpenClaw tool name, e.g. "Bash", "Write", "Edit", "Read". */
   tool: string;
@@ -174,6 +193,8 @@ export interface ToolCall {
   completion?: CompletionMetadata;
   /** Optional structured recall metadata from SwarmLab RT-10. */
   recall?: RecallMetadata;
+  /** Optional structured untrusted-content boundary metadata from SwarmLab RT-11. */
+  contentBoundary?: ContentBoundaryMetadata;
 }
 
 /** One rule that fired during evaluation. */

@@ -1,52 +1,115 @@
 # @heybeaux/aegis-hook
 
-A [Claude Code](https://docs.claude.com/en/docs/claude-code) **PreToolUse** hook that runs the [Aegis](../aegis) governance engine live on every tool call. Before Claude Code executes a tool, it pipes the call's JSON to this hook on stdin. The hook maps that payload into an Aegis `ToolCall`, evaluates the bundled rule packs (bash / file / injection / pii / secrets), and signals the verdict back via the exit-code contract below.
+`@heybeaux/aegis-hook` is the live Aegis runtime for tool-use governance. It ships:
 
-## Exit-code contract
+- A framework-neutral hook adapter contract
+- A production local-evidence predictor with persistent state
+- Structured JSONL telemetry and one-shot approvals
+- A Claude Code adapter plus a generic JSON/stdio adapter
 
-Claude Code reads the hook's **exit code** to decide what to do, and feeds whatever the hook prints to **stderr** back to the model as the block reason.
+The runtime always attempts prediction before `evaluate()`. Predictions can only escalate the deterministic rule floor.
 
-| Aegis verdict | Exit code | stderr | Effect in Claude Code |
-| ------------- | --------- | ------ | --------------------- |
-| `deny`        | `2`       | reason (`[Aegis DENY] …`) | Tool call is **blocked**; reason returned to the model |
-| `ask`         | `2`       | reason (`[Aegis ASK] …`)  | Blocked-with-reason — PreToolUse has no native "ask", so the model/human must reconsider |
-| `allow`       | `0`       | empty  | Tool call proceeds |
-| empty / unparseable stdin, or any hook error | `0` | breadcrumb | **Fail-open** — a hook fault never bricks the session |
+## Runtime model
 
-Exit `0` = allow, exit `2` = block. Any other nonzero is treated by Claude Code as a non-blocking error.
+The package separates four responsibilities:
 
-## Install
+1. `HostAdapter.parse(stdin)` turns a host payload into an Aegis `ToolCall`
+2. `predictWithPolicy(call, mode)` produces a live or fallback prediction
+3. `evaluate(call, rules, { preprocess: true, prediction })` computes the rule floor plus predictive escalation
+4. `HostAdapter.render(result)` maps the Aegis decision back into the host contract
+
+The default live predictor is self-contained. It persists local evidence in `~/.aegis/predictor-state.json` and scores:
+
+- Tool class risk (`Bash`, `Write`, `Edit`, `Delegate`, `Task`, `Read`)
+- Path risk, including system directories
+- Command combinator density
+- Content risk markers
+- Recent repeated attempts for the same exact action key
+- Recent blocked-decision rate for the exact action and the local session
+
+## Failure modes
+
+`AEGIS_PREDICTOR_FAILURE_MODE` controls predictor/runtime fallback:
+
+- `fail-open` (default): use a neutral fallback prediction and preserve the rule floor
+- `degraded`: inject an `ask`-level fallback prediction with a clear runtime reason
+- `fail-closed`: inject a `deny`-level fallback prediction with a clear runtime reason
+
+`AEGIS_PREDICTOR_TIMEOUT_MS` bounds predictor latency. Every fallback emits JSONL telemetry.
+
+## Files on disk
+
+- `~/.aegis/predictor-state.json`: local evidence store
+- `~/.aegis/hook-runtime.jsonl`: structured runtime telemetry
+- `~/.aegis/approvals/*.json`: exact one-shot approval records
+
+Override paths with:
+
+- `AEGIS_HOME`
+- `AEGIS_PREDICTOR_STATE_PATH`
+- `AEGIS_HOOK_TELEMETRY_PATH`
+- `AEGIS_APPROVAL_DIR`
+
+## Claude Code
+
+Default CLI behavior uses the Claude Code adapter. The hook still returns:
+
+- exit `0` to allow
+- exit `2` to block or ask
+- human-facing reasons on `stderr`
+
+Install into `.claude/settings.json`:
 
 ```bash
-aegis-hook install                       # writes .claude/settings.json in cwd
-aegis-hook install <settingsPath> <bin>  # explicit paths
+aegis-hook install
 ```
 
-This writes the **correct nested schema** into `settings.json`, merging into any existing config (other keys and other PreToolUse matchers are preserved; installing twice is idempotent):
+Approve a pending `ask` exactly once:
+
+```bash
+aegis-hook approve <approval-id>
+```
+
+The retry must be the exact same tool call. Changed arguments, content, paths, or evaluation state do not reuse the approval.
+
+## Generic JSON/stdio
+
+Run the same runtime with:
+
+```bash
+aegis-hook --adapter generic-json
+```
+
+The generic adapter accepts either of these stdin payloads:
 
 ```json
 {
-  "hooks": {
-    "PreToolUse": [
-      {
-        "matcher": "*",
-        "hooks": [
-          { "type": "command", "command": "/abs/path/to/dist/cli.js" }
-        ]
-      }
-    ]
+  "toolUseId": "run_123",
+  "toolCall": {
+    "tool": "Write",
+    "paths": ["/tmp/file.txt"],
+    "content": "hello"
   }
 }
 ```
 
-## Why the nested schema matters
+```json
+{
+  "tool": "Bash",
+  "command": "ls -la"
+}
+```
 
-The `matcher` + `hooks: [{ type, command }]` nesting is **mandatory**. AutoHarness shipped a flat `{ type, command }` array under `PreToolUse` — that schema **never fires**, so the harness silently governed nothing. This package writes the nested matcher shape that Claude Code actually invokes, and merges rather than clobbers so it composes with hooks you already have.
+It returns a JSON object on stdout containing the rendered decision, evaluation summary, predictor metadata, and approval command when relevant.
 
 ## Programmatic API
 
 ```ts
-import { toToolCall, loadAllPacks, verdictToExit, installHook } from '@heybeaux/aegis-hook';
+import {
+  runHook,
+  claudeCodeAdapter,
+  genericJsonStdioAdapter,
+  predictWithPolicy,
+  decide,
+} from '@heybeaux/aegis-hook';
 ```
-
-All four are pure/testable: `toToolCall` (payload → `ToolCall`), `loadAllPacks` (compile the shipped rule packs), `verdictToExit` (`Evaluation` → `{ code, stderr }`), and `installHook` (merge the hook into a settings.json path).

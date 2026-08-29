@@ -44,13 +44,15 @@ describe('approval store', () => {
   it('requests, approves, and consumes a one-shot approval', () => {
     const dir = tmp();
     try {
-      const pending = requestApproval(call, evaluation, dir);
+      const pending = requestApproval(call, evaluation, dir, 'action-key-1');
       const paths = approvalPaths(pending.id, dir);
       expect(existsSync(paths.pendingPath)).toBe(true);
       expect(existsSync(paths.approvedPath)).toBe(false);
+      expect(pending.actionKey).toBe('action-key-1');
 
       const approved = approvePending(pending.id, dir);
       expect(approved.status).toBe('approved');
+      expect(approved.actionKey).toBe('action-key-1');
       expect(existsSync(paths.approvedPath)).toBe(true);
 
       expect(consumeApproval(call, evaluation, dir)).toBe(true);
@@ -65,7 +67,7 @@ describe('approval store', () => {
   it('does not consume an approval for a different handoff signature', () => {
     const dir = tmp();
     try {
-      const pending = requestApproval(call, evaluation, dir);
+      const pending = requestApproval(call, evaluation, dir, 'action-key-2');
       approvePending(pending.id, dir);
       expect(
         consumeApproval(

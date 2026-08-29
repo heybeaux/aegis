@@ -1,5 +1,5 @@
 import { createHash } from 'node:crypto';
-import { existsSync, mkdirSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
+import { existsSync, mkdirSync, readFileSync, renameSync, rmSync, writeFileSync } from 'node:fs';
 import { homedir } from 'node:os';
 import { join } from 'node:path';
 import type { Evaluation, ToolCall } from '@heybeaux/lattice-aegis';
@@ -14,6 +14,7 @@ export interface ApprovalRecord {
   reason: string;
   action: 'ask';
   tool: string;
+  actionKey?: string;
 }
 
 export interface ApprovalPaths {
@@ -80,7 +81,13 @@ export function approvalPaths(id: string, dir?: string): ApprovalPaths {
   };
 }
 
-function recordFor(id: string, call: ToolCall, evaluation: Evaluation, status: ApprovalRecord['status']): ApprovalRecord {
+function recordFor(
+  id: string,
+  call: ToolCall,
+  evaluation: Evaluation,
+  status: ApprovalRecord['status'],
+  actionKey?: string,
+): ApprovalRecord {
   return {
     id,
     createdAt: new Date().toISOString(),
@@ -89,6 +96,7 @@ function recordFor(id: string, call: ToolCall, evaluation: Evaluation, status: A
     reason: evaluation.reason,
     action: 'ask',
     tool: call.tool,
+    ...(actionKey !== undefined ? { actionKey } : {}),
   };
 }
 
@@ -100,13 +108,18 @@ function readRecord(path: string): ApprovalRecord | undefined {
   }
 }
 
-export function requestApproval(call: ToolCall, evaluation: Evaluation, dir?: string): ApprovalRecord {
+export function requestApproval(
+  call: ToolCall,
+  evaluation: Evaluation,
+  dir?: string,
+  actionKey?: string,
+): ApprovalRecord {
   const id = approvalId(call, evaluation);
   const paths = approvalPaths(id, dir);
   mkdirSync(paths.dir, { recursive: true });
   const existing = readRecord(paths.pendingPath);
   if (existing?.signature === approvalSignature(call, evaluation)) return existing;
-  const record = recordFor(id, call, evaluation, 'pending');
+  const record = recordFor(id, call, evaluation, 'pending', actionKey);
   writeFileSync(paths.pendingPath, JSON.stringify(record, null, 2) + '\n', 'utf8');
   return record;
 }
@@ -124,10 +137,23 @@ export function consumeApproval(call: ToolCall, evaluation: Evaluation, dir?: st
   const id = approvalId(call, evaluation);
   const paths = approvalPaths(id, dir);
   if (!existsSync(paths.approvedPath)) return false;
-  const approved = readRecord(paths.approvedPath);
+  const consumingPath = join(paths.dir, `${id}.consuming.json`);
+  try {
+    renameSync(paths.approvedPath, consumingPath);
+  } catch {
+    return false;
+  }
+  const approved = readRecord(consumingPath);
   const expected = approvalSignature(call, evaluation);
-  if (approved?.signature !== expected) return false;
-  rmSync(paths.approvedPath, { force: true });
+  if (approved?.signature !== expected) {
+    try {
+      renameSync(consumingPath, paths.approvedPath);
+    } catch {
+      rmSync(consumingPath, { force: true });
+    }
+    return false;
+  }
+  rmSync(consumingPath, { force: true });
   rmSync(paths.pendingPath, { force: true });
   return true;
 }

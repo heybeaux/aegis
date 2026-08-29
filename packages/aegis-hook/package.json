@@ -19,11 +19,11 @@
     "dist"
   ],
   "scripts": {
-    "build": "tsup src/index.ts src/cli.ts --format esm --dts --sourcemap",
-    "test": "vitest run",
-    "test:watch": "vitest",
-    "typecheck": "tsc --noEmit",
-    "lint": "eslint src"
+    "build": "./node_modules/.bin/tsup src/index.ts src/cli.ts --format esm --dts --sourcemap",
+    "test": "./node_modules/.bin/vitest run",
+    "test:watch": "./node_modules/.bin/vitest",
+    "typecheck": "./node_modules/.bin/tsc --noEmit",
+    "lint": "./node_modules/.bin/tsc -p tsconfig.lint.json --noEmit"
   },
   "keywords": [
     "ai",

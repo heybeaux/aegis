@@ -106,7 +106,8 @@ export class OpenAICompatibleClient implements ModelClient {
   }
 
   async complete(input: Parameters<ModelClient['complete']>[0]): Promise<CompletionResult> {
-    const response = await fetch(new URL('/chat/completions', this.baseUrl), {
+    const base = this.baseUrl.endsWith('/') ? this.baseUrl : `${this.baseUrl}/`;
+    const response = await fetch(new URL('chat/completions', base), {
       method: 'POST',
       headers: {
         'content-type': 'application/json',

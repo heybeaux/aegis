@@ -195,8 +195,8 @@ async function scorePrediction(call: ToolCall, now: Date): Promise<PredictorResu
   const sameActionRecent = recent.filter((item) => item.actionKey === actionKey);
   const recentBlocks = recent.filter((item) => item.action !== 'allow').length;
 
-  const sameActionAttempts = entry.attempts + sameActionRecent.length;
-  const sameActionBlocks = entry.blocks + sameActionRecent.filter((item) => item.action !== 'allow').length;
+  const sameActionAttempts = entry.attempts;
+  const sameActionBlocks = entry.blocks;
   const sameActionApprovals = entry.approvals;
   const recentSessionAttempts = recent.length;
   const recentSessionBlocks = recentBlocks;
@@ -297,32 +297,40 @@ export function observeDecision(
   prediction: Prediction,
   now = new Date(),
 ): void {
-  const state = loadState();
-  const entry = state.actions[actionKey] ?? {
-    attempts: 0,
-    blocks: 0,
-    approvals: 0,
-    lastSeenAt: now.toISOString(),
-    lastPFailure: prediction.pFailure,
-  };
-  entry.attempts += 1;
-  if (action !== 'allow') entry.blocks += 1;
-  entry.lastSeenAt = now.toISOString();
-  entry.lastPFailure = prediction.pFailure;
-  state.actions[actionKey] = entry;
-  state.recent.push({ at: now.toISOString(), actionKey, action });
-  state.recent = state.recent.slice(-200);
-  saveState(state);
+  try {
+    const state = loadState();
+    const entry = state.actions[actionKey] ?? {
+      attempts: 0,
+      blocks: 0,
+      approvals: 0,
+      lastSeenAt: now.toISOString(),
+      lastPFailure: prediction.pFailure,
+    };
+    entry.attempts += 1;
+    if (action !== 'allow') entry.blocks += 1;
+    entry.lastSeenAt = now.toISOString();
+    entry.lastPFailure = prediction.pFailure;
+    state.actions[actionKey] = entry;
+    state.recent.push({ at: now.toISOString(), actionKey, action });
+    state.recent = state.recent.slice(-200);
+    saveState(state);
+  } catch {
+    // Predictor learning must never override an already-computed gate decision.
+  }
 }
 
 export function observeApproval(observation: ApprovalObservation): void {
-  const state = loadState();
-  const entry = state.actions[observation.actionKey];
-  if (!entry) return;
-  entry.approvals += 1;
-  entry.lastSeenAt = observation.approvedAt ?? new Date().toISOString();
-  state.actions[observation.actionKey] = entry;
-  saveState(state);
+  try {
+    const state = loadState();
+    const entry = state.actions[observation.actionKey];
+    if (!entry) return;
+    entry.approvals += 1;
+    entry.lastSeenAt = observation.approvedAt ?? new Date().toISOString();
+    state.actions[observation.actionKey] = entry;
+    saveState(state);
+  } catch {
+    // Approval remains valid even if predictor learning cannot be persisted.
+  }
 }
 
 export function predictorFailureModeFromEnv(): PredictorFailureMode {

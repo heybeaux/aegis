@@ -42,6 +42,11 @@ describe('decide', () => {
       expect(d.stderr).toContain('requires approval');
       expect(d.stderr).toContain('deep handoff requires value echo');
       expect(d.stderr).toContain(`aegis-hook approve ${approvalId(askCall, evaluation)}`);
+      expect(d.stderr).toContain('without changing arguments, content, or paths');
+      expect(d.approval).toEqual({
+        event: 'requested',
+        id: approvalId(askCall, evaluation),
+      });
     } finally {
       rmSync(dir, { recursive: true, force: true });
     }
@@ -58,6 +63,10 @@ describe('decide', () => {
       const approved = decide(evaluation, { call: askCall, approvalDir: dir });
       expect(approved.exitCode).toBe(0);
       expect(approved.stderr).toContain('approved once');
+      expect(approved.approval).toEqual({
+        event: 'consumed',
+        id: approvalId(askCall, evaluation),
+      });
 
       const retryAgain = decide(evaluation, { call: askCall, approvalDir: dir });
       expect(retryAgain.exitCode).toBe(2);

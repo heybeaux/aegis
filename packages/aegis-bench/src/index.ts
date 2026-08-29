@@ -64,6 +64,14 @@ export {
   type AwmFeatures,
 } from './engines/awm-stub.js';
 
+export {
+  ProductionPredictor,
+  PRODUCTION_PREDICTOR_ENGINE,
+  PRODUCTION_PREDICTOR_LABEL,
+  runProductionPredictorSequential,
+  type ProductionPrediction,
+} from './engines/production-predictor.js';
+
 // ---- Generator + corpora ----
 export {
   generateEpisodes,

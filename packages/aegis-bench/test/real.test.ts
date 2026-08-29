@@ -15,6 +15,10 @@ import {
   runRealBenchmark,
   type FrozenRowLike,
 } from '../src/real.js';
+import {
+  PRODUCTION_PREDICTOR_ENGINE,
+  PRODUCTION_PREDICTOR_LABEL,
+} from '../src/engines/production-predictor.js';
 
 function row(over: Partial<FrozenRowLike> & Pick<FrozenRowLike, 'features' | 'action_failed'>): FrozenRowLike {
   return {
@@ -148,18 +152,18 @@ describe('real-data benchmark axis', () => {
     rmSync(p, { force: true });
 
     const regex = r.engines.find((e) => e.engine === 'regex')!;
-    const awm = r.engines.find((e) => e.engine === 'regex+awm')!;
+    const predictor = r.engines.find((e) => e.engine === PRODUCTION_PREDICTOR_ENGINE)!;
 
     // Rule floor catches only the critical failure, misses the medium one.
     expect(regex.tp).toBe(1);
     expect(regex.fn).toBe(1);
     // Predictor catches both.
-    expect(awm.tp).toBe(2);
-    expect(awm.fn).toBe(0);
+    expect(predictor.tp).toBe(2);
+    expect(predictor.fn).toBe(0);
 
     expect(r.extraFailuresCaught).toBe(1);
     expect(r.recallLift).toBe(1); // recovered 1 of the rule floor's 1 miss
-    expect(awm.recall).toBeGreaterThan(regex.recall);
+    expect(predictor.recall).toBeGreaterThan(regex.recall);
   });
 
   it('rollbackProximity lets the predictor catch a clean-session rollback the rule floor AND the old thrash signal both miss', () => {
@@ -168,7 +172,7 @@ describe('real-data benchmark axis', () => {
     rmSync(p, { force: true });
 
     const regex = r.engines.find((e) => e.engine === 'regex')!;
-    const awm = r.engines.find((e) => e.engine === 'regex+awm')!;
+    const predictor = r.engines.find((e) => e.engine === PRODUCTION_PREDICTOR_ENGINE)!;
 
     // Rule floor: medium severity is below high/critical → never fires. Misses
     // the real failure, and correctly stays silent on the clean row.
@@ -178,9 +182,9 @@ describe('real-data benchmark axis', () => {
     // Predictor: rollbackProximity=1 escalates the churn row over the threshold,
     // while the otherwise-identical no-churn clean row stays a true negative
     // (no thrash, no proximity → no false positive).
-    expect(awm.tp).toBe(1);
-    expect(awm.fn).toBe(0);
-    expect(awm.fp).toBe(0);
+    expect(predictor.tp).toBe(1);
+    expect(predictor.fn).toBe(0);
+    expect(predictor.fp).toBe(0);
   });
 
   it('a thrashing session with NO severity and NO rollback churn no longer false-fires (gating)', () => {
@@ -201,8 +205,8 @@ describe('real-data benchmark axis', () => {
     const p = writeJsonl([benignThrashRead, criticalFail]);
     const r = runRealBenchmark(p);
     rmSync(p, { force: true });
-    const awm = r.engines.find((e) => e.engine === 'regex+awm')!;
-    expect(awm.fp).toBe(0);
+    const predictor = r.engines.find((e) => e.engine === PRODUCTION_PREDICTOR_ENGINE)!;
+    expect(predictor.fp).toBe(0);
   });
 
   it('honesty guard throws on any non-real row', () => {
@@ -223,5 +227,13 @@ describe('real-data benchmark axis', () => {
     rmSync(p, { force: true });
     expect(r.dataSource).toBe('real');
     expect(r.datasetPath).toBe(p);
+  });
+
+  it('real benchmark exposes only rule-floor and production predictor engine labels', () => {
+    const p = writeJsonl([criticalFail, predictorOnlyFail, cleanLow]);
+    const r = runRealBenchmark(p);
+    rmSync(p, { force: true });
+    expect(r.engines.map((e) => e.engine)).toEqual(['regex', PRODUCTION_PREDICTOR_ENGINE]);
+    expect(PRODUCTION_PREDICTOR_LABEL).toBe('predictor: PRODUCTION-PREDICTOR');
   });
 });

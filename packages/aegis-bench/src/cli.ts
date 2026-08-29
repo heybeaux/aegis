@@ -13,7 +13,8 @@ import { mkdirSync, writeFileSync } from 'node:fs';
 import { join, resolve } from 'node:path';
 import { runBenchmark } from './run.js';
 import { toMarkdown, toJSON } from './report.js';
-import { runRealBenchmark, runRealBenchmarkWithCore, type RealBenchmarkResult } from './real.js';
+import { PRODUCTION_PREDICTOR_LABEL } from './engines/production-predictor.js';
+import { runRealBenchmark, type RealBenchmarkResult } from './real.js';
 import { evaluateSwarmLabEvidence, swarmLabEvidenceToMarkdown } from './swarmlab-evidence.js';
 
 /** The committed baseline artifact stem (spec §4 file layout). */
@@ -29,8 +30,6 @@ interface CliArgs {
   format: Format;
   /** Path to a real labeled dataset JSONL (the `real` subcommand). */
   dataset?: string;
-  /** Include real awm-core Oracle engine alongside the synthetic stub. */
-  core: boolean;
 }
 
 const DEFAULTS = {
@@ -38,7 +37,6 @@ const DEFAULTS = {
   episodes: 50,
   out: 'results',
   format: 'both' as Format,
-  core: false,
 };
 
 function parseArgs(argv: readonly string[]): CliArgs {
@@ -48,7 +46,6 @@ function parseArgs(argv: readonly string[]): CliArgs {
     episodes: DEFAULTS.episodes,
     out: DEFAULTS.out,
     format: DEFAULTS.format,
-    core: DEFAULTS.core,
   };
 
   for (let i = 0; i < argv.length; i++) {
@@ -68,9 +65,6 @@ function parseArgs(argv: readonly string[]): CliArgs {
         break;
       case '--dataset':
         args.dataset = requireValue(argv[++i], '--dataset');
-        break;
-      case '--core':
-        args.core = true;
         break;
       default:
         // Ignore the leading command token and any unknown flags' positional values.
@@ -114,11 +108,13 @@ function usage(): void {
       '',
       'Usage:',
       '  aegis-bench run [--seed N] [--episodes N] [--out DIR] [--format md|json|both]',
+      '  aegis-bench real --dataset PATH [--out DIR] [--format md|json|both]',
       '  aegis-bench swarmlab-evidence [--out DIR] [--format md|json|both]',
       '',
       'Defaults: --seed 42 --episodes 50 --out results --format both',
       '',
-      'All output is SYNTHETIC (no Sonder audit chain yet) and byte-stable for a fixed --seed.',
+      'The `run` command is explicitly synthetic and byte-stable for a fixed --seed.',
+      'The `real` command scores real labeled rows with the in-package production predictor.',
       '',
     ].join('\n'),
   );
@@ -235,7 +231,7 @@ function runReal(args: CliArgs): void {
     const outDir = resolve(process.cwd(), args.out);
     mkdirSync(outDir, { recursive: true });
 
-    const stem = `real-${todayStamp()}${args.core ? '-v2' : ''}`;
+    const stem = `real-${todayStamp()}`;
     const written: string[] = [];
     if (args.format === 'json' || args.format === 'both') {
       const p = join(outDir, `${stem}.json`);
@@ -250,14 +246,7 @@ function runReal(args: CliArgs): void {
     printRealSummary(result, written);
   };
 
-  if (args.core) {
-    runRealBenchmarkWithCore(datasetPath).then(writeAndPrint).catch((e: unknown) => {
-      process.stderr.write(`aegis-bench: awm-core error: ${String(e)}\n`);
-      process.exit(1);
-    });
-  } else {
-    writeAndPrint(runRealBenchmark(datasetPath));
-  }
+  writeAndPrint(runRealBenchmark(datasetPath));
 }
 
 /** YYYY-MM-DD stamp for the real-result filename. */
@@ -272,6 +261,7 @@ function realToMarkdown(r: RealBenchmarkResult): string {
   lines.push('# aegis-bench — REAL-data result');
   lines.push('');
   lines.push(`> DATA: REAL (Sonder ed25519-signed audit chain → aegis-label \`action_failed\`)`);
+  lines.push(`> ${PRODUCTION_PREDICTOR_LABEL} (in-package deterministic engine)`);
   lines.push(`> dataset: \`${r.datasetPath}\``);
   lines.push('');
   lines.push(

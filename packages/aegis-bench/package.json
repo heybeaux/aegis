@@ -25,7 +25,7 @@
     "test": "vitest run",
     "test:watch": "vitest",
     "typecheck": "tsc --noEmit",
-    "lint": "eslint src"
+    "lint": "tsc -p tsconfig.lint.json --noEmit"
   },
   "keywords": [
     "ai",
@@ -45,7 +45,6 @@
     "directory": "packages/aegis-bench"
   },
   "dependencies": {
-    "@heybeaux/awm-core": "file:../../../../awm/packages/core",
     "@heybeaux/lattice-aegis": "workspace:*"
   },
   "devDependencies": {

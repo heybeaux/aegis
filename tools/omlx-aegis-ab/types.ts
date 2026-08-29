@@ -1,4 +1,4 @@
-export type ConditionName = 'aegis_off' | 'aegis_on';
+export type ConditionName = 'no_gate' | 'aegis_rules' | 'aegis_prediction';
 
 export type ScenarioCategory =
   | 'benign'
@@ -86,6 +86,19 @@ export interface ActionEnvelope extends StructuredMetadata {
   summary?: string;
 }
 
+export interface ReplayPrediction {
+  pFailure: number;
+  confidence: number;
+  source: 'awm' | 'prior';
+}
+
+export interface PredictionTrace {
+  pFailure: number;
+  confidence: number;
+  source: 'harness_stub';
+  rationale: string;
+}
+
 export interface Scenario {
   id: string;
   title: string;
@@ -95,6 +108,33 @@ export interface Scenario {
   prompt: string;
   initialFiles: Record<string, string>;
   maxTurns: number;
+  replayPrediction?: ReplayPrediction;
+}
+
+export interface ToolDefinition {
+  type: 'function';
+  function: {
+    name: ActionEnvelope['name'];
+    description: string;
+    parameters: Record<string, unknown>;
+  };
+}
+
+export interface ToolCall {
+  id: string;
+  type?: string;
+  function?: {
+    name?: string;
+    arguments?: string;
+  };
+}
+
+export interface ChatMessage {
+  role: 'system' | 'user' | 'assistant' | 'tool';
+  content?: unknown;
+  tool_calls?: ToolCall[];
+  tool_call_id?: string;
+  name?: string;
 }
 
 export interface UsageSnapshot {
@@ -105,7 +145,7 @@ export interface UsageSnapshot {
 
 export interface CompletionResult {
   rawEnvelope: unknown;
-  contentText: string;
+  assistantMessage: ChatMessage;
   usage: UsageSnapshot;
   finishReason?: string;
 }
@@ -114,10 +154,10 @@ export interface ModelClient {
   complete(input: {
     model: string;
     seed: number;
-    messages: Array<{ role: 'system' | 'user' | 'assistant'; content: string }>;
+    messages: ChatMessage[];
     scenario: Scenario;
-    condition: ConditionName;
     repetition: number;
+    tools: ToolDefinition[];
   }): Promise<CompletionResult>;
 }
 
@@ -128,6 +168,7 @@ export interface GateTrace {
   reason: string;
   matches: Array<{ id: string; severity: string; category: string; target: string }>;
   decidedBy: string;
+  prediction?: PredictionTrace;
 }
 
 export interface SimulatorEvent {
@@ -135,18 +176,45 @@ export interface SimulatorEvent {
   content: string;
 }
 
-export interface TurnTrace {
+export interface ProtocolQualification {
+  qualified: boolean;
+  reason: string;
+  validToolCalls: number;
+  protocolFailures: number;
+  selfRefusals: number;
+}
+
+export interface CapturedTurn {
   turn: number;
   assistantText: string;
+  assistantMessage: ChatMessage;
   parsedAction?: ActionEnvelope;
   rawEnvelope: unknown;
   finishReason?: string;
   usage: UsageSnapshot;
-  gate?: GateTrace;
   simulatorEvent: SimulatorEvent;
+  toolCallId?: string;
+  protocolFailure: boolean;
+  modelSelfRefused: boolean;
+}
+
+export interface ReplayTurnOutcome {
+  turn: number;
+  toolName?: ActionEnvelope['name'];
+  unsafeProposed: boolean;
+  modelSelfRefused: boolean;
+  protocolFailure: boolean;
+  aegisIntervened: boolean;
+  unsafeWouldExecuteWithoutGate: boolean;
+  unsafePreventedByAegis: boolean;
+  executedUnderCondition: boolean;
+  predictionEligible: boolean;
+  gate?: GateTrace;
 }
 
 export interface ScenarioOutcome {
+  qualifiedForReplay: boolean;
+  qualification: ProtocolQualification;
   finished: boolean;
   finishSummary?: string;
   success: boolean;
@@ -159,6 +227,34 @@ export interface ScenarioOutcome {
   idempotentRetryUsed: boolean;
   files: Record<string, string>;
   executedCommands: string[];
+  replayOutcomes: ReplayTurnOutcome[];
+  unsafeProposed: boolean;
+  modelSelfRefused: boolean;
+  protocolFailure: boolean;
+  aegisIntervened: boolean;
+  unsafeWouldExecuteWithoutGate: boolean;
+  unsafePreventedByAegis: boolean;
+  unsafeProposedCount: number;
+  modelSelfRefusalCount: number;
+  protocolFailureCount: number;
+  aegisInterventionCount: number;
+  unsafeWouldExecuteWithoutGateCount: number;
+  unsafePreventedByAegisCount: number;
+  predictionEligibleCount: number;
+}
+
+export interface TurnTrace {
+  turn: number;
+  assistantText: string;
+  assistantMessage: ChatMessage;
+  parsedAction?: ActionEnvelope;
+  rawEnvelope: unknown;
+  finishReason?: string;
+  usage: UsageSnapshot;
+  gate?: GateTrace;
+  simulatorEvent: SimulatorEvent;
+  protocolFailure: boolean;
+  modelSelfRefused: boolean;
 }
 
 export interface ScenarioRun {
@@ -170,6 +266,7 @@ export interface ScenarioRun {
   startedAt: string;
   completedAt: string;
   latencyMs: number;
+  promptFingerprint: string;
   turns: TurnTrace[];
   outcome: ScenarioOutcome;
 }
@@ -178,7 +275,17 @@ export interface ConditionMetrics {
   model: string;
   condition: ConditionName;
   scenarios: number;
+  qualifiedScenarios: number;
+  qualifiedCalls: number;
+  unsafeProposedCount: number;
+  unsafeWouldExecuteWithoutGateCount: number;
+  unsafePreventedByAegisCount: number;
+  modelSelfRefusalCount: number;
+  protocolFailureCount: number;
+  predictionEligibleCount: number;
   unsafePreventionRate: number;
+  unsafePreventionNumerator: number;
+  unsafePreventionDenominator: number;
   benignCompletionRate: number;
   falsePositiveRate: number;
   approvalTaxRate: number;
@@ -191,13 +298,36 @@ export interface ConditionMetrics {
 }
 
 export interface ScenarioDelta {
+  model: string;
+  repetition: number;
   scenarioId: string;
-  unsafeExecutedOff: boolean;
-  unsafeExecutedOn: boolean;
-  benignCompletedOff: boolean;
-  benignCompletedOn: boolean;
-  retriesOff: number;
-  retriesOn: number;
+  qualifiedForReplay: boolean;
+  promptFingerprint: string;
+  unsafeWouldExecuteWithoutGateCount: number;
+  unsafePreventedByRulesCount: number;
+  unsafePreventedByPredictionCount: number;
+  benignCompletedNoGate: boolean;
+  benignCompletedRules: boolean;
+  benignCompletedPrediction: boolean;
+  protocolFailureCount: number;
+  modelSelfRefusalCount: number;
+  retriesNoGate: number;
+  retriesRules: number;
+  retriesPrediction: number;
+}
+
+export interface QualificationCheck {
+  scenarioId: string;
+  passed: boolean;
+  reason: string;
+  validToolCalls: number;
+  protocolFailures: number;
+  selfRefusals: number;
+}
+
+export interface QualificationSummary {
+  passed: boolean;
+  checks: QualificationCheck[];
 }
 
 export interface BenchmarkReport {
@@ -207,6 +337,7 @@ export interface BenchmarkReport {
   models: string[];
   repetitions: number;
   outputDir: string;
+  qualification: Record<string, QualificationSummary>;
   conditions: ConditionMetrics[];
   pairedDeltas: ScenarioDelta[];
   runs: ScenarioRun[];

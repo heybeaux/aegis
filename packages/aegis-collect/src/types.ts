@@ -10,6 +10,7 @@
  */
 
 import type { GateAction, Severity } from '@heybeaux/lattice-aegis';
+import type { OutcomeErrorClass } from './classify-error.js';
 
 export type { GateAction, Severity };
 
@@ -127,6 +128,12 @@ export interface OutcomeRow {
   isError: boolean;
   /** Error string if available. */
   error?: string;
+  /**
+   * Classification of `error` when isError is true: 'tool' for a genuine tool
+   * failure, 'infra' for a host/harness/concurrency artifact. Absent when the
+   * row is not an error. Consumers should exclude 'infra' from trained labels.
+   */
+  errorClass?: OutcomeErrorClass;
   /** True when exact join on toolUseId is possible for this outcome row. */
   exactJoinEligible: boolean;
   /** OpenClaw can provide stable call ids, explicit result errors, duration, and run provenance. */
@@ -161,6 +168,21 @@ export interface DatasetRow {
   action_failed: 0 | 1 | null;
   /** How the join was made. */
   joinMethod: 'exact' | 'fuzzy' | 'none';
+  /**
+   * Error classification of the joined outcome, when it errored. 'infra' rows
+   * are joined but excluded from the trained label (labelUsable = false).
+   */
+  errorClass?: OutcomeErrorClass;
+  /**
+   * True when action_failed reflects a genuine, trainable tool outcome. False
+   * when the row is unjoined, ambiguous, or an infra artifact. Filter on this
+   * before AWM refit.
+   */
+  labelUsable: boolean;
   /** Identity of the model that generated this tool call (propagated from decision.model). */
   model?: string;
+  /** Run provenance propagated from the decision row for dataset segmentation. */
+  provider?: string;
+  resolvedRef?: string;
+  agentId?: string;
 }

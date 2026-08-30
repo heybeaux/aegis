@@ -9,6 +9,7 @@
 
 export { recordDecision } from './record.js';
 export { recordOutcome, type RecordOutcomeInput } from './record-outcome.js';
+export { classifyOutcomeError, type OutcomeErrorClass } from './classify-error.js';
 export { deriveShapeFields, countCombinators, classifyWritesVsReads, detectGit, detectSystemDir, maxSeverity } from './shapes.js';
 export type { DecisionRow, OutcomeRow, DatasetRow, RunProvenance } from './types.js';
 export { JOIN_KEY_NOTE } from './types.js';

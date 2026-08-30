@@ -13,6 +13,10 @@ export interface RecordOutcomeInput {
   agentId?: string;
   sessionKey?: string;
   runId?: string;
+  provider?: string;
+  model?: string;
+  resolvedRef?: string;
+  harnessId?: string;
   durationMs?: number;
 }
 
@@ -36,6 +40,10 @@ export function recordOutcome(input: RecordOutcomeInput): void {
       ...(input.agentId !== undefined ? { agentId: input.agentId } : {}),
       ...(input.sessionKey !== undefined ? { sessionKey: input.sessionKey } : {}),
       ...(input.runId !== undefined ? { runId: input.runId } : {}),
+      ...(input.provider !== undefined ? { provider: input.provider } : {}),
+      ...(input.model !== undefined ? { model: input.model } : {}),
+      ...(input.resolvedRef !== undefined ? { resolvedRef: input.resolvedRef } : {}),
+      ...(input.harnessId !== undefined ? { harnessId: input.harnessId } : {}),
       ...(input.durationMs !== undefined ? { durationMs: input.durationMs } : {}),
     };
     const dir = collectDir();

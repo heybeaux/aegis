@@ -37,6 +37,19 @@ export const JOIN_KEY_NOTE =
   'Join key: tool_use_id (exact) or (tool, timestamp ±5s) (fuzzy). ' +
   'Fuzzy joins may be ambiguous under parallelism; action_failed = null when ambiguous.';
 
+export interface RunProvenance {
+  source?: 'claude-code' | 'openclaw';
+  agentId?: string;
+  sessionKey?: string;
+  runId?: string;
+  provider?: string;
+  model?: string;
+  /** Fully qualified provider/model reference when the host exposes it. */
+  resolvedRef?: string;
+  /** Harness/backend responsible for the model loop. */
+  harnessId?: string;
+}
+
 /** One PreToolUse decision captured before the hook exits. */
 export interface DecisionRow {
   /** Monotonic: ISO-8601 UTC timestamp at recording time. */
@@ -74,8 +87,16 @@ export interface DecisionRow {
   newFile: boolean;
   /** P(failure) from AWM prediction if present; undefined when no predictor running. */
   pFailure?: number;
-  /** Identity of the model that generated this tool call (e.g. "VibeThinker-3B"). */
+  /** Identity of the model that generated this tool call (legacy convenience field). */
   model?: string;
+  /** Host/run provenance for per-agent, per-provider, and per-model analysis. */
+  source?: RunProvenance['source'];
+  agentId?: string;
+  sessionKey?: string;
+  runId?: string;
+  provider?: string;
+  resolvedRef?: string;
+  harnessId?: string;
   /** Optional fail-open shadow decision recorded while allowing execution. */
   shadow?: {
     enabled: true;
@@ -108,11 +129,15 @@ export interface OutcomeRow {
   error?: string;
   /** True when exact join on toolUseId is possible for this outcome row. */
   exactJoinEligible: boolean;
-  /** OpenClaw can provide stable call ids, explicit result errors, and duration. */
-  source?: 'claude-code' | 'openclaw';
+  /** OpenClaw can provide stable call ids, explicit result errors, duration, and run provenance. */
+  source?: RunProvenance['source'];
   agentId?: string;
   sessionKey?: string;
   runId?: string;
+  provider?: string;
+  model?: string;
+  resolvedRef?: string;
+  harnessId?: string;
   durationMs?: number;
   /**
    * Current observability gaps from the host hook surface.

@@ -1,4 +1,4 @@
-import { recordDecision } from '@heybeaux/aegis-collect';
+import { recordDecision, type DecisionRow, type RunProvenance } from '@heybeaux/aegis-collect';
 import type { Evaluation, ToolCall } from '@heybeaux/lattice-aegis';
 
 type RecordDecisionFn = (
@@ -6,16 +6,8 @@ type RecordDecisionFn = (
   evaluation: Evaluation,
   toolUseId?: string,
   model?: string,
-  shadow?: {
-    enabled: true;
-    action: 'allow' | 'ask' | 'deny';
-    reason: string;
-    decidedBy: string;
-    approvalId?: string;
-    predictorActionKey?: string;
-    predictorMode?: 'live' | 'fallback';
-    predictorState?: 'ok' | 'timeout' | 'error';
-  },
+  shadow?: DecisionRow['shadow'],
+  provenance?: RunProvenance,
 ) => void;
 
 export async function recordDecisionSafely(
@@ -23,9 +15,17 @@ export async function recordDecisionSafely(
   evaluation: Evaluation,
   toolUseId?: string,
   shadow?: Parameters<RecordDecisionFn>[4],
+  provenance?: RunProvenance,
 ): Promise<void> {
   try {
-    recordDecision(call, evaluation, toolUseId, undefined, shadow);
+    recordDecision(
+      call,
+      evaluation,
+      toolUseId,
+      provenance?.model,
+      shadow,
+      provenance,
+    );
   } catch {
     // Collection is strictly fail-open.
   }

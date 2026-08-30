@@ -43,6 +43,7 @@ function makeDecisionId(timestamp: string, call: ToolCall): string {
  *                      (primary join key with outcomes).
  * @param model       - Optional model identity (e.g. "VibeThinker-3B") for
  *                      multi-model benchmarking. Stored verbatim on the row.
+ * @param provenance  - Optional host/run identity for provenance-aware analysis.
  */
 export function recordDecision(
   call: ToolCall,
@@ -50,6 +51,10 @@ export function recordDecision(
   toolUseId?: string,
   model?: string,
   shadow?: DecisionRow['shadow'],
+  provenance?: Pick<
+    DecisionRow,
+    'source' | 'agentId' | 'sessionKey' | 'runId' | 'provider' | 'resolvedRef' | 'harnessId'
+  >,
 ): void {
   try {
     const dir = collectDir();
@@ -66,6 +71,13 @@ export function recordDecision(
       ...shape,
       action: evaluation.action,
       ...(model !== undefined ? { model } : {}),
+      ...(provenance?.source !== undefined ? { source: provenance.source } : {}),
+      ...(provenance?.agentId !== undefined ? { agentId: provenance.agentId } : {}),
+      ...(provenance?.sessionKey !== undefined ? { sessionKey: provenance.sessionKey } : {}),
+      ...(provenance?.runId !== undefined ? { runId: provenance.runId } : {}),
+      ...(provenance?.provider !== undefined ? { provider: provenance.provider } : {}),
+      ...(provenance?.resolvedRef !== undefined ? { resolvedRef: provenance.resolvedRef } : {}),
+      ...(provenance?.harnessId !== undefined ? { harnessId: provenance.harnessId } : {}),
       ...(shadow !== undefined ? { shadow } : {}),
     };
 

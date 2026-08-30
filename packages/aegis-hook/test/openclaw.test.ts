@@ -74,7 +74,15 @@ describe('OpenClaw adapter', () => {
           params: { command: 'git push --force origin main' },
         }),
         '',
-        { shadow: true },
+        { shadow: true, provenance: {
+          source: 'openclaw',
+          agentId: 'nori',
+          sessionKey: 'agent:nori:main',
+          runId: 'run-1',
+          provider: 'sakana',
+          model: 'fugu',
+          resolvedRef: 'sakana/fugu',
+        } },
       );
       expect(response.exitCode).toBe(0);
       const observation = JSON.parse(response.stdout) as Record<string, unknown>;
@@ -82,9 +90,21 @@ describe('OpenClaw adapter', () => {
 
       const decision = JSON.parse(readFileSync(join(home, 'decisions.jsonl'), 'utf8')) as {
         toolUseId?: string;
+        model?: string;
+        provider?: string;
+        agentId?: string;
+        runId?: string;
+        resolvedRef?: string;
         shadow?: { enabled?: boolean; action?: string };
       };
-      expect(decision.toolUseId).toBe('oc-call-1');
+      expect(decision).toMatchObject({
+        toolUseId: 'oc-call-1',
+        model: 'fugu',
+        provider: 'sakana',
+        agentId: 'nori',
+        runId: 'run-1',
+        resolvedRef: 'sakana/fugu',
+      });
       expect(decision.shadow).toMatchObject({ enabled: true, action: 'ask' });
     } finally {
       rmSync(home, { recursive: true, force: true });

@@ -1,5 +1,6 @@
 import { evaluate } from '@heybeaux/lattice-aegis';
 import type { HostAdapter, HookResponse } from './adapters.js';
+import type { RunProvenance } from '@heybeaux/aegis-collect';
 import { loadAllPacks } from './rules.js';
 import { decide } from './decide.js';
 import { approvalId } from './approval.js';
@@ -17,6 +18,7 @@ function shadowModeEnabled(): boolean {
 
 export interface RunHookOptions {
   shadow?: boolean;
+  provenance?: RunProvenance;
 }
 
 export async function runHook(
@@ -110,6 +112,7 @@ export async function runHook(
           predictorState: predictor.state,
         }
       : undefined,
+    options.provenance,
   );
 
   // Enforcement decisions update the runtime predictor. Shadow proposals do

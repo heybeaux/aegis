@@ -20,16 +20,25 @@ const PACK_FILES = ['bash.json', 'file.json', 'injection.json', 'pii.json', 'sec
 
 /** Resolve the rulepacks dir off the installed @heybeaux/lattice-aegis package. */
 function rulepackDir(): string {
+  const override = process.env['AEGIS_RULEPACK_DIR'];
+  if (override && existsSync(override)) return override;
   let dir = dirname(fileURLToPath(import.meta.url));
   for (let i = 0; i < 8; i++) {
-    const cand = join(dir, 'node_modules', '@heybeaux', 'lattice-aegis', 'rulepacks');
-    if (existsSync(cand)) return cand;
+    const pkgCand = join(dir, 'node_modules', '@heybeaux', 'lattice-aegis', 'rulepacks');
+    if (existsSync(pkgCand)) return pkgCand;
+    // Bundled/embedded consumers (e.g. an OpenClaw plugin) can ship the packs
+    // as a sibling `rulepacks/` dir next to the bundle entry instead of a full
+    // node_modules tree.
+    const siblingCand = join(dir, 'rulepacks');
+    if (existsSync(siblingCand)) return siblingCand;
     const parent = dirname(dir);
     if (parent === dir) break;
     dir = parent;
   }
   throw new Error(
-    'Could not locate @heybeaux/lattice-aegis/rulepacks from ' + import.meta.url,
+    'Could not locate @heybeaux/lattice-aegis/rulepacks from ' +
+      import.meta.url +
+      ' (set AEGIS_RULEPACK_DIR to override)',
   );
 }
 

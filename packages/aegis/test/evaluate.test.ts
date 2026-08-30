@@ -458,4 +458,132 @@ describe('evaluate — SwarmLab-derived policy gates', () => {
     expect(clean.action).toBe('allow');
     expect(clean.matches).toHaveLength(0);
   });
+
+  it('RT-12 asks when a cited fact basis was superseded by a newer supported replacement', () => {
+    const r = evaluate(
+      {
+        tool: 'ActOnRememberedFact',
+        recall: {
+          claimKind: 'exact_identifier',
+          source: 'fact_ledger',
+          exactClaim: true,
+          citationsPresent: true,
+          latestEvidence: true,
+          sourceScope: 'shared',
+          targetScope: 'shared',
+          responseMode: 'answer',
+        },
+        factLifecycle: {
+          factClass: 'deployment_target',
+          usageKind: 'deploy',
+          basisStatus: 'supported',
+          latestStatus: 'supported',
+          superseded: true,
+          replacementAvailable: true,
+          recoveryObserved: false,
+        },
+      },
+      compiled,
+    );
+    expect(r.action).toBe('ask');
+    expect(r.decidedBy).toBe('severity');
+    expect(r.matches.map((m) => m.id)).toContain(
+      'swarmlab.rt12.superseded-facts-require-lifecycle-refresh',
+    );
+    expect(r.reason).toContain('SwarmLab RT-12');
+  });
+
+  it('RT-12 asks when the latest fact state requires revalidation', () => {
+    const r = evaluate(
+      {
+        tool: 'ActOnRememberedFact',
+        recall: {
+          claimKind: 'exact_identifier',
+          source: 'fact_ledger',
+          exactClaim: true,
+          citationsPresent: true,
+          latestEvidence: true,
+          sourceScope: 'shared',
+          targetScope: 'shared',
+          responseMode: 'answer',
+        },
+        factLifecycle: {
+          factClass: 'dependency',
+          usageKind: 'approve',
+          basisStatus: 'supported',
+          latestStatus: 'needs_revalidation',
+          superseded: true,
+          replacementAvailable: false,
+          recoveryObserved: false,
+        },
+      },
+      compiled,
+    );
+    expect(r.action).toBe('ask');
+    expect(r.matches.map((m) => m.id)).toContain(
+      'swarmlab.rt12.superseded-facts-require-lifecycle-refresh',
+    );
+  });
+
+  it('RT-12 asks when a stale revocation hides a later recovery', () => {
+    const r = evaluate(
+      {
+        tool: 'ActOnRememberedFact',
+        recall: {
+          claimKind: 'exact_identifier',
+          source: 'fact_ledger',
+          exactClaim: true,
+          citationsPresent: true,
+          latestEvidence: true,
+          sourceScope: 'shared',
+          targetScope: 'shared',
+          responseMode: 'refuse',
+        },
+        factLifecycle: {
+          factClass: 'capability',
+          usageKind: 'route',
+          basisStatus: 'revoked',
+          latestStatus: 'supported',
+          superseded: true,
+          replacementAvailable: true,
+          recoveryObserved: true,
+        },
+      },
+      compiled,
+    );
+    expect(r.action).toBe('ask');
+    expect(r.matches.map((m) => m.id)).toContain(
+      'swarmlab.rt12.superseded-facts-require-lifecycle-refresh',
+    );
+  });
+
+  it('RT-12 allows a current supported fact with no superseding lifecycle evidence', () => {
+    const r = evaluate(
+      {
+        tool: 'ActOnRememberedFact',
+        recall: {
+          claimKind: 'exact_identifier',
+          source: 'fact_ledger',
+          exactClaim: true,
+          citationsPresent: true,
+          latestEvidence: true,
+          sourceScope: 'shared',
+          targetScope: 'shared',
+          responseMode: 'answer',
+        },
+        factLifecycle: {
+          factClass: 'user_preference',
+          usageKind: 'notify',
+          basisStatus: 'supported',
+          latestStatus: 'supported',
+          superseded: false,
+          replacementAvailable: false,
+          recoveryObserved: false,
+        },
+      },
+      compiled,
+    );
+    expect(r.action).toBe('allow');
+    expect(r.matches).toHaveLength(0);
+  });
 });

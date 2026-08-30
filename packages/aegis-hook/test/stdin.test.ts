@@ -169,6 +169,35 @@ describe('toToolCall', () => {
     });
   });
 
+  it('maps structured fact-lifecycle metadata for SwarmLab RT-12 gates', () => {
+    const call = toToolCall({
+      tool_name: 'ActOnRememberedFact',
+      tool_input: {
+        fact_lifecycle: {
+          fact_class: 'deployment_target',
+          usage_kind: 'deploy',
+          basis_status: 'supported',
+          latest_status: 'supported',
+          superseded: true,
+          replacement_available: true,
+          recovery_observed: false,
+        },
+      },
+    });
+    expect(call).toEqual({
+      tool: 'ActOnRememberedFact',
+      factLifecycle: {
+        factClass: 'deployment_target',
+        usageKind: 'deploy',
+        basisStatus: 'supported',
+        latestStatus: 'supported',
+        superseded: true,
+        replacementAvailable: true,
+        recoveryObserved: false,
+      },
+    });
+  });
+
   it('is defensive against malformed / empty input', () => {
     expect(toToolCall(undefined)).toEqual({ tool: '' });
     expect(toToolCall(null)).toEqual({ tool: '' });

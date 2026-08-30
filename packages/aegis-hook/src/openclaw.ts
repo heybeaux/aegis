@@ -46,6 +46,14 @@ function stringArray(value: unknown): string[] {
   return value.filter((item): item is string => typeof item === 'string');
 }
 
+function boolValue(record: Record<string, unknown>, ...keys: string[]): boolean | undefined {
+  for (const key of keys) {
+    const value = record[key];
+    if (typeof value === 'boolean') return value;
+  }
+  return undefined;
+}
+
 function normalizeToolName(name: string): string {
   switch (name.toLowerCase()) {
     case 'exec':
@@ -83,6 +91,65 @@ function pathsFor(event: OpenClawToolEvent): string[] {
   return [...new Set(candidates)];
 }
 
+function normalizeFactLifecycle(value: unknown): ToolCall['factLifecycle'] | undefined {
+  const record = asRecord(value);
+  if (Object.keys(record).length === 0) return undefined;
+
+  const factClass = stringValue(record, 'factClass', 'fact_class', 'kind');
+  const usageKind = stringValue(record, 'usageKind', 'usage_kind', 'usage');
+  const basisStatus = stringValue(record, 'basisStatus', 'basis_status', 'status');
+  const latestStatus = stringValue(
+    record,
+    'latestStatus',
+    'latest_status',
+    'currentStatus',
+    'current_status',
+  );
+
+  const normalized: NonNullable<ToolCall['factLifecycle']> = {};
+  if (
+    factClass === 'capability' ||
+    factClass === 'deployment_target' ||
+    factClass === 'user_preference' ||
+    factClass === 'dependency' ||
+    factClass === 'endpoint' ||
+    factClass === 'quota_limit'
+  ) {
+    normalized.factClass = factClass;
+  }
+  if (
+    usageKind === 'route' ||
+    usageKind === 'deploy' ||
+    usageKind === 'notify' ||
+    usageKind === 'approve' ||
+    usageKind === 'execute'
+  ) {
+    normalized.usageKind = usageKind;
+  }
+  if (
+    basisStatus === 'supported' ||
+    basisStatus === 'revoked' ||
+    basisStatus === 'needs_revalidation'
+  ) {
+    normalized.basisStatus = basisStatus;
+  }
+  if (
+    latestStatus === 'supported' ||
+    latestStatus === 'revoked' ||
+    latestStatus === 'needs_revalidation'
+  ) {
+    normalized.latestStatus = latestStatus;
+  }
+  normalized.superseded =
+    boolValue(record, 'superseded', 'isSuperseded', 'is_superseded');
+  normalized.replacementAvailable =
+    boolValue(record, 'replacementAvailable', 'replacement_available', 'hasReplacement');
+  normalized.recoveryObserved =
+    boolValue(record, 'recoveryObserved', 'recovery_observed', 'recovered');
+
+  return Object.values(normalized).some((value) => value !== undefined) ? normalized : undefined;
+}
+
 export function openClawToolCall(event: OpenClawToolEvent): ToolCall {
   const params = event.params;
   const tool = normalizeToolName(event.toolName);
@@ -105,6 +172,10 @@ export function openClawToolCall(event: OpenClawToolEvent): ToolCall {
   const snakeBoundary = asRecord(params['content_boundary']);
   if (call.contentBoundary === undefined && Object.keys(snakeBoundary).length > 0) {
     call.contentBoundary = snakeBoundary;
+  }
+  const factLifecycle = normalizeFactLifecycle(params['factLifecycle'] ?? params['fact_lifecycle']);
+  if (factLifecycle !== undefined) {
+    call.factLifecycle = factLifecycle;
   }
   return call;
 }

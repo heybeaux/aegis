@@ -174,6 +174,29 @@ export interface ContentBoundaryMetadata {
   proposedAction?: 'answer' | 'mark_done' | 'exfiltrate_secret';
 }
 
+export interface FactLifecycleMetadata {
+  /** What class of fact the caller is using. */
+  factClass?:
+    | 'capability'
+    | 'deployment_target'
+    | 'user_preference'
+    | 'dependency'
+    | 'endpoint'
+    | 'quota_limit';
+  /** What kind of operation relies on that fact. */
+  usageKind?: 'route' | 'deploy' | 'notify' | 'approve' | 'execute';
+  /** Lifecycle status of the specific fact basis the caller is leaning on. */
+  basisStatus?: 'supported' | 'revoked' | 'needs_revalidation';
+  /** Latest lifecycle status for that fact family after all newer corrections. */
+  latestStatus?: 'supported' | 'revoked' | 'needs_revalidation';
+  /** True when newer lifecycle evidence superseded the fact basis in hand. */
+  superseded?: boolean;
+  /** True when a corrected replacement value is already available. */
+  replacementAvailable?: boolean;
+  /** True when a later support row re-established a once-revoked fact. */
+  recoveryObserved?: boolean;
+}
+
 export interface ToolCall {
   /** Claude Code / OpenClaw tool name, e.g. "Bash", "Write", "Edit", "Read". */
   tool: string;
@@ -195,6 +218,8 @@ export interface ToolCall {
   recall?: RecallMetadata;
   /** Optional structured untrusted-content boundary metadata from SwarmLab RT-11. */
   contentBoundary?: ContentBoundaryMetadata;
+  /** Optional structured fact-lifecycle metadata from SwarmLab RT-12. */
+  factLifecycle?: FactLifecycleMetadata;
 }
 
 /** One rule that fired during evaluation. */

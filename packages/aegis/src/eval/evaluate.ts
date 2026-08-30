@@ -198,10 +198,40 @@ function swarmlabPolicyHits(call: ToolCall): RuleHit[] {
     }
   }
 
+  const f = call.factLifecycle;
+  if (f !== undefined) {
+    const latestRevoked = f.latestStatus === 'revoked';
+    const latestNeedsRevalidation = f.latestStatus === 'needs_revalidation';
+    const lifecycleSuperseded = f.superseded === true;
+    const replacementAvailable = f.replacementAvailable === true;
+    const recoveryObserved = f.recoveryObserved === true;
+    if (
+      lifecycleSuperseded &&
+      (latestRevoked || latestNeedsRevalidation || replacementAvailable || recoveryObserved)
+    ) {
+      hits.push({
+        id: 'swarmlab.rt12.superseded-facts-require-lifecycle-refresh',
+        severity: 'medium',
+        category: 'swarmlab',
+        target: 'argv',
+      });
+    } else if (latestRevoked || latestNeedsRevalidation) {
+      hits.push({
+        id: 'swarmlab.rt12.superseded-facts-require-lifecycle-refresh',
+        severity: 'medium',
+        category: 'swarmlab',
+        target: 'argv',
+      });
+    }
+  }
+
   return hits;
 }
 
 function swarmlabReason(id: string): string {
+  if (id.includes('rt12')) {
+    return 'SwarmLab RT-12: superseded, revoked, or revalidation-needed fact lifecycles require a fresh lifecycle check before routing, deployment, approval, or execution relies on them';
+  }
   if (id.includes('rt11.untrusted-boundaries')) {
     return 'SwarmLab RT-11: untrusted authority-bearing content requires structured extraction before it can redirect the task';
   }

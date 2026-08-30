@@ -28,6 +28,13 @@ export {
   type PredictorResult,
 } from './predictor.js';
 export { runHook } from './runtime.js';
+export {
+  createOpenClawAdapter,
+  openClawObservation,
+  openClawToolCall,
+  type OpenClawToolEvent,
+  type OpenClawShadowObservation,
+} from './openclaw.js';
 export { recordDecisionSafely } from './collect.js';
 export {
   approvalId,

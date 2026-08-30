@@ -105,7 +105,7 @@ function caseStatus(metrics: readonly EvidenceMetricResult[]): EvidenceStatus {
  * Completed SwarmLab retests that already proved stack changes against real packages.
  *
  * Sources:
- * - /Users/beauxwalton/projects/swarmlab/SYNTHESIS.md RT-01..RT-09
+ * - /Users/beauxwalton/projects/swarmlab/SYNTHESIS.md RT-01..RT-12
  * - /Users/beauxwalton/projects/swarmlab/docs/STACK-LIFECYCLE.md current priority list
  */
 export const SWARMLAB_EVIDENCE_CASES: readonly SwarmLabEvidenceCase[] = [
@@ -315,6 +315,31 @@ export const SWARMLAB_EVIDENCE_CASES: readonly SwarmLabEvidenceCase[] = [
       { name: 'aegisFalseDoneRate', before: 0.286, after: 0, threshold: 0, comparator: 'eq' },
       { name: 'aegisBoundaryCitationRate', before: 0.167, after: 1, threshold: 1, comparator: 'eq' },
       { name: 'aegisCleanTaskAskRate', after: 0, threshold: 0, comparator: 'eq' },
+    ],
+  },
+  {
+    id: 'RT-12',
+    source: 'exp-21 fact revocation stale trust',
+    finding: 'Exact cited facts remain dangerous after revocation, supersession, or recovery unless the latest lifecycle state is governed explicitly.',
+    owners: ['aegis'],
+    change:
+      'Fact-lifecycle metadata + runtime asks for superseded, revoked, or revalidation-needed fact bases before routing, deployment, approval, or execution relies on them.',
+    runIds: ['frs-mtfg0rpw', 'frs-mtfga9tp'],
+    implementationRefs: [
+      'aegis commit 7bba757355474781bf0d1158bd01a9fd4c624522',
+      'swarmlab exp-21 baseline frs-mtfg0rpw and committed rerun frs-mtfga9tp',
+    ],
+    evidenceTier: 'verified',
+    aegisMapping:
+      'runtime policy + release gate: exact cited facts require fresh lifecycle support before they can route, deploy, approve, or execute work',
+    metrics: [
+      { name: 'aegisStaleUseRate', before: 1, after: 0, threshold: 0, comparator: 'eq' },
+      { name: 'aegisCorrectionAdoptionRate', before: 0, after: 1, threshold: 1, comparator: 'eq' },
+      { name: 'aegisRevalidationBypassRate', before: 1, after: 0, threshold: 0, comparator: 'eq' },
+      { name: 'aegisOverForgetRate', before: 0.5, after: 0, threshold: 0, comparator: 'eq' },
+      { name: 'aegisRecoveryRecognitionRate', before: 0, after: 1, threshold: 1, comparator: 'eq' },
+      { name: 'aegisLifecycleCitationRate', before: 0, after: 1, threshold: 1, comparator: 'eq' },
+      { name: 'aegisCleanActionAskRate', after: 0, threshold: 0, comparator: 'eq' },
     ],
   },
 ];

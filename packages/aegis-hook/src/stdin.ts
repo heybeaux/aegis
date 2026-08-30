@@ -171,6 +171,39 @@ function proposedAction(
     : undefined;
 }
 
+function factClass(
+  value: unknown,
+): NonNullable<ToolCall['factLifecycle']>['factClass'] | undefined {
+  return value === 'capability' ||
+    value === 'deployment_target' ||
+    value === 'user_preference' ||
+    value === 'dependency' ||
+    value === 'endpoint' ||
+    value === 'quota_limit'
+    ? value
+    : undefined;
+}
+
+function usageKind(
+  value: unknown,
+): NonNullable<ToolCall['factLifecycle']>['usageKind'] | undefined {
+  return value === 'route' ||
+    value === 'deploy' ||
+    value === 'notify' ||
+    value === 'approve' ||
+    value === 'execute'
+    ? value
+    : undefined;
+}
+
+function factStatus(
+  value: unknown,
+): NonNullable<ToolCall['factLifecycle']>['basisStatus'] | undefined {
+  return value === 'supported' || value === 'revoked' || value === 'needs_revalidation'
+    ? value
+    : undefined;
+}
+
 function instructionSignals(
   value: unknown,
 ): NonNullable<ToolCall['contentBoundary']>['instructionSignals'] | undefined {
@@ -337,6 +370,43 @@ function toContentBoundary(
   return Object.values(contentBoundary).some((v) => v !== undefined) ? contentBoundary : undefined;
 }
 
+function toFactLifecycle(
+  root: Record<string, unknown>,
+  input: Record<string, unknown>,
+): ToolCall['factLifecycle'] | undefined {
+  const raw = asRecord(root.factLifecycle ?? root.fact_lifecycle);
+  const inputRaw = asRecord(input.factLifecycle ?? input.fact_lifecycle);
+  const source = Object.keys(inputRaw).length > 0 ? inputRaw : raw;
+  if (Object.keys(source).length === 0) return undefined;
+
+  const factLifecycle: NonNullable<ToolCall['factLifecycle']> = {};
+  factLifecycle.factClass =
+    factClass(source.factClass) ?? factClass(source.fact_class) ?? factClass(source.kind);
+  factLifecycle.usageKind =
+    usageKind(source.usageKind) ?? usageKind(source.usage_kind) ?? usageKind(source.usage);
+  factLifecycle.basisStatus =
+    factStatus(source.basisStatus) ??
+    factStatus(source.basis_status) ??
+    factStatus(source.status);
+  factLifecycle.latestStatus =
+    factStatus(source.latestStatus) ??
+    factStatus(source.latest_status) ??
+    factStatus(source.currentStatus) ??
+    factStatus(source.current_status);
+  factLifecycle.superseded =
+    bool(source, 'superseded') ?? bool(source, 'isSuperseded') ?? bool(source, 'is_superseded');
+  factLifecycle.replacementAvailable =
+    bool(source, 'replacementAvailable') ??
+    bool(source, 'replacement_available') ??
+    bool(source, 'hasReplacement');
+  factLifecycle.recoveryObserved =
+    bool(source, 'recoveryObserved') ??
+    bool(source, 'recovery_observed') ??
+    bool(source, 'recovered');
+
+  return Object.values(factLifecycle).some((v) => v !== undefined) ? factLifecycle : undefined;
+}
+
 /**
  * Pure mapping from a raw Claude Code hook payload to an Aegis ToolCall.
  *
@@ -345,6 +415,8 @@ function toContentBoundary(
  * - `tool_input.content` (Write) or `new_string` (Edit) -> `content`.
  * - `tool_input.file_path` (Write/Edit/Read) -> `paths: [...]`.
  * - `handoff` or `tool_input.handoff` -> structured handoff metadata for SwarmLab-derived gates.
+ * - `verification` / `completion` / `recall` / `content_boundary` / `fact_lifecycle` are parsed
+ *   into the matching structured metadata surfaces when present.
  *
  * No throws — safe to unit test in isolation.
  */
@@ -382,6 +454,8 @@ export function toToolCall(hookInput: unknown): ToolCall {
   if (recall !== undefined) call.recall = recall;
   const contentBoundary = toContentBoundary(root, input);
   if (contentBoundary !== undefined) call.contentBoundary = contentBoundary;
+  const factLifecycle = toFactLifecycle(root, input);
+  if (factLifecycle !== undefined) call.factLifecycle = factLifecycle;
   return call;
 }
 

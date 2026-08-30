@@ -275,6 +275,64 @@ describe('end-to-end hook pipeline', () => {
     expect(r.action).toBe('allow');
   });
 
+  it('ASK: RT-12 superseded cited facts pause for approval', () => {
+    const r = runHook({
+      tool_name: 'ActOnRememberedFact',
+      tool_input: {
+        fact_lifecycle: {
+          fact_class: 'deployment_target',
+          usage_kind: 'deploy',
+          basis_status: 'supported',
+          latest_status: 'supported',
+          superseded: true,
+          replacement_available: true,
+          recovery_observed: false,
+        },
+        recall: {
+          claim_kind: 'exact_identifier',
+          source: 'fact_ledger',
+          exact_claim: true,
+          citations_present: true,
+          latest_evidence: true,
+          source_scope: 'shared',
+          target_scope: 'shared',
+          response_mode: 'answer',
+        },
+      },
+    });
+    expect(r.exitCode).toBe(2);
+    expect(r.action).toBe('ask');
+  });
+
+  it('ALLOW: RT-12 current supported facts proceed without approval', () => {
+    const r = runHook({
+      tool_name: 'ActOnRememberedFact',
+      tool_input: {
+        fact_lifecycle: {
+          fact_class: 'user_preference',
+          usage_kind: 'notify',
+          basis_status: 'supported',
+          latest_status: 'supported',
+          superseded: false,
+          replacement_available: false,
+          recovery_observed: false,
+        },
+        recall: {
+          claim_kind: 'exact_identifier',
+          source: 'fact_ledger',
+          exact_claim: true,
+          citations_present: true,
+          latest_evidence: true,
+          source_scope: 'shared',
+          target_scope: 'shared',
+          response_mode: 'answer',
+        },
+      },
+    });
+    expect(r.exitCode).toBe(0);
+    expect(r.action).toBe('allow');
+  });
+
   it('allows a benign Bash command (exit 0)', () => {
     const r = runHook({ tool_name: 'Bash', tool_input: { command: 'ls' } });
     expect(r.exitCode).toBe(0);

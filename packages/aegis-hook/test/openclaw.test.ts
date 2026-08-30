@@ -32,6 +32,34 @@ describe('OpenClaw adapter', () => {
         derivedPaths: ['/tmp/a.txt'],
       }),
     ).toEqual({ tool: 'Edit', content: 'hello', paths: ['/tmp/a.txt'] });
+
+    expect(
+      openClawToolCall({
+        toolName: 'task',
+        params: {
+          fact_lifecycle: {
+            fact_class: 'deployment_target',
+            usage_kind: 'deploy',
+            basis_status: 'supported',
+            latest_status: 'supported',
+            superseded: true,
+            replacement_available: true,
+            recovery_observed: false,
+          },
+        },
+      }),
+    ).toEqual({
+      tool: 'Delegate',
+      factLifecycle: {
+        factClass: 'deployment_target',
+        usageKind: 'deploy',
+        basisStatus: 'supported',
+        latestStatus: 'supported',
+        superseded: true,
+        replacementAvailable: true,
+        recoveryObserved: false,
+      },
+    });
   });
 
   it('evaluates in fail-open shadow mode and records an exact decision join key', async () => {

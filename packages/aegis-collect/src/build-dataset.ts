@@ -27,6 +27,7 @@ import { existsSync, readFileSync, writeFileSync } from 'node:fs';
 import { homedir } from 'node:os';
 import { join } from 'node:path';
 import type { DatasetRow, DecisionRow, OutcomeRow } from './types.js';
+import { classifyOutcomeError, type OutcomeErrorClass } from './classify-error.js';
 
 function collectDir(): string {
   return process.env['AEGIS_COLLECT_DIR'] ?? join(homedir(), '.aegis');
@@ -85,6 +86,7 @@ function buildDataset(): void {
     let action_failed: 0 | 1 | null = null;
     let joinMethod: DatasetRow['joinMethod'] = 'none';
     let outcomeTimestamp: string | undefined;
+    let matched: OutcomeRow | undefined;
 
     // 1. Try exact join on toolUseId.
     if (decision.toolUseId) {
@@ -94,6 +96,7 @@ function buildDataset(): void {
         action_failed = m.isError ? 1 : 0;
         joinMethod = 'exact';
         outcomeTimestamp = m.timestamp;
+        matched = m;
       } else if (matches.length > 1) {
         // Multiple outcomes for same toolUseId — ambiguous, null.
         action_failed = null;
@@ -114,6 +117,7 @@ function buildDataset(): void {
         action_failed = m.isError ? 1 : 0;
         joinMethod = 'fuzzy';
         outcomeTimestamp = m.timestamp;
+        matched = m;
       } else if (candidates.length > 1) {
         // Ambiguous fuzzy match — null (truth-above-all: never guess).
         action_failed = null;
@@ -122,13 +126,40 @@ function buildDataset(): void {
       // candidates.length === 0: no match, action_failed stays null.
     }
 
+    // Classify the joined outcome's error. Prefer the recorded errorClass;
+    // fall back to classifying the error string so historical rows (written
+    // before errorClass existed) are filtered too.
+    let errorClass: OutcomeErrorClass | undefined;
+    if (matched?.isError) {
+      errorClass = matched.errorClass ?? classifyOutcomeError(true, matched.error);
+    }
+
+    // Infra artifacts are joined but NOT a usable training label: the tool
+    // call failed for host/concurrency reasons unrelated to tool danger.
+    // Truth-above-all: exclude from the label rather than relabel as success.
+    if (errorClass === 'infra') {
+      action_failed = null;
+    }
+
+    const labelUsable = action_failed !== null;
+
+    const provenanceModel = decision.model ?? matched?.model;
+    const provenanceProvider = decision.provider ?? matched?.provider;
+    const provenanceRef = decision.resolvedRef ?? matched?.resolvedRef;
+    const provenanceAgent = decision.agentId ?? matched?.agentId;
+
     const row: DatasetRow = {
       decisionId: decision.decisionId,
       ...(outcomeTimestamp !== undefined ? { outcomeTimestamp } : {}),
       decision,
       action_failed,
       joinMethod,
-      ...(decision.model !== undefined ? { model: decision.model } : {}),
+      ...(errorClass !== undefined ? { errorClass } : {}),
+      labelUsable,
+      ...(provenanceModel !== undefined ? { model: provenanceModel } : {}),
+      ...(provenanceProvider !== undefined ? { provider: provenanceProvider } : {}),
+      ...(provenanceRef !== undefined ? { resolvedRef: provenanceRef } : {}),
+      ...(provenanceAgent !== undefined ? { agentId: provenanceAgent } : {}),
     };
 
     datasetRows.push(row);
@@ -140,15 +171,21 @@ function buildDataset(): void {
   const exact = datasetRows.filter((r) => r.joinMethod === 'exact').length;
   const fuzzy = datasetRows.filter((r) => r.joinMethod === 'fuzzy').length;
   const none = datasetRows.filter((r) => r.joinMethod === 'none').length;
-  const labeled = datasetRows.filter((r) => r.action_failed !== null).length;
+  const usable = datasetRows.filter((r) => r.labelUsable).length;
+  const infra = datasetRows.filter((r) => r.errorClass === 'infra').length;
+  const toolFail = datasetRows.filter((r) => r.action_failed === 1).length;
+  const withModel = datasetRows.filter((r) => r.resolvedRef !== undefined).length;
 
   process.stdout.write(
     `[aegis-collect] build-dataset complete\n` +
-      `  decisions:  ${decisions.length}\n` +
-      `  outcomes:   ${outcomes.length}\n` +
-      `  joined:     ${labeled} (exact=${exact}, fuzzy=${fuzzy})\n` +
-      `  unjoinable: ${none} (action_failed=null)\n` +
-      `  output:     ${datasetPath}\n`,
+      `  decisions:     ${decisions.length}\n` +
+      `  outcomes:      ${outcomes.length}\n` +
+      `  joined:        ${exact + fuzzy} (exact=${exact}, fuzzy=${fuzzy})\n` +
+      `  usable label:  ${usable} (tool-failures=${toolFail})\n` +
+      `  infra-excluded:${infra} (joined but not trainable)\n` +
+      `  unjoinable:    ${none} (action_failed=null)\n` +
+      `  with model:    ${withModel}\n` +
+      `  output:        ${datasetPath}\n`,
   );
 }
 

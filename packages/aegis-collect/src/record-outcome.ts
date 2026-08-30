@@ -2,6 +2,7 @@ import { appendFileSync, mkdirSync } from 'node:fs';
 import { homedir } from 'node:os';
 import { join } from 'node:path';
 import type { OutcomeRow } from './types.js';
+import { classifyOutcomeError } from './classify-error.js';
 
 export interface RecordOutcomeInput {
   tool: string;
@@ -27,6 +28,7 @@ function collectDir(): string {
 /** Append one post-execution observation. Collection is always fail-open. */
 export function recordOutcome(input: RecordOutcomeInput): void {
   try {
+    const errorClass = classifyOutcomeError(input.isError, input.error);
     const row: OutcomeRow = {
       timestamp: new Date().toISOString(),
       tool: input.tool,
@@ -34,6 +36,7 @@ export function recordOutcome(input: RecordOutcomeInput): void {
       ...(input.exitCode !== undefined ? { exitCode: input.exitCode } : {}),
       isError: input.isError,
       ...(input.error !== undefined ? { error: input.error } : {}),
+      ...(errorClass !== undefined ? { errorClass } : {}),
       exactJoinEligible: input.toolUseId !== undefined,
       observationGaps: ['rollback_unobserved', 'correction_unobserved', 'approval_outcome_unobserved'],
       ...(input.source !== undefined ? { source: input.source } : {}),

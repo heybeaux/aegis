@@ -15,7 +15,15 @@ function shadowModeEnabled(): boolean {
   return process.env['AEGIS_SHADOW_MODE'] === '1';
 }
 
-export async function runHook(adapter: HostAdapter, input: string): Promise<HookResponse> {
+export interface RunHookOptions {
+  shadow?: boolean;
+}
+
+export async function runHook(
+  adapter: HostAdapter,
+  input: string,
+  options: RunHookOptions = {},
+): Promise<HookResponse> {
   const request = adapter.parse(input);
   if (!request.valid || request.call === undefined) {
     writeTelemetry({
@@ -60,7 +68,7 @@ export async function runHook(adapter: HostAdapter, input: string): Promise<Hook
           ? 'Predictor unavailable in degraded mode.'
           : undefined
       : undefined;
-  const shadowEnabled = shadowModeEnabled();
+  const shadowEnabled = options.shadow ?? shadowModeEnabled();
   // Shadow mode must be observation-only. In particular, do not call decide()
   // for an ask: that path persists a pending one-shot approval and would make a
   // later enforcement retry consume shadow-created state.

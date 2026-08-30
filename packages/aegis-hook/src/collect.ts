@@ -1,3 +1,4 @@
+import { recordDecision } from '@heybeaux/aegis-collect';
 import type { Evaluation, ToolCall } from '@heybeaux/lattice-aegis';
 
 type RecordDecisionFn = (
@@ -17,33 +18,14 @@ type RecordDecisionFn = (
   },
 ) => void;
 
-const dynamicImport = new Function(
-  'specifier',
-  'return import(specifier)',
-) as (specifier: string) => Promise<unknown>;
-
-let cached: RecordDecisionFn | null | undefined;
-
 export async function recordDecisionSafely(
   call: ToolCall,
   evaluation: Evaluation,
   toolUseId?: string,
   shadow?: Parameters<RecordDecisionFn>[4],
 ): Promise<void> {
-  if (cached === undefined) {
-    try {
-      const mod = (await dynamicImport('@heybeaux/aegis-collect')) as {
-        recordDecision?: RecordDecisionFn;
-      };
-      cached = typeof mod.recordDecision === 'function' ? mod.recordDecision : null;
-    } catch {
-      cached = null;
-    }
-  }
-
-  if (cached === null) return;
   try {
-    cached(call, evaluation, toolUseId, undefined, shadow);
+    recordDecision(call, evaluation, toolUseId, undefined, shadow);
   } catch {
     // Collection is strictly fail-open.
   }

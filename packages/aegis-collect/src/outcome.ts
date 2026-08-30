@@ -27,14 +27,8 @@
  * (tool, timestamp ±5 s). See JOIN_KEY_NOTE in types.ts.
  */
 
-import { readFileSync, appendFileSync, mkdirSync } from 'node:fs';
-import { homedir } from 'node:os';
-import { join } from 'node:path';
-import type { OutcomeRow } from './types.js';
-
-function collectDir(): string {
-  return process.env['AEGIS_COLLECT_DIR'] ?? join(homedir(), '.aegis');
-}
+import { readFileSync } from 'node:fs';
+import { recordOutcome } from './record-outcome.js';
 
 function asRecord(v: unknown): Record<string, unknown> {
   return v !== null && typeof v === 'object' && !Array.isArray(v)
@@ -75,19 +69,13 @@ function runOutcome(): void {
     // Claude Code does not expose raw exit codes in hook payloads.
     // exitCode is intentionally omitted (undefined) — do not fabricate.
 
-    const row: OutcomeRow = {
-      timestamp: new Date().toISOString(),
+    recordOutcome({
       tool,
       ...(toolUseId !== undefined ? { toolUseId } : {}),
       isError,
       ...(error !== undefined ? { error } : {}),
-      exactJoinEligible: toolUseId !== undefined,
-      observationGaps: ['rollback_unobserved', 'correction_unobserved', 'approval_outcome_unobserved'],
-    };
-
-    const dir = collectDir();
-    mkdirSync(dir, { recursive: true });
-    appendFileSync(join(dir, 'outcomes.jsonl'), JSON.stringify(row) + '\n', 'utf8');
+      source: 'claude-code',
+    });
   } catch {
     // Fail open.
   }

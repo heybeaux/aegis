@@ -108,8 +108,14 @@ export interface OutcomeRow {
   error?: string;
   /** True when exact join on toolUseId is possible for this outcome row. */
   exactJoinEligible: boolean;
+  /** OpenClaw can provide stable call ids, explicit result errors, and duration. */
+  source?: 'claude-code' | 'openclaw';
+  agentId?: string;
+  sessionKey?: string;
+  runId?: string;
+  durationMs?: number;
   /**
-   * Current observability gaps from Claude's hook surface.
+   * Current observability gaps from the host hook surface.
    * We do not currently observe rollback, correction, or final approval outcome receipts here.
    */
   observationGaps: Array<'rollback_unobserved' | 'correction_unobserved' | 'approval_outcome_unobserved'>;

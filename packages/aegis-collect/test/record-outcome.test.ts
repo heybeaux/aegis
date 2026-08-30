@@ -22,6 +22,10 @@ describe('recordOutcome', () => {
         agentId: 'nori',
         sessionKey: 'agent:nori:main',
         runId: 'run-1',
+        provider: 'openai-codex',
+        model: 'gpt-5.4',
+        resolvedRef: 'openai-codex/gpt-5.4',
+        harnessId: 'codex',
         durationMs: 42,
       });
       expect(JSON.parse(readFileSync(join(dir, 'outcomes.jsonl'), 'utf8'))).toMatchObject({
@@ -33,6 +37,10 @@ describe('recordOutcome', () => {
         agentId: 'nori',
         sessionKey: 'agent:nori:main',
         runId: 'run-1',
+        provider: 'openai-codex',
+        model: 'gpt-5.4',
+        resolvedRef: 'openai-codex/gpt-5.4',
+        harnessId: 'codex',
         durationMs: 42,
       });
     } finally {

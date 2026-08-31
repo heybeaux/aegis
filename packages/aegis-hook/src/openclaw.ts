@@ -150,6 +150,55 @@ function normalizeFactLifecycle(value: unknown): ToolCall['factLifecycle'] | und
   return Object.values(normalized).some((value) => value !== undefined) ? normalized : undefined;
 }
 
+function normalizeCoordination(value: unknown): ToolCall['coordination'] | undefined {
+  const record = asRecord(value);
+  if (Object.keys(record).length === 0) return undefined;
+
+  const operation = stringValue(record, 'operation', 'kind');
+  const branchFreshness = stringValue(record, 'branchFreshness', 'branch_freshness', 'freshness');
+  const overlapClass = stringValue(record, 'overlapClass', 'overlap_class', 'overlap');
+  const verificationCoverage = stringValue(
+    record,
+    'verificationCoverage',
+    'verification_coverage',
+    'coverage',
+  );
+
+  const normalized: NonNullable<ToolCall['coordination']> = {};
+  if (operation === 'merge') normalized.operation = operation;
+  if (branchFreshness === 'current' || branchFreshness === 'stale') {
+    normalized.branchFreshness = branchFreshness;
+  }
+  if (
+    overlapClass === 'none' ||
+    overlapClass === 'text_conflict' ||
+    overlapClass === 'api_drift' ||
+    overlapClass === 'duplicate_intent' ||
+    overlapClass === 'shared_invariant'
+  ) {
+    normalized.overlapClass = overlapClass;
+  }
+  normalized.fileLockPresent =
+    boolValue(record, 'fileLockPresent', 'file_lock_present', 'fileLock');
+  normalized.taskLeasePresent =
+    boolValue(record, 'taskLeasePresent', 'task_lease_present', 'taskLease');
+  normalized.intentLedgerPresent =
+    boolValue(record, 'intentLedgerPresent', 'intent_ledger_present', 'intentLedger');
+  normalized.mergeQueuePresent =
+    boolValue(record, 'mergeQueuePresent', 'merge_queue_present', 'mergeQueue');
+  normalized.semanticReviewPresent =
+    boolValue(record, 'semanticReviewPresent', 'semantic_review_present', 'semanticReview');
+  if (
+    verificationCoverage === 'none' ||
+    verificationCoverage === 'visible' ||
+    verificationCoverage === 'semantic'
+  ) {
+    normalized.verificationCoverage = verificationCoverage;
+  }
+
+  return Object.values(normalized).some((value) => value !== undefined) ? normalized : undefined;
+}
+
 export function openClawToolCall(event: OpenClawToolEvent): ToolCall {
   const params = event.params;
   const tool = normalizeToolName(event.toolName);
@@ -176,6 +225,10 @@ export function openClawToolCall(event: OpenClawToolEvent): ToolCall {
   const factLifecycle = normalizeFactLifecycle(params['factLifecycle'] ?? params['fact_lifecycle']);
   if (factLifecycle !== undefined) {
     call.factLifecycle = factLifecycle;
+  }
+  const coordination = normalizeCoordination(params['coordination']);
+  if (coordination !== undefined) {
+    call.coordination = coordination;
   }
   return call;
 }

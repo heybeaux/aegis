@@ -238,6 +238,48 @@ describe('end-to-end hook pipeline', () => {
     expect(r.action).toBe('allow');
   });
 
+  it('ASK: RT-13 stale API-drift merges without a queue pause for approval', () => {
+    const r = runHook({
+      tool_name: 'MergeBranch',
+      tool_input: {
+        coordination: {
+          operation: 'merge',
+          branch_freshness: 'stale',
+          overlap_class: 'api_drift',
+          file_lock_present: false,
+          task_lease_present: false,
+          intent_ledger_present: false,
+          merge_queue_present: false,
+          semantic_review_present: false,
+          verification_coverage: 'visible',
+        },
+      },
+    });
+    expect(r.exitCode).toBe(2);
+    expect(r.action).toBe('ask');
+  });
+
+  it('ALLOW: RT-13 semantically reviewed shared-invariant merges proceed without approval', () => {
+    const r = runHook({
+      tool_name: 'MergeBranch',
+      tool_input: {
+        coordination: {
+          operation: 'merge',
+          branch_freshness: 'stale',
+          overlap_class: 'shared_invariant',
+          file_lock_present: false,
+          task_lease_present: false,
+          intent_ledger_present: true,
+          merge_queue_present: true,
+          semantic_review_present: true,
+          verification_coverage: 'semantic',
+        },
+      },
+    });
+    expect(r.exitCode).toBe(0);
+    expect(r.action).toBe('allow');
+  });
+
   it('ASK: RT-11 raw untrusted authority-spoofed content pauses for approval', () => {
     const r = runHook({
       tool_name: 'AnswerFromUntrustedContent',

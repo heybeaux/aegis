@@ -198,6 +198,39 @@ describe('toToolCall', () => {
     });
   });
 
+  it('maps structured coordination metadata for SwarmLab RT-13 gates', () => {
+    const call = toToolCall({
+      tool_name: 'MergeBranch',
+      tool_input: {
+        coordination: {
+          operation: 'merge',
+          branch_freshness: 'stale',
+          overlap_class: 'shared_invariant',
+          file_lock_present: false,
+          task_lease_present: false,
+          intent_ledger_present: true,
+          merge_queue_present: true,
+          semantic_review_present: true,
+          verification_coverage: 'semantic',
+        },
+      },
+    });
+    expect(call).toEqual({
+      tool: 'MergeBranch',
+      coordination: {
+        operation: 'merge',
+        branchFreshness: 'stale',
+        overlapClass: 'shared_invariant',
+        fileLockPresent: false,
+        taskLeasePresent: false,
+        intentLedgerPresent: true,
+        mergeQueuePresent: true,
+        semanticReviewPresent: true,
+        verificationCoverage: 'semantic',
+      },
+    });
+  });
+
   it('is defensive against malformed / empty input', () => {
     expect(toToolCall(undefined)).toEqual({ tool: '' });
     expect(toToolCall(null)).toEqual({ tool: '' });

@@ -146,6 +146,8 @@ export function actionKeyFor(call: ToolCall): string {
     completion: call.completion,
     recall: call.recall,
     contentBoundary: call.contentBoundary,
+    factLifecycle: call.factLifecycle,
+    coordination: call.coordination,
   };
   return createHash('sha256').update(stable(payload)).digest('hex').slice(0, 24);
 }

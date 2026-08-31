@@ -197,6 +197,32 @@ export interface FactLifecycleMetadata {
   recoveryObserved?: boolean;
 }
 
+export interface CoordinationMetadata {
+  /** What coordination operation the caller is about to perform. */
+  operation?: 'merge';
+  /** Whether the branch proposal is current or stale against main. */
+  branchFreshness?: 'current' | 'stale';
+  /** What class of overlap/race is present. */
+  overlapClass?:
+    | 'none'
+    | 'text_conflict'
+    | 'api_drift'
+    | 'duplicate_intent'
+    | 'shared_invariant';
+  /** Whether a file lock already serialized overlapping writes. */
+  fileLockPresent?: boolean;
+  /** Whether a task lease already guards this intent. */
+  taskLeasePresent?: boolean;
+  /** Whether an intent ledger exists for dedupe/invariant declaration. */
+  intentLedgerPresent?: boolean;
+  /** Whether the merge lands through a queue after refresh. */
+  mergeQueuePresent?: boolean;
+  /** Whether a semantic reviewer checked the overlap before merge. */
+  semanticReviewPresent?: boolean;
+  /** How strong the post-merge verification is for the risky overlap. */
+  verificationCoverage?: 'none' | 'visible' | 'semantic';
+}
+
 export interface ToolCall {
   /** Claude Code / OpenClaw tool name, e.g. "Bash", "Write", "Edit", "Read". */
   tool: string;
@@ -220,6 +246,8 @@ export interface ToolCall {
   contentBoundary?: ContentBoundaryMetadata;
   /** Optional structured fact-lifecycle metadata from SwarmLab RT-12. */
   factLifecycle?: FactLifecycleMetadata;
+  /** Optional structured coordination metadata from SwarmLab RT-13. */
+  coordination?: CoordinationMetadata;
 }
 
 /** One rule that fired during evaluation. */

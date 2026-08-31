@@ -225,10 +225,47 @@ function swarmlabPolicyHits(call: ToolCall): RuleHit[] {
     }
   }
 
+  const m = call.coordination;
+  if (m !== undefined) {
+    const missingTextCoordination =
+      m.overlapClass === 'text_conflict' &&
+      m.fileLockPresent !== true &&
+      m.mergeQueuePresent !== true;
+    const missingDuplicateCoordination =
+      m.overlapClass === 'duplicate_intent' &&
+      m.taskLeasePresent !== true &&
+      m.intentLedgerPresent !== true &&
+      m.semanticReviewPresent !== true;
+    const missingApiDriftCoordination =
+      m.overlapClass === 'api_drift' &&
+      m.branchFreshness === 'stale' &&
+      m.mergeQueuePresent !== true;
+    const missingInvariantCoordination =
+      m.overlapClass === 'shared_invariant' &&
+      m.semanticReviewPresent !== true &&
+      m.verificationCoverage !== 'semantic';
+    if (
+      missingTextCoordination ||
+      missingDuplicateCoordination ||
+      missingApiDriftCoordination ||
+      missingInvariantCoordination
+    ) {
+      hits.push({
+        id: 'swarmlab.rt13.risky-merges-require-coordination',
+        severity: 'medium',
+        category: 'swarmlab',
+        target: 'argv',
+      });
+    }
+  }
+
   return hits;
 }
 
 function swarmlabReason(id: string): string {
+  if (id.includes('rt13')) {
+    return 'SwarmLab RT-13: stale overlapping merges, duplicate intent, and shared invariants require queue, lease, or semantic-review coordination before land';
+  }
   if (id.includes('rt12')) {
     return 'SwarmLab RT-12: superseded, revoked, or revalidation-needed fact lifecycles require a fresh lifecycle check before routing, deployment, approval, or execution relies on them';
   }

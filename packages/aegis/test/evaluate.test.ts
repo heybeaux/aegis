@@ -586,4 +586,134 @@ describe('evaluate — SwarmLab-derived policy gates', () => {
     expect(r.action).toBe('allow');
     expect(r.matches).toHaveLength(0);
   });
+
+  it('RT-13 asks when a stale API-drift merge bypasses the queue', () => {
+    const r = evaluate(
+      {
+        tool: 'MergeBranch',
+        coordination: {
+          operation: 'merge',
+          branchFreshness: 'stale',
+          overlapClass: 'api_drift',
+          fileLockPresent: false,
+          taskLeasePresent: false,
+          intentLedgerPresent: false,
+          mergeQueuePresent: false,
+          semanticReviewPresent: false,
+          verificationCoverage: 'visible',
+        },
+      },
+      compiled,
+    );
+    expect(r.action).toBe('ask');
+    expect(r.matches.map((m) => m.id)).toContain(
+      'swarmlab.rt13.risky-merges-require-coordination',
+    );
+    expect(r.reason).toContain('SwarmLab RT-13');
+  });
+
+  it('RT-13 asks on duplicate intent and queue-only shared-invariant merges', () => {
+    const duplicate = evaluate(
+      {
+        tool: 'MergeBranch',
+        coordination: {
+          operation: 'merge',
+          branchFreshness: 'current',
+          overlapClass: 'duplicate_intent',
+          fileLockPresent: false,
+          taskLeasePresent: false,
+          intentLedgerPresent: false,
+          mergeQueuePresent: false,
+          semanticReviewPresent: false,
+          verificationCoverage: 'visible',
+        },
+      },
+      compiled,
+    );
+    const invariant = evaluate(
+      {
+        tool: 'MergeBranch',
+        coordination: {
+          operation: 'merge',
+          branchFreshness: 'stale',
+          overlapClass: 'shared_invariant',
+          fileLockPresent: false,
+          taskLeasePresent: false,
+          intentLedgerPresent: false,
+          mergeQueuePresent: true,
+          semanticReviewPresent: false,
+          verificationCoverage: 'visible',
+        },
+      },
+      compiled,
+    );
+    expect(duplicate.action).toBe('ask');
+    expect(duplicate.matches.map((m) => m.id)).toContain(
+      'swarmlab.rt13.risky-merges-require-coordination',
+    );
+    expect(invariant.action).toBe('ask');
+    expect(invariant.matches.map((m) => m.id)).toContain(
+      'swarmlab.rt13.risky-merges-require-coordination',
+    );
+  });
+
+  it('RT-13 allows clean, queued, and semantically reviewed merges', () => {
+    const clean = evaluate(
+      {
+        tool: 'MergeBranch',
+        coordination: {
+          operation: 'merge',
+          branchFreshness: 'current',
+          overlapClass: 'none',
+          fileLockPresent: false,
+          taskLeasePresent: false,
+          intentLedgerPresent: false,
+          mergeQueuePresent: false,
+          semanticReviewPresent: false,
+          verificationCoverage: 'none',
+        },
+      },
+      compiled,
+    );
+    const queued = evaluate(
+      {
+        tool: 'MergeBranch',
+        coordination: {
+          operation: 'merge',
+          branchFreshness: 'stale',
+          overlapClass: 'api_drift',
+          fileLockPresent: false,
+          taskLeasePresent: false,
+          intentLedgerPresent: false,
+          mergeQueuePresent: true,
+          semanticReviewPresent: false,
+          verificationCoverage: 'visible',
+        },
+      },
+      compiled,
+    );
+    const reviewed = evaluate(
+      {
+        tool: 'MergeBranch',
+        coordination: {
+          operation: 'merge',
+          branchFreshness: 'stale',
+          overlapClass: 'shared_invariant',
+          fileLockPresent: false,
+          taskLeasePresent: false,
+          intentLedgerPresent: true,
+          mergeQueuePresent: true,
+          semanticReviewPresent: true,
+          verificationCoverage: 'semantic',
+        },
+      },
+      compiled,
+    );
+    expect(clean.action).toBe('allow');
+    expect(clean.matches).toHaveLength(0);
+    expect(queued.action).toBe('allow');
+    expect(queued.matches).toHaveLength(0);
+    expect(reviewed.action).toBe('allow');
+    expect(reviewed.matches).toHaveLength(0);
+  });
 });

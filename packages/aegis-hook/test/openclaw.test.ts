@@ -60,6 +60,32 @@ describe('OpenClaw adapter', () => {
         recoveryObserved: false,
       },
     });
+
+    expect(
+      openClawToolCall({
+        toolName: 'task',
+        params: {
+          coordination: {
+            operation: 'merge',
+            branch_freshness: 'stale',
+            overlap_class: 'api_drift',
+            merge_queue_present: true,
+            semantic_review_present: false,
+            verification_coverage: 'visible',
+          },
+        },
+      }),
+    ).toEqual({
+      tool: 'Delegate',
+      coordination: {
+        operation: 'merge',
+        branchFreshness: 'stale',
+        overlapClass: 'api_drift',
+        mergeQueuePresent: true,
+        semanticReviewPresent: false,
+        verificationCoverage: 'visible',
+      },
+    });
   });
 
   it('evaluates in fail-open shadow mode and records an exact decision join key', async () => {

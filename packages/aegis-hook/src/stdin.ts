@@ -204,6 +204,36 @@ function factStatus(
     : undefined;
 }
 
+function coordinationOperation(
+  value: unknown,
+): NonNullable<ToolCall['coordination']>['operation'] | undefined {
+  return value === 'merge' ? value : undefined;
+}
+
+function branchFreshness(
+  value: unknown,
+): NonNullable<ToolCall['coordination']>['branchFreshness'] | undefined {
+  return value === 'current' || value === 'stale' ? value : undefined;
+}
+
+function overlapClass(
+  value: unknown,
+): NonNullable<ToolCall['coordination']>['overlapClass'] | undefined {
+  return value === 'none' ||
+    value === 'text_conflict' ||
+    value === 'api_drift' ||
+    value === 'duplicate_intent' ||
+    value === 'shared_invariant'
+    ? value
+    : undefined;
+}
+
+function verificationCoverage(
+  value: unknown,
+): NonNullable<ToolCall['coordination']>['verificationCoverage'] | undefined {
+  return value === 'none' || value === 'visible' || value === 'semantic' ? value : undefined;
+}
+
 function instructionSignals(
   value: unknown,
 ): NonNullable<ToolCall['contentBoundary']>['instructionSignals'] | undefined {
@@ -407,6 +437,55 @@ function toFactLifecycle(
   return Object.values(factLifecycle).some((v) => v !== undefined) ? factLifecycle : undefined;
 }
 
+function toCoordination(
+  root: Record<string, unknown>,
+  input: Record<string, unknown>,
+): ToolCall['coordination'] | undefined {
+  const raw = asRecord(root.coordination);
+  const inputRaw = asRecord(input.coordination);
+  const source = Object.keys(inputRaw).length > 0 ? inputRaw : raw;
+  if (Object.keys(source).length === 0) return undefined;
+
+  const coordination: NonNullable<ToolCall['coordination']> = {};
+  coordination.operation =
+    coordinationOperation(source.operation) ??
+    coordinationOperation(source.kind);
+  coordination.branchFreshness =
+    branchFreshness(source.branchFreshness) ??
+    branchFreshness(source.branch_freshness) ??
+    branchFreshness(source.freshness);
+  coordination.overlapClass =
+    overlapClass(source.overlapClass) ??
+    overlapClass(source.overlap_class) ??
+    overlapClass(source.overlap);
+  coordination.fileLockPresent =
+    bool(source, 'fileLockPresent') ??
+    bool(source, 'file_lock_present') ??
+    bool(source, 'fileLock');
+  coordination.taskLeasePresent =
+    bool(source, 'taskLeasePresent') ??
+    bool(source, 'task_lease_present') ??
+    bool(source, 'taskLease');
+  coordination.intentLedgerPresent =
+    bool(source, 'intentLedgerPresent') ??
+    bool(source, 'intent_ledger_present') ??
+    bool(source, 'intentLedger');
+  coordination.mergeQueuePresent =
+    bool(source, 'mergeQueuePresent') ??
+    bool(source, 'merge_queue_present') ??
+    bool(source, 'mergeQueue');
+  coordination.semanticReviewPresent =
+    bool(source, 'semanticReviewPresent') ??
+    bool(source, 'semantic_review_present') ??
+    bool(source, 'semanticReview');
+  coordination.verificationCoverage =
+    verificationCoverage(source.verificationCoverage) ??
+    verificationCoverage(source.verification_coverage) ??
+    verificationCoverage(source.coverage);
+
+  return Object.values(coordination).some((v) => v !== undefined) ? coordination : undefined;
+}
+
 /**
  * Pure mapping from a raw Claude Code hook payload to an Aegis ToolCall.
  *
@@ -415,8 +494,8 @@ function toFactLifecycle(
  * - `tool_input.content` (Write) or `new_string` (Edit) -> `content`.
  * - `tool_input.file_path` (Write/Edit/Read) -> `paths: [...]`.
  * - `handoff` or `tool_input.handoff` -> structured handoff metadata for SwarmLab-derived gates.
- * - `verification` / `completion` / `recall` / `content_boundary` / `fact_lifecycle` are parsed
- *   into the matching structured metadata surfaces when present.
+ * - `verification` / `completion` / `recall` / `content_boundary` / `fact_lifecycle` /
+ *   `coordination` are parsed into the matching structured metadata surfaces when present.
  *
  * No throws — safe to unit test in isolation.
  */
@@ -456,6 +535,8 @@ export function toToolCall(hookInput: unknown): ToolCall {
   if (contentBoundary !== undefined) call.contentBoundary = contentBoundary;
   const factLifecycle = toFactLifecycle(root, input);
   if (factLifecycle !== undefined) call.factLifecycle = factLifecycle;
+  const coordination = toCoordination(root, input);
+  if (coordination !== undefined) call.coordination = coordination;
   return call;
 }
 

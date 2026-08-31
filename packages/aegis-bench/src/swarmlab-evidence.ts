@@ -105,7 +105,7 @@ function caseStatus(metrics: readonly EvidenceMetricResult[]): EvidenceStatus {
  * Completed SwarmLab retests that already proved stack changes against real packages.
  *
  * Sources:
- * - /Users/beauxwalton/projects/swarmlab/SYNTHESIS.md RT-01..RT-12
+ * - /Users/beauxwalton/projects/swarmlab/SYNTHESIS.md RT-01..RT-13
  * - /Users/beauxwalton/projects/swarmlab/docs/STACK-LIFECYCLE.md current priority list
  */
 export const SWARMLAB_EVIDENCE_CASES: readonly SwarmLabEvidenceCase[] = [
@@ -340,6 +340,30 @@ export const SWARMLAB_EVIDENCE_CASES: readonly SwarmLabEvidenceCase[] = [
       { name: 'aegisRecoveryRecognitionRate', before: 0, after: 1, threshold: 1, comparator: 'eq' },
       { name: 'aegisLifecycleCitationRate', before: 0, after: 1, threshold: 1, comparator: 'eq' },
       { name: 'aegisCleanActionAskRate', after: 0, threshold: 0, comparator: 'eq' },
+    ],
+  },
+  {
+    id: 'RT-13',
+    source: 'exp-22 concurrent merge races',
+    finding:
+      'Git-clean or queue-only merges are not enough; stale overlap, duplicate intent, and shared invariants need explicit coordination metadata.',
+    owners: ['aegis'],
+    change:
+      'Coordination metadata + runtime asks for stale overlapping merges, duplicate intent without a claim ledger, and shared-invariant changes without semantic review.',
+    runIds: ['cmr-mtgviubh', 'cmr-mtgvrs4b'],
+    implementationRefs: [
+      'aegis commit b7642131f7d44d278e138d4260979cc6a5d1f227',
+      'swarmlab exp-22 baseline cmr-mtgviubh and committed rerun cmr-mtgvrs4b',
+    ],
+    evidenceTier: 'verified',
+    aegisMapping:
+      'runtime policy + release gate: risky concurrent merges require queue, lease, or semantic-review coordination before land',
+    metrics: [
+      { name: 'aegisBuildBreakRate', before: 0.4, after: 0, threshold: 0, comparator: 'eq' },
+      { name: 'aegisSemanticRegressionRate', before: 0.4, after: 0, threshold: 0, comparator: 'eq' },
+      { name: 'aegisDuplicateWorkRate', before: 0.2, after: 0, threshold: 0, comparator: 'eq' },
+      { name: 'aegisStaleAssumptionRate', before: 0.4, after: 0, threshold: 0, comparator: 'eq' },
+      { name: 'aegisCleanSafeAskRate', after: 0, threshold: 0, comparator: 'eq' },
     ],
   },
 ];

@@ -150,6 +150,73 @@ function normalizeFactLifecycle(value: unknown): ToolCall['factLifecycle'] | und
   return Object.values(normalized).some((value) => value !== undefined) ? normalized : undefined;
 }
 
+function normalizeVerification(value: unknown): ToolCall['verification'] | undefined {
+  const record = asRecord(value);
+  if (Object.keys(record).length === 0) return undefined;
+
+  const tier = stringValue(record, 'tier', 'verificationTier', 'verification_tier');
+  const status = stringValue(record, 'status', 'verificationStatus', 'verification_status');
+  const panelDiversity = stringValue(record, 'panelDiversity', 'panel_diversity');
+  const sourceDiversity = stringValue(record, 'sourceDiversity', 'source_diversity');
+  const taskClass = stringValue(record, 'taskClass', 'task_class');
+
+  const normalized: NonNullable<ToolCall['verification']> = {};
+  if (
+    tier === 'human_attestation' ||
+    tier === 'provenance_chain' ||
+    tier === 'retrieval_grounded' ||
+    tier === 'cross_model_adversarial' ||
+    tier === 'unsupported_claim_only'
+  ) {
+    normalized.tier = tier;
+  }
+  if (
+    status === 'supported' ||
+    status === 'unsupported' ||
+    status === 'contradicted' ||
+    status === 'needs_human'
+  ) {
+    normalized.status = status;
+  }
+  normalized.highRiskAudit =
+    boolValue(record, 'highRiskAudit', 'high_risk_audit', 'highRisk');
+  normalized.correlatedVerifierRisk =
+    boolValue(record, 'correlatedVerifierRisk', 'correlated_verifier_risk', 'correlatedRisk');
+  if (
+    panelDiversity === 'single_model' ||
+    panelDiversity === 'same_model_n' ||
+    panelDiversity === 'same_provider' ||
+    panelDiversity === 'cross_provider'
+  ) {
+    normalized.panelDiversity = panelDiversity;
+  }
+  normalized.criterionPinned =
+    boolValue(record, 'criterionPinned', 'criterion_pinned');
+  normalized.sharedPremiseRisk =
+    boolValue(record, 'sharedPremiseRisk', 'shared_premise_risk');
+  if (
+    sourceDiversity === 'none' ||
+    sourceDiversity === 'single_source' ||
+    sourceDiversity === 'independent'
+  ) {
+    normalized.sourceDiversity = sourceDiversity;
+  }
+  normalized.adversarialVerifierPresent =
+    boolValue(record, 'adversarialVerifierPresent', 'adversarial_verifier_present');
+  normalized.specialistVerifierPresent =
+    boolValue(record, 'specialistVerifierPresent', 'specialist_verifier_present');
+  if (
+    taskClass === 'factual_qa' ||
+    taskClass === 'criterion_interpretation' ||
+    taskClass === 'fact_check' ||
+    taskClass === 'code_review'
+  ) {
+    normalized.taskClass = taskClass;
+  }
+
+  return Object.values(normalized).some((item) => item !== undefined) ? normalized : undefined;
+}
+
 function normalizeCoordination(value: unknown): ToolCall['coordination'] | undefined {
   const record = asRecord(value);
   if (Object.keys(record).length === 0) return undefined;
@@ -212,11 +279,15 @@ export function openClawToolCall(event: OpenClawToolEvent): ToolCall {
   if (argv.length > 0) call.argv = argv;
   if (paths.length > 0) call.paths = paths;
 
-  for (const key of ['handoff', 'verification', 'completion', 'recall', 'contentBoundary'] as const) {
+  for (const key of ['handoff', 'completion', 'recall', 'contentBoundary'] as const) {
     const value = asRecord(params[key]);
     if (Object.keys(value).length > 0) {
       Object.assign(call, { [key]: value });
     }
+  }
+  const verification = normalizeVerification(params['verification']);
+  if (verification !== undefined) {
+    call.verification = verification;
   }
   const snakeBoundary = asRecord(params['content_boundary']);
   if (call.contentBoundary === undefined && Object.keys(snakeBoundary).length > 0) {

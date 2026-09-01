@@ -74,13 +74,20 @@ describe('toToolCall', () => {
     expect(call.handoff).toEqual({ delegationDepth: 2, manifestTier: 'value-echo' });
   });
 
-  it('maps structured verification and completion metadata for SwarmLab RT-08/RT-09 gates', () => {
+  it('maps structured verification and completion metadata for SwarmLab RT-08/RT-09/RT-14 gates', () => {
     const call = toToolCall({
       tool_name: 'FinalizeTask',
       verification: {
         high_risk_audit: true,
         verification_tier: 'retrieval_grounded',
         verification_status: 'supported',
+        panel_diversity: 'cross_provider',
+        criterion_pinned: false,
+        shared_premise_risk: true,
+        source_diversity: 'single_source',
+        adversarial_verifier_present: false,
+        specialist_verifier_present: false,
+        task_class: 'criterion_interpretation',
       },
       tool_input: {
         completion: {
@@ -99,6 +106,13 @@ describe('toToolCall', () => {
         highRiskAudit: true,
         status: 'supported',
         tier: 'retrieval_grounded',
+        panelDiversity: 'cross_provider',
+        criterionPinned: false,
+        sharedPremiseRisk: true,
+        sourceDiversity: 'single_source',
+        adversarialVerifierPresent: false,
+        specialistVerifierPresent: false,
+        taskClass: 'criterion_interpretation',
       },
       completion: {
         actionCategory: 'external_write',

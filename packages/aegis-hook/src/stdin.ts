@@ -64,6 +64,36 @@ function verificationStatus(
     : undefined;
 }
 
+function panelDiversity(
+  value: unknown,
+): NonNullable<ToolCall['verification']>['panelDiversity'] | undefined {
+  return value === 'single_model' ||
+    value === 'same_model_n' ||
+    value === 'same_provider' ||
+    value === 'cross_provider'
+    ? value
+    : undefined;
+}
+
+function sourceDiversity(
+  value: unknown,
+): NonNullable<ToolCall['verification']>['sourceDiversity'] | undefined {
+  return value === 'none' || value === 'single_source' || value === 'independent'
+    ? value
+    : undefined;
+}
+
+function verificationTaskClass(
+  value: unknown,
+): NonNullable<ToolCall['verification']>['taskClass'] | undefined {
+  return value === 'factual_qa' ||
+    value === 'criterion_interpretation' ||
+    value === 'fact_check' ||
+    value === 'code_review'
+    ? value
+    : undefined;
+}
+
 function completionCategory(
   value: unknown,
 ): NonNullable<ToolCall['completion']>['actionCategory'] | undefined {
@@ -290,6 +320,27 @@ function toVerification(
     bool(source, 'correlatedVerifierRisk') ??
     bool(source, 'correlated_verifier_risk') ??
     bool(source, 'correlatedRisk');
+  verification.panelDiversity =
+    panelDiversity(source.panelDiversity) ??
+    panelDiversity(source.panel_diversity);
+  verification.criterionPinned =
+    bool(source, 'criterionPinned') ??
+    bool(source, 'criterion_pinned');
+  verification.sharedPremiseRisk =
+    bool(source, 'sharedPremiseRisk') ??
+    bool(source, 'shared_premise_risk');
+  verification.sourceDiversity =
+    sourceDiversity(source.sourceDiversity) ??
+    sourceDiversity(source.source_diversity);
+  verification.adversarialVerifierPresent =
+    bool(source, 'adversarialVerifierPresent') ??
+    bool(source, 'adversarial_verifier_present');
+  verification.specialistVerifierPresent =
+    bool(source, 'specialistVerifierPresent') ??
+    bool(source, 'specialist_verifier_present');
+  verification.taskClass =
+    verificationTaskClass(source.taskClass) ??
+    verificationTaskClass(source.task_class);
 
   return Object.values(verification).some((v) => v !== undefined) ? verification : undefined;
 }

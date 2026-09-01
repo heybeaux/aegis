@@ -65,6 +65,40 @@ describe('OpenClaw adapter', () => {
       openClawToolCall({
         toolName: 'task',
         params: {
+          verification: {
+            high_risk_audit: true,
+            verification_tier: 'retrieval_grounded',
+            verification_status: 'supported',
+            panel_diversity: 'cross_provider',
+            criterion_pinned: false,
+            shared_premise_risk: true,
+            source_diversity: 'single_source',
+            adversarial_verifier_present: false,
+            specialist_verifier_present: false,
+            task_class: 'fact_check',
+          },
+        },
+      }),
+    ).toEqual({
+      tool: 'Delegate',
+      verification: {
+        highRiskAudit: true,
+        status: 'supported',
+        tier: 'retrieval_grounded',
+        panelDiversity: 'cross_provider',
+        criterionPinned: false,
+        sharedPremiseRisk: true,
+        sourceDiversity: 'single_source',
+        adversarialVerifierPresent: false,
+        specialistVerifierPresent: false,
+        taskClass: 'fact_check',
+      },
+    });
+
+    expect(
+      openClawToolCall({
+        toolName: 'task',
+        params: {
           coordination: {
             operation: 'merge',
             branch_freshness: 'stale',

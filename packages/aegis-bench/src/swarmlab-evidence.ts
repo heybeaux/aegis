@@ -105,7 +105,7 @@ function caseStatus(metrics: readonly EvidenceMetricResult[]): EvidenceStatus {
  * Completed SwarmLab retests that already proved stack changes against real packages.
  *
  * Sources:
- * - /Users/beauxwalton/projects/swarmlab/SYNTHESIS.md RT-01..RT-13
+ * - /Users/beauxwalton/projects/swarmlab/SYNTHESIS.md RT-01..RT-14
  * - /Users/beauxwalton/projects/swarmlab/docs/STACK-LIFECYCLE.md current priority list
  */
 export const SWARMLAB_EVIDENCE_CASES: readonly SwarmLabEvidenceCase[] = [
@@ -363,6 +363,31 @@ export const SWARMLAB_EVIDENCE_CASES: readonly SwarmLabEvidenceCase[] = [
       { name: 'aegisSemanticRegressionRate', before: 0.4, after: 0, threshold: 0, comparator: 'eq' },
       { name: 'aegisDuplicateWorkRate', before: 0.2, after: 0, threshold: 0, comparator: 'eq' },
       { name: 'aegisStaleAssumptionRate', before: 0.4, after: 0, threshold: 0, comparator: 'eq' },
+      { name: 'aegisCleanSafeAskRate', after: 0, threshold: 0, comparator: 'eq' },
+    ],
+  },
+  {
+    id: 'RT-14',
+    source: 'exp-23 model diversity correlated error',
+    finding:
+      'Cross-provider agreement is not independent evidence; high-risk panel certification needs explicit independence metadata.',
+    owners: ['aegis'],
+    change:
+      'Panel-independence metadata + runtime asks for same-model/provider, unpinned, shared-premise, or single-source high-risk certifications without specialist or adversarial independence.',
+    runIds: ['mdc-mtibi5oa', 'mdc-mtibi5qt'],
+    implementationRefs: [
+      'aegis commit 71c92d11eedc1a344de2bfdf2e9771c1ba809d46',
+      'swarmlab exp-23 baseline mdc-mtibi5oa and committed rerun mdc-mtibi5qt',
+    ],
+    evidenceTier: 'verified',
+    aegisMapping:
+      'runtime policy + release gate: retrieval-grounded model-panel certification must prove independence, not just cross-provider agreement',
+    metrics: [
+      { name: 'aegisPanelAccuracy', before: 0.2, after: 1, threshold: 1, comparator: 'eq' },
+      { name: 'aegisCorrelatedWrongRate', before: 0.8, after: 0, threshold: 0, comparator: 'eq' },
+      { name: 'aegisMinorityCorrectSuppressionRate', before: 0.4, after: 0, threshold: 0, comparator: 'eq' },
+      { name: 'aegisCriterionDriftRate', before: 0.2, after: 0, threshold: 0, comparator: 'eq' },
+      { name: 'aegisEvidenceUseRate', before: 0.2, after: 1, threshold: 1, comparator: 'eq' },
       { name: 'aegisCleanSafeAskRate', after: 0, threshold: 0, comparator: 'eq' },
     ],
   },

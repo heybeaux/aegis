@@ -280,6 +280,50 @@ describe('end-to-end hook pipeline', () => {
     expect(r.action).toBe('allow');
   });
 
+  it('ASK: RT-14 risky panel certifications pause for approval', () => {
+    const r = runHook({
+      tool_name: 'CertifyModelPanel',
+      tool_input: {
+        verification: {
+          high_risk_audit: true,
+          verification_tier: 'retrieval_grounded',
+          verification_status: 'supported',
+          panel_diversity: 'cross_provider',
+          criterion_pinned: false,
+          shared_premise_risk: false,
+          source_diversity: 'independent',
+          adversarial_verifier_present: false,
+          specialist_verifier_present: false,
+          task_class: 'criterion_interpretation',
+        },
+      },
+    });
+    expect(r.exitCode).toBe(2);
+    expect(r.action).toBe('ask');
+  });
+
+  it('ALLOW: RT-14 clean independent panels proceed without approval', () => {
+    const r = runHook({
+      tool_name: 'CertifyModelPanel',
+      tool_input: {
+        verification: {
+          high_risk_audit: true,
+          verification_tier: 'retrieval_grounded',
+          verification_status: 'supported',
+          panel_diversity: 'cross_provider',
+          criterion_pinned: true,
+          shared_premise_risk: false,
+          source_diversity: 'independent',
+          adversarial_verifier_present: false,
+          specialist_verifier_present: false,
+          task_class: 'fact_check',
+        },
+      },
+    });
+    expect(r.exitCode).toBe(0);
+    expect(r.action).toBe('allow');
+  });
+
   it('ASK: RT-11 raw untrusted authority-spoofed content pauses for approval', () => {
     const r = runHook({
       tool_name: 'AnswerFromUntrustedContent',

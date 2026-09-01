@@ -716,4 +716,95 @@ describe('evaluate — SwarmLab-derived policy gates', () => {
     expect(reviewed.action).toBe('allow');
     expect(reviewed.matches).toHaveLength(0);
   });
+
+  it('RT-14 asks when a high-risk panel is unpinned or still shares a premise/source', () => {
+    const unpinned = evaluate(
+      {
+        tool: 'CertifyModelPanel',
+        verification: {
+          highRiskAudit: true,
+          status: 'supported',
+          tier: 'retrieval_grounded',
+          panelDiversity: 'cross_provider',
+          criterionPinned: false,
+          sharedPremiseRisk: false,
+          sourceDiversity: 'independent',
+          adversarialVerifierPresent: false,
+          specialistVerifierPresent: false,
+          taskClass: 'criterion_interpretation',
+        },
+      },
+      compiled,
+    );
+    const sharedPremise = evaluate(
+      {
+        tool: 'CertifyModelPanel',
+        verification: {
+          highRiskAudit: true,
+          status: 'supported',
+          tier: 'retrieval_grounded',
+          panelDiversity: 'cross_provider',
+          criterionPinned: true,
+          sharedPremiseRisk: true,
+          sourceDiversity: 'independent',
+          adversarialVerifierPresent: false,
+          specialistVerifierPresent: false,
+          taskClass: 'code_review',
+        },
+      },
+      compiled,
+    );
+    expect(unpinned.action).toBe('ask');
+    expect(unpinned.matches.map((m) => m.id)).toContain(
+      'swarmlab.rt14.panel-certification-requires-independent-checks',
+    );
+    expect(sharedPremise.action).toBe('ask');
+    expect(sharedPremise.matches.map((m) => m.id)).toContain(
+      'swarmlab.rt14.panel-certification-requires-independent-checks',
+    );
+    expect(unpinned.reason).toContain('SwarmLab RT-14');
+  });
+
+  it('RT-14 allows clean independent panels and risky panels with the right verifier', () => {
+    const clean = evaluate(
+      {
+        tool: 'CertifyModelPanel',
+        verification: {
+          highRiskAudit: true,
+          status: 'supported',
+          tier: 'retrieval_grounded',
+          panelDiversity: 'cross_provider',
+          criterionPinned: true,
+          sharedPremiseRisk: false,
+          sourceDiversity: 'independent',
+          adversarialVerifierPresent: false,
+          specialistVerifierPresent: false,
+          taskClass: 'fact_check',
+        },
+      },
+      compiled,
+    );
+    const verified = evaluate(
+      {
+        tool: 'CertifyModelPanel',
+        verification: {
+          highRiskAudit: true,
+          status: 'supported',
+          tier: 'retrieval_grounded',
+          panelDiversity: 'cross_provider',
+          criterionPinned: true,
+          sharedPremiseRisk: true,
+          sourceDiversity: 'single_source',
+          adversarialVerifierPresent: true,
+          specialistVerifierPresent: true,
+          taskClass: 'factual_qa',
+        },
+      },
+      compiled,
+    );
+    expect(clean.action).toBe('allow');
+    expect(clean.matches).toHaveLength(0);
+    expect(verified.action).toBe('allow');
+    expect(verified.matches).toHaveLength(0);
+  });
 });

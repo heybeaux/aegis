@@ -99,6 +99,20 @@ export interface VerificationMetadata {
   highRiskAudit?: boolean;
   /** Whether the verifier panel had correlated-error risk. */
   correlatedVerifierRisk?: boolean;
+  /** What diversity shape produced the model-panel certification. */
+  panelDiversity?: 'single_model' | 'same_model_n' | 'same_provider' | 'cross_provider';
+  /** Whether the panel was pinned to the user's exact decision criterion. */
+  criterionPinned?: boolean;
+  /** Whether the panel shares a known false-premise or blind-spot risk. */
+  sharedPremiseRisk?: boolean;
+  /** Whether the cited sources are independent or all echo one source. */
+  sourceDiversity?: 'none' | 'single_source' | 'independent';
+  /** Whether an adversarial verifier explicitly challenged the panel. */
+  adversarialVerifierPresent?: boolean;
+  /** Whether a task-specific specialist verifier checked the panel. */
+  specialistVerifierPresent?: boolean;
+  /** What task class the panel is certifying. */
+  taskClass?: 'factual_qa' | 'criterion_interpretation' | 'fact_check' | 'code_review';
 }
 
 export interface CompletionMetadata {

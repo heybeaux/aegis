@@ -107,6 +107,34 @@ function swarmlabPolicyHits(call: ToolCall): RuleHit[] {
     });
   }
 
+  if (v?.highRiskAudit === true && v.status === 'supported' && v.tier === 'retrieval_grounded') {
+    const sameModelOrProvider =
+      v.panelDiversity === 'single_model' ||
+      v.panelDiversity === 'same_model_n' ||
+      v.panelDiversity === 'same_provider';
+    const unpinnedCriterion = v.criterionPinned === false;
+    const sharedPremiseWithoutIndependentCheck =
+      v.sharedPremiseRisk === true &&
+      v.adversarialVerifierPresent !== true &&
+      v.specialistVerifierPresent !== true;
+    const singleSourceWithoutSpecialist =
+      v.sourceDiversity === 'single_source' &&
+      v.specialistVerifierPresent !== true;
+    if (
+      sameModelOrProvider ||
+      unpinnedCriterion ||
+      sharedPremiseWithoutIndependentCheck ||
+      singleSourceWithoutSpecialist
+    ) {
+      hits.push({
+        id: 'swarmlab.rt14.panel-certification-requires-independent-checks',
+        severity: 'medium',
+        category: 'swarmlab',
+        target: 'argv',
+      });
+    }
+  }
+
   const c = call.completion;
   if (
     c !== undefined &&
@@ -263,6 +291,9 @@ function swarmlabPolicyHits(call: ToolCall): RuleHit[] {
 }
 
 function swarmlabReason(id: string): string {
+  if (id.includes('rt14')) {
+    return 'SwarmLab RT-14: high-risk panel certifications need pinned criteria plus adversarial or specialist independence when model diversity can still share a premise or source';
+  }
   if (id.includes('rt13')) {
     return 'SwarmLab RT-13: stale overlapping merges, duplicate intent, and shared invariants require queue, lease, or semantic-review coordination before land';
   }

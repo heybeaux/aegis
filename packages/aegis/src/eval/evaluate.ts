@@ -287,10 +287,49 @@ function swarmlabPolicyHits(call: ToolCall): RuleHit[] {
     }
   }
 
+  const i = call.intervention;
+  if (i !== undefined) {
+    const contextOnlyHighRiskDirective =
+      i.stateSource === 'context_only' &&
+      i.riskLevel !== 'low' &&
+      i.directive !== 'none';
+    const staleCorrectedPlan =
+      (i.directive === 'correction' || i.directive === 'deny') &&
+      i.planFreshness === 'stale';
+    const pausedWithoutResume =
+      i.directive === 'pause' &&
+      i.resumeAuthorized !== true;
+    const stoppedTask = i.directive === 'stop';
+    const broadOrMismatchedApproval =
+      i.directive === 'approval' &&
+      (i.approvalScope !== 'exact_action' || i.approvedActionMatch !== true);
+    const duplicateReplay =
+      i.duplicateRisk === true &&
+      i.idempotentResume !== true;
+    if (
+      contextOnlyHighRiskDirective ||
+      staleCorrectedPlan ||
+      pausedWithoutResume ||
+      stoppedTask ||
+      broadOrMismatchedApproval ||
+      duplicateReplay
+    ) {
+      hits.push({
+        id: 'swarmlab.rt15.resumed-actions-require-intervention-state',
+        severity: 'medium',
+        category: 'swarmlab',
+        target: 'argv',
+      });
+    }
+  }
+
   return hits;
 }
 
 function swarmlabReason(id: string): string {
+  if (id.includes('rt15')) {
+    return 'SwarmLab RT-15: resumed actions need durable intervention state, exact approval scope, and duplicate-action verification before stale plans can proceed';
+  }
   if (id.includes('rt14')) {
     return 'SwarmLab RT-14: high-risk panel certifications need pinned criteria plus adversarial or specialist independence when model diversity can still share a premise or source';
   }

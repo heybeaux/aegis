@@ -266,6 +266,57 @@ function normalizeCoordination(value: unknown): ToolCall['coordination'] | undef
   return Object.values(normalized).some((value) => value !== undefined) ? normalized : undefined;
 }
 
+function normalizeIntervention(value: unknown): ToolCall['intervention'] | undefined {
+  const record = asRecord(value);
+  if (Object.keys(record).length === 0) return undefined;
+
+  const operation = stringValue(record, 'operation', 'kind');
+  const stateSource = stringValue(record, 'stateSource', 'state_source', 'source');
+  const directive = stringValue(record, 'directive', 'directive_state', 'directiveState');
+  const planFreshness = stringValue(record, 'planFreshness', 'plan_freshness', 'freshness');
+  const approvalScope = stringValue(record, 'approvalScope', 'approval_scope', 'scope');
+  const riskLevel = stringValue(record, 'riskLevel', 'risk_level', 'risk');
+
+  const normalized: NonNullable<ToolCall['intervention']> = {};
+  if (operation === 'resume_action') normalized.operation = operation;
+  if (stateSource === 'context_only' || stateSource === 'durable_log') {
+    normalized.stateSource = stateSource;
+  }
+  if (
+    directive === 'none' ||
+    directive === 'correction' ||
+    directive === 'pause' ||
+    directive === 'stop' ||
+    directive === 'approval' ||
+    directive === 'deny'
+  ) {
+    normalized.directive = directive;
+  }
+  if (planFreshness === 'current' || planFreshness === 'stale') {
+    normalized.planFreshness = planFreshness;
+  }
+  normalized.resumeAuthorized =
+    boolValue(record, 'resumeAuthorized', 'resume_authorized', 'authorized');
+  if (
+    approvalScope === 'none' ||
+    approvalScope === 'broad' ||
+    approvalScope === 'exact_action'
+  ) {
+    normalized.approvalScope = approvalScope;
+  }
+  normalized.approvedActionMatch =
+    boolValue(record, 'approvedActionMatch', 'approved_action_match', 'actionMatch');
+  normalized.duplicateRisk =
+    boolValue(record, 'duplicateRisk', 'duplicate_risk', 'alreadyCompleted');
+  normalized.idempotentResume =
+    boolValue(record, 'idempotentResume', 'idempotent_resume', 'resumeVerified');
+  if (riskLevel === 'low' || riskLevel === 'medium' || riskLevel === 'high') {
+    normalized.riskLevel = riskLevel;
+  }
+
+  return Object.values(normalized).some((value) => value !== undefined) ? normalized : undefined;
+}
+
 export function openClawToolCall(event: OpenClawToolEvent): ToolCall {
   const params = event.params;
   const tool = normalizeToolName(event.toolName);
@@ -300,6 +351,10 @@ export function openClawToolCall(event: OpenClawToolEvent): ToolCall {
   const coordination = normalizeCoordination(params['coordination']);
   if (coordination !== undefined) {
     call.coordination = coordination;
+  }
+  const intervention = normalizeIntervention(params['intervention']);
+  if (intervention !== undefined) {
+    call.intervention = intervention;
   }
   return call;
 }

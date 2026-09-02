@@ -120,6 +120,40 @@ describe('OpenClaw adapter', () => {
         verificationCoverage: 'visible',
       },
     });
+
+    expect(
+      openClawToolCall({
+        toolName: 'task',
+        params: {
+          intervention: {
+            operation: 'resume_action',
+            state_source: 'durable_log',
+            directive: 'approval',
+            plan_freshness: 'current',
+            resume_authorized: true,
+            approval_scope: 'exact_action',
+            approved_action_match: true,
+            duplicate_risk: false,
+            idempotent_resume: true,
+            risk_level: 'high',
+          },
+        },
+      }),
+    ).toEqual({
+      tool: 'Delegate',
+      intervention: {
+        operation: 'resume_action',
+        stateSource: 'durable_log',
+        directive: 'approval',
+        planFreshness: 'current',
+        resumeAuthorized: true,
+        approvalScope: 'exact_action',
+        approvedActionMatch: true,
+        duplicateRisk: false,
+        idempotentResume: true,
+        riskLevel: 'high',
+      },
+    });
   });
 
   it('evaluates in fail-open shadow mode and records an exact decision join key', async () => {

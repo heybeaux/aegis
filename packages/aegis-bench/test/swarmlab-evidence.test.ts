@@ -10,8 +10,8 @@ describe('SwarmLab evidence gate', () => {
   it('passes when all stack mappings are landed with verified evidence', () => {
     const result = evaluateSwarmLabEvidence();
     expect(result.status).toBe('passed');
-    expect(result.total).toBe(14);
-    expect(result.passed).toBe(14);
+    expect(result.total).toBe(15);
+    expect(result.passed).toBe(15);
     expect(result.failed).toBe(0);
     expect(result.partial).toBe(0);
     expect(result.pendingImplementation).toBe(0);
@@ -134,6 +134,15 @@ describe('SwarmLab evidence gate', () => {
     expect(rt14Source?.runIds).toEqual(['mdc-mtibi5oa', 'mdc-mtibi5qt']);
     expect(rt14?.metrics.find((m) => m.name === 'aegisPanelAccuracy')?.before).toBe(0.2);
     expect(rt14?.metrics.find((m) => m.name === 'aegisEvidenceUseRate')?.after).toBe(1);
+
+    const rt15 = result.cases.find((c) => c.id === 'RT-15');
+    const rt15Source = SWARMLAB_EVIDENCE_CASES.find((c) => c.id === 'RT-15');
+    expect(rt15?.status).toBe('passed');
+    expect(rt15?.implementationStatus).toBe('landed');
+    expect(rt15?.evidenceTier).toBe('verified');
+    expect(rt15Source?.runIds).toEqual(['hir-mtjqc6dq', 'hir-mtjqno1g']);
+    expect(rt15?.metrics.find((m) => m.name === 'aegisCorrectionUptake')?.before).toBe(0);
+    expect(rt15?.metrics.find((m) => m.name === 'aegisResumeStateAccuracy')?.after).toBe(1);
   });
 
   it('covers the currently proven stack failure classes', () => {
@@ -153,6 +162,7 @@ describe('SwarmLab evidence gate', () => {
       'RT-12',
       'RT-13',
       'RT-14',
+      'RT-15',
     ]);
 
     const mappings = SWARMLAB_EVIDENCE_CASES.map((c) => c.aegisMapping).join('\n');
@@ -170,12 +180,13 @@ describe('SwarmLab evidence gate', () => {
     expect(mappings).toContain('exact cited facts require fresh lifecycle support');
     expect(mappings).toContain('risky concurrent merges require queue, lease, or semantic-review coordination');
     expect(mappings).toContain('model-panel certification must prove independence');
+    expect(mappings).toContain('durable intervention state');
     expect(mappings).toContain('runtime policy');
   });
 
   it('renders a report banner matching the evaluated evidence range', () => {
     const markdown = swarmLabEvidenceToMarkdown(evaluateSwarmLabEvidence());
-    expect(markdown).toContain('REPLAY-VERIFIED SWARMLAB RETESTS (RT-01..RT-14)');
+    expect(markdown).toContain('REPLAY-VERIFIED SWARMLAB RETESTS (RT-01..RT-15)');
     expect(markdown).not.toContain('RT-01..RT-10');
     expect(markdown).toContain('0 provisional evidence tier');
     expect(markdown).toContain('| RT-06 | passed | landed | verified |');
@@ -185,6 +196,7 @@ describe('SwarmLab evidence gate', () => {
     expect(markdown).toContain('| RT-12 | passed | landed | verified |');
     expect(markdown).toContain('| RT-13 | passed | landed | verified |');
     expect(markdown).toContain('| RT-14 | passed | landed | verified |');
+    expect(markdown).toContain('| RT-15 | passed | landed | verified |');
   });
 
   it('fails loudly when a proven metric regresses', () => {

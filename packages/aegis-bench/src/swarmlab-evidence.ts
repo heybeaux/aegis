@@ -402,6 +402,7 @@ export const SWARMLAB_EVIDENCE_CASES: readonly SwarmLabEvidenceCase[] = [
     runIds: ['hir-mtjqc6dq', 'hir-mtjqno1g'],
     implementationRefs: [
       'aegis commit e6b73242e9240f50b9d84af7b5ba66d0cbe81e78',
+      'aegis commit 4c99cf99da479506696f48c317379c382c3690e0',
       'swarmlab exp-24 baseline hir-mtjqc6dq and committed rerun hir-mtjqno1g',
     ],
     evidenceTier: 'verified',

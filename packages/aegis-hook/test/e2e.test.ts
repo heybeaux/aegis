@@ -324,6 +324,52 @@ describe('end-to-end hook pipeline', () => {
     expect(r.action).toBe('allow');
   });
 
+  it('ASK: RT-15 broad high-risk approval resumes pause for approval', () => {
+    const r = runHook({
+      tool_name: 'ResumeTask',
+      tool_input: {
+        intervention: {
+          operation: 'resume_action',
+          state_source: 'context_only',
+          directive: 'approval',
+          plan_freshness: 'stale',
+          resume_authorized: true,
+          approval_scope: 'broad',
+          approved_action_match: false,
+          duplicate_risk: false,
+          idempotent_resume: true,
+          risk_level: 'high',
+        },
+        command: 'npm publish',
+      },
+    });
+    expect(r.exitCode).toBe(2);
+    expect(r.action).toBe('ask');
+  });
+
+  it('ALLOW: RT-15 exact approved durable resumes proceed without approval', () => {
+    const r = runHook({
+      tool_name: 'ResumeTask',
+      tool_input: {
+        intervention: {
+          operation: 'resume_action',
+          state_source: 'durable_log',
+          directive: 'approval',
+          plan_freshness: 'current',
+          resume_authorized: true,
+          approval_scope: 'exact_action',
+          approved_action_match: true,
+          duplicate_risk: false,
+          idempotent_resume: true,
+          risk_level: 'high',
+        },
+        command: 'npm test',
+      },
+    });
+    expect(r.exitCode).toBe(0);
+    expect(r.action).toBe('allow');
+  });
+
   it('ASK: RT-11 raw untrusted authority-spoofed content pauses for approval', () => {
     const r = runHook({
       tool_name: 'AnswerFromUntrustedContent',

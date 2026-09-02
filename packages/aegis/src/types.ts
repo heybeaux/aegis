@@ -237,6 +237,29 @@ export interface CoordinationMetadata {
   verificationCoverage?: 'none' | 'visible' | 'semantic';
 }
 
+export interface InterventionMetadata {
+  /** What intervention-sensitive action is about to happen. */
+  operation?: 'resume_action';
+  /** Whether the resume decision is backed by durable task state or context only. */
+  stateSource?: 'context_only' | 'durable_log';
+  /** Which human directive currently constrains the resumed action. */
+  directive?: 'none' | 'correction' | 'pause' | 'stop' | 'approval' | 'deny';
+  /** Whether the pending action still reflects the old plan or the corrected one. */
+  planFreshness?: 'current' | 'stale';
+  /** Whether a paused task has been explicitly resumed. */
+  resumeAuthorized?: boolean;
+  /** How tightly the human approval is bound to the resumed action. */
+  approvalScope?: 'none' | 'broad' | 'exact_action';
+  /** Whether the resumed action exactly matches the approved action. */
+  approvedActionMatch?: boolean;
+  /** Whether replaying this action risks repeating an already-completed side effect. */
+  duplicateRisk?: boolean;
+  /** Whether the resume path already proved the replay is idempotent or verify-only. */
+  idempotentResume?: boolean;
+  /** Risk tier of the resumed action. */
+  riskLevel?: 'low' | 'medium' | 'high';
+}
+
 export interface ToolCall {
   /** Claude Code / OpenClaw tool name, e.g. "Bash", "Write", "Edit", "Read". */
   tool: string;
@@ -262,6 +285,8 @@ export interface ToolCall {
   factLifecycle?: FactLifecycleMetadata;
   /** Optional structured coordination metadata from SwarmLab RT-13. */
   coordination?: CoordinationMetadata;
+  /** Optional structured intervention metadata from SwarmLab RT-15. */
+  intervention?: InterventionMetadata;
 }
 
 /** One rule that fired during evaluation. */

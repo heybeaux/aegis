@@ -807,4 +807,157 @@ describe('evaluate — SwarmLab-derived policy gates', () => {
     expect(verified.action).toBe('allow');
     expect(verified.matches).toHaveLength(0);
   });
+
+  it('RT-15 asks on stale corrected resumes, active pause/stop state, broad approvals, and duplicate replay', () => {
+    const corrected = evaluate(
+      {
+        tool: 'Write',
+        content: 'Release notes draft.\n',
+        paths: ['/workspace/tmp/release-draft.md'],
+        intervention: {
+          operation: 'resume_action',
+          stateSource: 'context_only',
+          directive: 'correction',
+          planFreshness: 'stale',
+          resumeAuthorized: true,
+          approvalScope: 'none',
+          approvedActionMatch: true,
+          duplicateRisk: false,
+          idempotentResume: true,
+          riskLevel: 'medium',
+        },
+      },
+      compiled,
+    );
+    const paused = evaluate(
+      {
+        tool: 'Bash',
+        command: 'pnpm deploy --env prod',
+        intervention: {
+          operation: 'resume_action',
+          stateSource: 'context_only',
+          directive: 'pause',
+          planFreshness: 'stale',
+          resumeAuthorized: false,
+          approvalScope: 'none',
+          approvedActionMatch: true,
+          duplicateRisk: false,
+          idempotentResume: true,
+          riskLevel: 'high',
+        },
+      },
+      compiled,
+    );
+    const approval = evaluate(
+      {
+        tool: 'Bash',
+        command: 'npm publish',
+        intervention: {
+          operation: 'resume_action',
+          stateSource: 'context_only',
+          directive: 'approval',
+          planFreshness: 'stale',
+          resumeAuthorized: true,
+          approvalScope: 'broad',
+          approvedActionMatch: false,
+          duplicateRisk: false,
+          idempotentResume: true,
+          riskLevel: 'high',
+        },
+      },
+      compiled,
+    );
+    const duplicate = evaluate(
+      {
+        tool: 'Bash',
+        command: 'register-webhook shipping-sync',
+        intervention: {
+          operation: 'resume_action',
+          stateSource: 'context_only',
+          directive: 'none',
+          planFreshness: 'current',
+          resumeAuthorized: true,
+          approvalScope: 'none',
+          approvedActionMatch: true,
+          duplicateRisk: true,
+          idempotentResume: false,
+          riskLevel: 'high',
+        },
+      },
+      compiled,
+    );
+    expect(corrected.action).toBe('ask');
+    expect(paused.action).toBe('ask');
+    expect(approval.action).toBe('ask');
+    expect(duplicate.action).toBe('ask');
+    expect(corrected.matches.map((m) => m.id)).toContain(
+      'swarmlab.rt15.resumed-actions-require-intervention-state',
+    );
+    expect(paused.reason).toContain('SwarmLab RT-15');
+  });
+
+  it('RT-15 allows clean durable resumes, exact approvals, and verified duplicate checks', () => {
+    const clean = evaluate(
+      {
+        tool: 'Write',
+        content: 'Status: refreshed after resume.\n',
+        paths: ['/workspace/docs/status.md'],
+        intervention: {
+          operation: 'resume_action',
+          stateSource: 'context_only',
+          directive: 'none',
+          planFreshness: 'current',
+          resumeAuthorized: true,
+          approvalScope: 'none',
+          approvedActionMatch: true,
+          duplicateRisk: false,
+          idempotentResume: true,
+          riskLevel: 'low',
+        },
+      },
+      compiled,
+    );
+    const exactApproval = evaluate(
+      {
+        tool: 'Bash',
+        command: 'npm test',
+        intervention: {
+          operation: 'resume_action',
+          stateSource: 'durable_log',
+          directive: 'approval',
+          planFreshness: 'current',
+          resumeAuthorized: true,
+          approvalScope: 'exact_action',
+          approvedActionMatch: true,
+          duplicateRisk: false,
+          idempotentResume: true,
+          riskLevel: 'high',
+        },
+      },
+      compiled,
+    );
+    const duplicateVerified = evaluate(
+      {
+        tool: 'Bash',
+        command: 'verify-webhook shipping-sync',
+        intervention: {
+          operation: 'resume_action',
+          stateSource: 'durable_log',
+          directive: 'none',
+          planFreshness: 'current',
+          resumeAuthorized: true,
+          approvalScope: 'none',
+          approvedActionMatch: true,
+          duplicateRisk: true,
+          idempotentResume: true,
+          riskLevel: 'high',
+        },
+      },
+      compiled,
+    );
+    expect(clean.action).toBe('allow');
+    expect(clean.matches).toHaveLength(0);
+    expect(exactApproval.action).toBe('allow');
+    expect(duplicateVerified.action).toBe('allow');
+  });
 });

@@ -245,6 +245,41 @@ describe('toToolCall', () => {
     });
   });
 
+  it('maps structured intervention metadata for SwarmLab RT-15 gates', () => {
+    const call = toToolCall({
+      tool_name: 'ResumeTask',
+      tool_input: {
+        intervention: {
+          operation: 'resume_action',
+          state_source: 'context_only',
+          directive: 'approval',
+          plan_freshness: 'stale',
+          resume_authorized: true,
+          approval_scope: 'broad',
+          approved_action_match: false,
+          duplicate_risk: false,
+          idempotent_resume: true,
+          risk_level: 'high',
+        },
+      },
+    });
+    expect(call).toEqual({
+      tool: 'ResumeTask',
+      intervention: {
+        operation: 'resume_action',
+        stateSource: 'context_only',
+        directive: 'approval',
+        planFreshness: 'stale',
+        resumeAuthorized: true,
+        approvalScope: 'broad',
+        approvedActionMatch: false,
+        duplicateRisk: false,
+        idempotentResume: true,
+        riskLevel: 'high',
+      },
+    });
+  });
+
   it('is defensive against malformed / empty input', () => {
     expect(toToolCall(undefined)).toEqual({ tool: '' });
     expect(toToolCall(null)).toEqual({ tool: '' });

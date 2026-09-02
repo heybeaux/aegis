@@ -53,6 +53,7 @@ function signaturePayload(call: ToolCall, evaluation: Evaluation): unknown {
       contentBoundary: call.contentBoundary,
       factLifecycle: call.factLifecycle,
       coordination: call.coordination,
+      intervention: call.intervention,
     },
     evaluation: {
       action: evaluation.action,

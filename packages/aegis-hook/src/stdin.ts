@@ -264,6 +264,43 @@ function verificationCoverage(
   return value === 'none' || value === 'visible' || value === 'semantic' ? value : undefined;
 }
 
+function interventionOperation(
+  value: unknown,
+): NonNullable<ToolCall['intervention']>['operation'] | undefined {
+  return value === 'resume_action' ? value : undefined;
+}
+
+function interventionStateSource(
+  value: unknown,
+): NonNullable<ToolCall['intervention']>['stateSource'] | undefined {
+  return value === 'context_only' || value === 'durable_log' ? value : undefined;
+}
+
+function interventionDirective(
+  value: unknown,
+): NonNullable<ToolCall['intervention']>['directive'] | undefined {
+  return value === 'none' ||
+    value === 'correction' ||
+    value === 'pause' ||
+    value === 'stop' ||
+    value === 'approval' ||
+    value === 'deny'
+    ? value
+    : undefined;
+}
+
+function approvalScope(
+  value: unknown,
+): NonNullable<ToolCall['intervention']>['approvalScope'] | undefined {
+  return value === 'none' || value === 'broad' || value === 'exact_action' ? value : undefined;
+}
+
+function interventionRiskLevel(
+  value: unknown,
+): NonNullable<ToolCall['intervention']>['riskLevel'] | undefined {
+  return value === 'low' || value === 'medium' || value === 'high' ? value : undefined;
+}
+
 function instructionSignals(
   value: unknown,
 ): NonNullable<ToolCall['contentBoundary']>['instructionSignals'] | undefined {
@@ -537,6 +574,59 @@ function toCoordination(
   return Object.values(coordination).some((v) => v !== undefined) ? coordination : undefined;
 }
 
+function toIntervention(
+  root: Record<string, unknown>,
+  input: Record<string, unknown>,
+): ToolCall['intervention'] | undefined {
+  const raw = asRecord(root.intervention);
+  const inputRaw = asRecord(input.intervention);
+  const source = Object.keys(inputRaw).length > 0 ? inputRaw : raw;
+  if (Object.keys(source).length === 0) return undefined;
+
+  const intervention: NonNullable<ToolCall['intervention']> = {};
+  intervention.operation =
+    interventionOperation(source.operation) ??
+    interventionOperation(source.kind);
+  intervention.stateSource =
+    interventionStateSource(source.stateSource) ??
+    interventionStateSource(source.state_source) ??
+    interventionStateSource(source.source);
+  intervention.directive =
+    interventionDirective(source.directive) ??
+    interventionDirective(source.directive_state) ??
+    interventionDirective(source.directiveState);
+  intervention.planFreshness =
+    branchFreshness(source.planFreshness) ??
+    branchFreshness(source.plan_freshness) ??
+    branchFreshness(source.freshness);
+  intervention.resumeAuthorized =
+    bool(source, 'resumeAuthorized') ??
+    bool(source, 'resume_authorized') ??
+    bool(source, 'authorized');
+  intervention.approvalScope =
+    approvalScope(source.approvalScope) ??
+    approvalScope(source.approval_scope) ??
+    approvalScope(source.scope);
+  intervention.approvedActionMatch =
+    bool(source, 'approvedActionMatch') ??
+    bool(source, 'approved_action_match') ??
+    bool(source, 'actionMatch');
+  intervention.duplicateRisk =
+    bool(source, 'duplicateRisk') ??
+    bool(source, 'duplicate_risk') ??
+    bool(source, 'alreadyCompleted');
+  intervention.idempotentResume =
+    bool(source, 'idempotentResume') ??
+    bool(source, 'idempotent_resume') ??
+    bool(source, 'resumeVerified');
+  intervention.riskLevel =
+    interventionRiskLevel(source.riskLevel) ??
+    interventionRiskLevel(source.risk_level) ??
+    interventionRiskLevel(source.risk);
+
+  return Object.values(intervention).some((v) => v !== undefined) ? intervention : undefined;
+}
+
 /**
  * Pure mapping from a raw Claude Code hook payload to an Aegis ToolCall.
  *
@@ -546,7 +636,8 @@ function toCoordination(
  * - `tool_input.file_path` (Write/Edit/Read) -> `paths: [...]`.
  * - `handoff` or `tool_input.handoff` -> structured handoff metadata for SwarmLab-derived gates.
  * - `verification` / `completion` / `recall` / `content_boundary` / `fact_lifecycle` /
- *   `coordination` are parsed into the matching structured metadata surfaces when present.
+ *   `coordination` / `intervention` are parsed into the matching structured metadata surfaces when
+ *   present.
  *
  * No throws — safe to unit test in isolation.
  */
@@ -588,6 +679,8 @@ export function toToolCall(hookInput: unknown): ToolCall {
   if (factLifecycle !== undefined) call.factLifecycle = factLifecycle;
   const coordination = toCoordination(root, input);
   if (coordination !== undefined) call.coordination = coordination;
+  const intervention = toIntervention(root, input);
+  if (intervention !== undefined) call.intervention = intervention;
   return call;
 }
 

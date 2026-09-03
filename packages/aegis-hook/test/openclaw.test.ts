@@ -154,6 +154,34 @@ describe('OpenClaw adapter', () => {
         riskLevel: 'high',
       },
     });
+
+    expect(
+      openClawToolCall({
+        toolName: 'task',
+        params: {
+          workflow_resume: {
+            operation: 'resume_workflow_step',
+            workflow_state: 'partial_success',
+            step_status: 'revoked',
+            approval_binding: 'task',
+            binding_match: false,
+            remaining_step_verified: false,
+            risk_level: 'high',
+          },
+        },
+      }),
+    ).toEqual({
+      tool: 'Delegate',
+      workflowResume: {
+        operation: 'resume_workflow_step',
+        workflowState: 'partial_success',
+        stepStatus: 'revoked',
+        approvalBinding: 'task',
+        bindingMatch: false,
+        remainingStepVerified: false,
+        riskLevel: 'high',
+      },
+    });
   });
 
   it('evaluates in fail-open shadow mode and records an exact decision join key', async () => {

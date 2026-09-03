@@ -317,6 +317,47 @@ function normalizeIntervention(value: unknown): ToolCall['intervention'] | undef
   return Object.values(normalized).some((value) => value !== undefined) ? normalized : undefined;
 }
 
+function normalizeWorkflowResume(value: unknown): ToolCall['workflowResume'] | undefined {
+  const record = asRecord(value);
+  if (Object.keys(record).length === 0) return undefined;
+
+  const operation = stringValue(record, 'operation', 'kind');
+  const workflowState = stringValue(record, 'workflowState', 'workflow_state', 'state');
+  const stepStatus = stringValue(record, 'stepStatus', 'step_status', 'status');
+  const approvalBinding = stringValue(record, 'approvalBinding', 'approval_binding', 'binding');
+  const riskLevel = stringValue(record, 'riskLevel', 'risk_level', 'risk');
+
+  const normalized: NonNullable<ToolCall['workflowResume']> = {};
+  if (operation === 'resume_workflow_step') normalized.operation = operation;
+  if (workflowState === 'clean' || workflowState === 'partial_success') {
+    normalized.workflowState = workflowState;
+  }
+  if (
+    stepStatus === 'remaining' ||
+    stepStatus === 'completed' ||
+    stepStatus === 'revoked' ||
+    stepStatus === 'unknown'
+  ) {
+    normalized.stepStatus = stepStatus;
+  }
+  if (
+    approvalBinding === 'task' ||
+    approvalBinding === 'step' ||
+    approvalBinding === 'step_instance'
+  ) {
+    normalized.approvalBinding = approvalBinding;
+  }
+  normalized.bindingMatch =
+    boolValue(record, 'bindingMatch', 'binding_match', 'approvedBindingMatch');
+  normalized.remainingStepVerified =
+    boolValue(record, 'remainingStepVerified', 'remaining_step_verified', 'verified');
+  if (riskLevel === 'low' || riskLevel === 'medium' || riskLevel === 'high') {
+    normalized.riskLevel = riskLevel;
+  }
+
+  return Object.values(normalized).some((value) => value !== undefined) ? normalized : undefined;
+}
+
 export function openClawToolCall(event: OpenClawToolEvent): ToolCall {
   const params = event.params;
   const tool = normalizeToolName(event.toolName);
@@ -355,6 +396,12 @@ export function openClawToolCall(event: OpenClawToolEvent): ToolCall {
   const intervention = normalizeIntervention(params['intervention']);
   if (intervention !== undefined) {
     call.intervention = intervention;
+  }
+  const workflowResume = normalizeWorkflowResume(
+    params['workflowResume'] ?? params['workflow_resume'],
+  );
+  if (workflowResume !== undefined) {
+    call.workflowResume = workflowResume;
   }
   return call;
 }

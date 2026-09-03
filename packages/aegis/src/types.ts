@@ -260,6 +260,23 @@ export interface InterventionMetadata {
   riskLevel?: 'low' | 'medium' | 'high';
 }
 
+export interface WorkflowResumeMetadata {
+  /** What workflow-sensitive resume action is about to happen. */
+  operation?: 'resume_workflow_step';
+  /** Whether the workflow is resuming cleanly or after partial success. */
+  workflowState?: 'clean' | 'partial_success';
+  /** Lifecycle state of the specific step being resumed. */
+  stepStatus?: 'remaining' | 'completed' | 'revoked' | 'unknown';
+  /** How tightly approval is bound to the workflow step. */
+  approvalBinding?: 'task' | 'step' | 'step_instance';
+  /** Whether the proposed step still matches the authorized binding. */
+  bindingMatch?: boolean;
+  /** Whether the durable progress ledger verified this as the remaining safe step. */
+  remainingStepVerified?: boolean;
+  /** Risk tier of the resumed workflow step. */
+  riskLevel?: 'low' | 'medium' | 'high';
+}
+
 export interface ToolCall {
   /** Claude Code / OpenClaw tool name, e.g. "Bash", "Write", "Edit", "Read". */
   tool: string;
@@ -287,6 +304,8 @@ export interface ToolCall {
   coordination?: CoordinationMetadata;
   /** Optional structured intervention metadata from SwarmLab RT-15. */
   intervention?: InterventionMetadata;
+  /** Optional structured workflow-resume metadata from SwarmLab RT-16. */
+  workflowResume?: WorkflowResumeMetadata;
 }
 
 /** One rule that fired during evaluation. */

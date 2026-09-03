@@ -280,6 +280,35 @@ describe('toToolCall', () => {
     });
   });
 
+  it('maps structured workflow-resume metadata for SwarmLab RT-16 gates', () => {
+    const call = toToolCall({
+      tool_name: 'ResumeWorkflow',
+      tool_input: {
+        workflow_resume: {
+          operation: 'resume_workflow_step',
+          workflow_state: 'partial_success',
+          step_status: 'completed',
+          approval_binding: 'task',
+          binding_match: false,
+          remaining_step_verified: false,
+          risk_level: 'high',
+        },
+      },
+    });
+    expect(call).toEqual({
+      tool: 'ResumeWorkflow',
+      workflowResume: {
+        operation: 'resume_workflow_step',
+        workflowState: 'partial_success',
+        stepStatus: 'completed',
+        approvalBinding: 'task',
+        bindingMatch: false,
+        remainingStepVerified: false,
+        riskLevel: 'high',
+      },
+    });
+  });
+
   it('is defensive against malformed / empty input', () => {
     expect(toToolCall(undefined)).toEqual({ tool: '' });
     expect(toToolCall(null)).toEqual({ tool: '' });

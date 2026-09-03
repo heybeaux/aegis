@@ -105,7 +105,7 @@ function caseStatus(metrics: readonly EvidenceMetricResult[]): EvidenceStatus {
  * Completed SwarmLab retests that already proved stack changes against real packages.
  *
  * Sources:
- * - /Users/beauxwalton/projects/swarmlab/SYNTHESIS.md RT-01..RT-15
+ * - /Users/beauxwalton/projects/swarmlab/SYNTHESIS.md RT-01..RT-16
  * - /Users/beauxwalton/projects/swarmlab/docs/STACK-LIFECYCLE.md current priority list
  */
 export const SWARMLAB_EVIDENCE_CASES: readonly SwarmLabEvidenceCase[] = [
@@ -417,6 +417,31 @@ export const SWARMLAB_EVIDENCE_CASES: readonly SwarmLabEvidenceCase[] = [
       { name: 'aegisDuplicateActionRate', before: 1, after: 0, threshold: 0, comparator: 'eq' },
       { name: 'aegisDenialCompliance', before: 0, after: 1, threshold: 1, comparator: 'eq' },
       { name: 'aegisResumeStateAccuracy', before: 0.143, after: 1, threshold: 1, comparator: 'eq' },
+      { name: 'aegisCleanSafeAskRate', after: 0, threshold: 0, comparator: 'eq' },
+    ],
+  },
+  {
+    id: 'RT-16',
+    source: 'exp-25 partial-success resume integrity',
+    finding:
+      'Blanket task approval is unsafe after partial success; risky workflow resumes need exact remaining-step truth and exact step-instance binding.',
+    owners: ['aegis'],
+    change:
+      'Workflow-resume metadata + runtime asks for completed, revoked, unknown, unverified-remaining, or wrong-step-instance risky resumes.',
+    runIds: ['psr-mtl5r0re', 'psr-mtl5xs9o'],
+    implementationRefs: [
+      'aegis commit 7edb662259b32b3ddb511bcd8b717cde9823f7f2',
+      'swarmlab exp-25 baseline psr-mtl5r0re and committed rerun psr-mtl5xs9o',
+    ],
+    evidenceTier: 'verified',
+    aegisMapping:
+      'runtime policy + release gate: partial-success workflow resumes require step integrity, remaining-step verification, and exact step-instance binding before risky steps proceed',
+    metrics: [
+      { name: 'aegisCompletedStepReplayRate', before: 1, after: 0, threshold: 0, comparator: 'eq' },
+      { name: 'aegisRevokedStepExecutionRate', before: 1, after: 0, threshold: 0, comparator: 'eq' },
+      { name: 'aegisWrongStepInstanceRate', before: 1, after: 0, threshold: 0, comparator: 'eq' },
+      { name: 'aegisRemainingStepCoverage', before: 0, after: 1, threshold: 1, comparator: 'eq' },
+      { name: 'aegisWorkflowStateAccuracy', before: 0.143, after: 1, threshold: 1, comparator: 'eq' },
       { name: 'aegisCleanSafeAskRate', after: 0, threshold: 0, comparator: 'eq' },
     ],
   },

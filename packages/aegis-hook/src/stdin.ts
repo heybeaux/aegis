@@ -301,6 +301,35 @@ function interventionRiskLevel(
   return value === 'low' || value === 'medium' || value === 'high' ? value : undefined;
 }
 
+function workflowResumeOperation(
+  value: unknown,
+): NonNullable<ToolCall['workflowResume']>['operation'] | undefined {
+  return value === 'resume_workflow_step' ? value : undefined;
+}
+
+function workflowState(
+  value: unknown,
+): NonNullable<ToolCall['workflowResume']>['workflowState'] | undefined {
+  return value === 'clean' || value === 'partial_success' ? value : undefined;
+}
+
+function workflowStepStatus(
+  value: unknown,
+): NonNullable<ToolCall['workflowResume']>['stepStatus'] | undefined {
+  return value === 'remaining' ||
+    value === 'completed' ||
+    value === 'revoked' ||
+    value === 'unknown'
+    ? value
+    : undefined;
+}
+
+function workflowApprovalBinding(
+  value: unknown,
+): NonNullable<ToolCall['workflowResume']>['approvalBinding'] | undefined {
+  return value === 'task' || value === 'step' || value === 'step_instance' ? value : undefined;
+}
+
 function instructionSignals(
   value: unknown,
 ): NonNullable<ToolCall['contentBoundary']>['instructionSignals'] | undefined {
@@ -627,6 +656,56 @@ function toIntervention(
   return Object.values(intervention).some((v) => v !== undefined) ? intervention : undefined;
 }
 
+function toWorkflowResume(
+  root: Record<string, unknown>,
+  input: Record<string, unknown>,
+): ToolCall['workflowResume'] | undefined {
+  const raw = asRecord(root.workflow_resume);
+  const camelRaw = asRecord(root.workflowResume);
+  const inputRaw = asRecord(input.workflow_resume);
+  const inputCamelRaw = asRecord(input.workflowResume);
+  const source =
+    Object.keys(inputRaw).length > 0
+      ? inputRaw
+      : Object.keys(inputCamelRaw).length > 0
+        ? inputCamelRaw
+        : Object.keys(raw).length > 0
+          ? raw
+          : camelRaw;
+  if (Object.keys(source).length === 0) return undefined;
+
+  const workflowResume: NonNullable<ToolCall['workflowResume']> = {};
+  workflowResume.operation =
+    workflowResumeOperation(source.operation) ??
+    workflowResumeOperation(source.kind);
+  workflowResume.workflowState =
+    workflowState(source.workflowState) ??
+    workflowState(source.workflow_state) ??
+    workflowState(source.state);
+  workflowResume.stepStatus =
+    workflowStepStatus(source.stepStatus) ??
+    workflowStepStatus(source.step_status) ??
+    workflowStepStatus(source.status);
+  workflowResume.approvalBinding =
+    workflowApprovalBinding(source.approvalBinding) ??
+    workflowApprovalBinding(source.approval_binding) ??
+    workflowApprovalBinding(source.binding);
+  workflowResume.bindingMatch =
+    bool(source, 'bindingMatch') ??
+    bool(source, 'binding_match') ??
+    bool(source, 'approvedBindingMatch');
+  workflowResume.remainingStepVerified =
+    bool(source, 'remainingStepVerified') ??
+    bool(source, 'remaining_step_verified') ??
+    bool(source, 'verified');
+  workflowResume.riskLevel =
+    interventionRiskLevel(source.riskLevel) ??
+    interventionRiskLevel(source.risk_level) ??
+    interventionRiskLevel(source.risk);
+
+  return Object.values(workflowResume).some((v) => v !== undefined) ? workflowResume : undefined;
+}
+
 /**
  * Pure mapping from a raw Claude Code hook payload to an Aegis ToolCall.
  *
@@ -636,8 +715,8 @@ function toIntervention(
  * - `tool_input.file_path` (Write/Edit/Read) -> `paths: [...]`.
  * - `handoff` or `tool_input.handoff` -> structured handoff metadata for SwarmLab-derived gates.
  * - `verification` / `completion` / `recall` / `content_boundary` / `fact_lifecycle` /
- *   `coordination` / `intervention` are parsed into the matching structured metadata surfaces when
- *   present.
+ *   `coordination` / `intervention` / `workflow_resume` are parsed into the matching structured
+ *   metadata surfaces when present.
  *
  * No throws — safe to unit test in isolation.
  */
@@ -681,6 +760,8 @@ export function toToolCall(hookInput: unknown): ToolCall {
   if (coordination !== undefined) call.coordination = coordination;
   const intervention = toIntervention(root, input);
   if (intervention !== undefined) call.intervention = intervention;
+  const workflowResume = toWorkflowResume(root, input);
+  if (workflowResume !== undefined) call.workflowResume = workflowResume;
   return call;
 }
 

@@ -323,10 +323,38 @@ function swarmlabPolicyHits(call: ToolCall): RuleHit[] {
     }
   }
 
+  const w = call.workflowResume;
+  if (w?.workflowState === 'partial_success') {
+    const completedOrRevokedOrUnknown =
+      w.stepStatus === 'completed' ||
+      w.stepStatus === 'revoked' ||
+      w.stepStatus === 'unknown';
+    const highRiskMissingRemainingStepVerification =
+      w.riskLevel !== 'low' && w.remainingStepVerified !== true;
+    const highRiskBroadOrMismatchedBinding =
+      w.riskLevel !== 'low' &&
+      (w.approvalBinding !== 'step_instance' || w.bindingMatch !== true);
+    if (
+      completedOrRevokedOrUnknown ||
+      highRiskMissingRemainingStepVerification ||
+      highRiskBroadOrMismatchedBinding
+    ) {
+      hits.push({
+        id: 'swarmlab.rt16.partial-success-resumes-require-step-integrity',
+        severity: 'medium',
+        category: 'swarmlab',
+        target: 'argv',
+      });
+    }
+  }
+
   return hits;
 }
 
 function swarmlabReason(id: string): string {
+  if (id.includes('rt16')) {
+    return 'SwarmLab RT-16: partial-success workflow resumes need remaining-step verification and exact step-instance binding before risky steps can proceed';
+  }
   if (id.includes('rt15')) {
     return 'SwarmLab RT-15: resumed actions need durable intervention state, exact approval scope, and duplicate-action verification before stale plans can proceed';
   }

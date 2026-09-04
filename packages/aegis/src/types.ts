@@ -277,6 +277,23 @@ export interface WorkflowResumeMetadata {
   riskLevel?: 'low' | 'medium' | 'high';
 }
 
+export interface ApprovalEnvelopeMetadata {
+  /** What approval-sensitive retry is about to happen. */
+  operation?: 'approved_retry';
+  /** Risk tier of the approved retry. */
+  riskLevel?: 'low' | 'medium' | 'high';
+  /** Maximum freshness window for reusing the approval, in milliseconds. */
+  freshnessWindowMs?: number;
+  /** Caller-observed timestamp for this approval or retry attempt. */
+  observedAt?: string;
+  /** Content-addressed artifact identity the approval depended on. */
+  artifactDigest?: string;
+  /** Verification envelope digest/status identity the approval depended on. */
+  verificationDigest?: string;
+  /** Target/base-state digest the approval depended on. */
+  targetDigest?: string;
+}
+
 export interface ToolCall {
   /** Claude Code / OpenClaw tool name, e.g. "Bash", "Write", "Edit", "Read". */
   tool: string;
@@ -306,6 +323,8 @@ export interface ToolCall {
   intervention?: InterventionMetadata;
   /** Optional structured workflow-resume metadata from SwarmLab RT-16. */
   workflowResume?: WorkflowResumeMetadata;
+  /** Optional structured approval-envelope metadata from SwarmLab RT-17. */
+  approvalEnvelope?: ApprovalEnvelopeMetadata;
 }
 
 /** One rule that fired during evaluation. */

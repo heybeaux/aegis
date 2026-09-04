@@ -309,6 +309,35 @@ describe('toToolCall', () => {
     });
   });
 
+  it('maps structured approval-envelope metadata for SwarmLab RT-17 gates', () => {
+    const call = toToolCall({
+      tool_name: 'ResumeTask',
+      tool_input: {
+        approval_envelope: {
+          operation: 'approved_retry',
+          risk_level: 'high',
+          freshness_window_ms: 60000,
+          observed_at: '2026-09-04T06:30:00.000Z',
+          artifact_digest: 'artifact:v1',
+          verification_digest: 'verify:v1',
+          target_digest: 'target:v1',
+        },
+      },
+    });
+    expect(call).toEqual({
+      tool: 'ResumeTask',
+      approvalEnvelope: {
+        operation: 'approved_retry',
+        riskLevel: 'high',
+        freshnessWindowMs: 60000,
+        observedAt: '2026-09-04T06:30:00.000Z',
+        artifactDigest: 'artifact:v1',
+        verificationDigest: 'verify:v1',
+        targetDigest: 'target:v1',
+      },
+    });
+  });
+
   it('is defensive against malformed / empty input', () => {
     expect(toToolCall(undefined)).toEqual({ tool: '' });
     expect(toToolCall(null)).toEqual({ tool: '' });

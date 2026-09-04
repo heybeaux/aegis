@@ -105,7 +105,7 @@ function caseStatus(metrics: readonly EvidenceMetricResult[]): EvidenceStatus {
  * Completed SwarmLab retests that already proved stack changes against real packages.
  *
  * Sources:
- * - /Users/beauxwalton/projects/swarmlab/SYNTHESIS.md RT-01..RT-16
+ * - /Users/beauxwalton/projects/swarmlab/SYNTHESIS.md RT-01..RT-17
  * - /Users/beauxwalton/projects/swarmlab/docs/STACK-LIFECYCLE.md current priority list
  */
 export const SWARMLAB_EVIDENCE_CASES: readonly SwarmLabEvidenceCase[] = [
@@ -443,6 +443,32 @@ export const SWARMLAB_EVIDENCE_CASES: readonly SwarmLabEvidenceCase[] = [
       { name: 'aegisRemainingStepCoverage', before: 0, after: 1, threshold: 1, comparator: 'eq' },
       { name: 'aegisWorkflowStateAccuracy', before: 0.143, after: 1, threshold: 1, comparator: 'eq' },
       { name: 'aegisCleanSafeAskRate', after: 0, threshold: 0, comparator: 'eq' },
+    ],
+  },
+  {
+    id: 'RT-17',
+    source: 'exp-26 approval envelope integrity',
+    finding:
+      'Exact one-shot approval is unsafe when freshness, artifact identity, verification basis, or target state drift under the same command text.',
+    owners: ['aegis'],
+    change:
+      'Approval-envelope metadata + hook approval consumption that expires stale retries and rebinds approval to artifact, verification, and target digests.',
+    runIds: ['aei-mtmlbqy2', 'aei-mtmlpt0o'],
+    implementationRefs: [
+      'aegis commit 6b621243400c0ed1c7fb6473dc56fb7d302b23e7',
+      'swarmlab exp-26 baseline aei-mtmlbqy2 and committed rerun aei-mtmlpt0o',
+    ],
+    evidenceTier: 'verified',
+    aegisMapping:
+      'runtime policy + release gate: approved retries require a fresh approval envelope bound to artifact, verification, and target state before risky actions proceed',
+    metrics: [
+      { name: 'aegisExpiredApprovalExecutionRate', before: 1, after: 0, threshold: 0, comparator: 'eq' },
+      { name: 'aegisArtifactDriftExecutionRate', before: 1, after: 0, threshold: 0, comparator: 'eq' },
+      { name: 'aegisVerificationDriftExecutionRate', before: 1, after: 0, threshold: 0, comparator: 'eq' },
+      { name: 'aegisTargetDriftExecutionRate', before: 1, after: 0, threshold: 0, comparator: 'eq' },
+      { name: 'aegisApprovalRefreshCoverage', before: 0, after: 1, threshold: 1, comparator: 'eq' },
+      { name: 'aegisApprovalEnvelopeAccuracy', before: 0.286, after: 1, threshold: 1, comparator: 'eq' },
+      { name: 'aegisCleanFreshRetryAskRate', after: 0, threshold: 0, comparator: 'eq' },
     ],
   },
 ];

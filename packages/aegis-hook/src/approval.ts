@@ -15,6 +15,7 @@ export interface ApprovalRecord {
   action: 'ask';
   tool: string;
   actionKey?: string;
+  approvalEnvelope?: NonNullable<ToolCall['approvalEnvelope']>;
 }
 
 export interface ApprovalPaths {
@@ -38,6 +39,69 @@ function stable(value: unknown): string {
   return JSON.stringify(value);
 }
 
+function approvalEnvelopeBinding(
+  value: ToolCall['approvalEnvelope'],
+): Omit<NonNullable<ToolCall['approvalEnvelope']>, 'observedAt'> | undefined {
+  if (value === undefined) return undefined;
+  const {
+    operation,
+    riskLevel,
+    freshnessWindowMs,
+    artifactDigest,
+    verificationDigest,
+    targetDigest,
+  } = value;
+  return {
+    ...(operation !== undefined ? { operation } : {}),
+    ...(riskLevel !== undefined ? { riskLevel } : {}),
+    ...(freshnessWindowMs !== undefined ? { freshnessWindowMs } : {}),
+    ...(artifactDigest !== undefined ? { artifactDigest } : {}),
+    ...(verificationDigest !== undefined ? { verificationDigest } : {}),
+    ...(targetDigest !== undefined ? { targetDigest } : {}),
+  };
+}
+
+function approvalEnvelopeObservedAt(value: ToolCall['approvalEnvelope']): string | undefined {
+  return value?.observedAt;
+}
+
+function approvalEnvelopeForRecord(
+  value: ToolCall['approvalEnvelope'],
+): NonNullable<ToolCall['approvalEnvelope']> | undefined {
+  if (value === undefined) return undefined;
+  return {
+    ...(approvalEnvelopeBinding(value) ?? {}),
+    ...(approvalEnvelopeObservedAt(value) !== undefined
+      ? { observedAt: approvalEnvelopeObservedAt(value) }
+      : {}),
+  };
+}
+
+function parseIsoMillis(value: string | undefined): number | undefined {
+  if (value === undefined) return undefined;
+  const parsed = Date.parse(value);
+  return Number.isFinite(parsed) ? parsed : undefined;
+}
+
+function approvalExpired(approved: ApprovalRecord | undefined, call: ToolCall): boolean {
+  if (approved === undefined) return false;
+  const approvedEnvelope = approved?.approvalEnvelope;
+  const retryEnvelope = call.approvalEnvelope;
+  if (
+    approvedEnvelope?.operation !== 'approved_retry' ||
+    retryEnvelope?.operation !== 'approved_retry' ||
+    approvedEnvelope.freshnessWindowMs === undefined
+  ) {
+    return false;
+  }
+  const approvedAt =
+    parseIsoMillis(approvedEnvelope.observedAt) ??
+    parseIsoMillis(approved.createdAt);
+  const retryAt = parseIsoMillis(retryEnvelope.observedAt);
+  if (approvedAt === undefined || retryAt === undefined) return false;
+  return retryAt - approvedAt > approvedEnvelope.freshnessWindowMs;
+}
+
 function signaturePayload(call: ToolCall, evaluation: Evaluation): unknown {
   return {
     call: {
@@ -54,6 +118,8 @@ function signaturePayload(call: ToolCall, evaluation: Evaluation): unknown {
       factLifecycle: call.factLifecycle,
       coordination: call.coordination,
       intervention: call.intervention,
+      workflowResume: call.workflowResume,
+      approvalEnvelope: approvalEnvelopeBinding(call.approvalEnvelope),
     },
     evaluation: {
       action: evaluation.action,
@@ -104,6 +170,9 @@ function recordFor(
     action: 'ask',
     tool: call.tool,
     ...(actionKey !== undefined ? { actionKey } : {}),
+    ...(approvalEnvelopeForRecord(call.approvalEnvelope) !== undefined
+      ? { approvalEnvelope: approvalEnvelopeForRecord(call.approvalEnvelope) }
+      : {}),
   };
 }
 
@@ -158,6 +227,11 @@ export function consumeApproval(call: ToolCall, evaluation: Evaluation, dir?: st
     } catch {
       rmSync(consumingPath, { force: true });
     }
+    return false;
+  }
+  if (approvalExpired(approved, call)) {
+    rmSync(consumingPath, { force: true });
+    rmSync(paths.pendingPath, { force: true });
     return false;
   }
   rmSync(consumingPath, { force: true });

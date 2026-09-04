@@ -35,10 +35,35 @@ const evaluation: Evaluation = {
   ruleVersions: [],
 };
 
+function approvalRetryCall(overrides: Partial<NonNullable<ToolCall['approvalEnvelope']>> = {}): ToolCall {
+  return {
+    ...call,
+    approvalEnvelope: {
+      operation: 'approved_retry',
+      riskLevel: 'high',
+      freshnessWindowMs: 60_000,
+      observedAt: '2026-09-04T06:30:00.000Z',
+      artifactDigest: 'artifact:v1',
+      verificationDigest: 'verify:v1',
+      targetDigest: 'target:v1',
+      ...overrides,
+    },
+  };
+}
+
 describe('approval store', () => {
   it('generates a stable id for the exact call/evaluation pair', () => {
     expect(approvalId(call, evaluation)).toMatch(/^aegis_[a-f0-9]{16}$/);
     expect(approvalId(call, evaluation)).toBe(approvalId({ ...call }, { ...evaluation }));
+  });
+
+  it('keeps approval ids stable across observedAt-only retries but changes when envelope bindings drift', () => {
+    const original = approvalRetryCall();
+    const laterRetry = approvalRetryCall({ observedAt: '2026-09-04T06:30:45.000Z' });
+    const artifactDrifted = approvalRetryCall({ artifactDigest: 'artifact:v2' });
+
+    expect(approvalId(original, evaluation)).toBe(approvalId(laterRetry, evaluation));
+    expect(approvalId(original, evaluation)).not.toBe(approvalId(artifactDrifted, evaluation));
   });
 
   it('requests, approves, and consumes a one-shot approval', () => {
@@ -77,6 +102,41 @@ describe('approval store', () => {
         ),
       ).toBe(false);
       expect(consumeApproval(call, evaluation, dir)).toBe(true);
+    } finally {
+      rmSync(dir, { recursive: true, force: true });
+    }
+  });
+
+  it('does not consume an expired approval-envelope retry and clears stale records', () => {
+    const dir = tmp();
+    try {
+      const approvedCall = approvalRetryCall({ observedAt: '2026-09-04T06:30:00.000Z' });
+      const retryCall = approvalRetryCall({ observedAt: '2026-09-04T06:31:01.000Z' });
+      const pending = requestApproval(approvedCall, evaluation, dir, 'action-key-expired');
+      const paths = approvalPaths(pending.id, dir);
+      approvePending(pending.id, dir);
+
+      expect(consumeApproval(retryCall, evaluation, dir)).toBe(false);
+      expect(existsSync(paths.pendingPath)).toBe(false);
+      expect(existsSync(paths.approvedPath)).toBe(false);
+    } finally {
+      rmSync(dir, { recursive: true, force: true });
+    }
+  });
+
+  it('does not consume an approval when the approval-envelope artifact binding drifts', () => {
+    const dir = tmp();
+    try {
+      const approvedCall = approvalRetryCall();
+      const retryCall = approvalRetryCall({ artifactDigest: 'artifact:v2' });
+      const pending = requestApproval(approvedCall, evaluation, dir, 'action-key-artifact');
+      const approvedPaths = approvalPaths(pending.id, dir);
+      approvePending(pending.id, dir);
+
+      expect(consumeApproval(retryCall, evaluation, dir)).toBe(false);
+      expect(existsSync(approvedPaths.pendingPath)).toBe(true);
+      expect(existsSync(approvedPaths.approvedPath)).toBe(true);
+      expect(consumeApproval(approvedCall, evaluation, dir)).toBe(true);
     } finally {
       rmSync(dir, { recursive: true, force: true });
     }

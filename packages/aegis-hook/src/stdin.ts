@@ -330,6 +330,12 @@ function workflowApprovalBinding(
   return value === 'task' || value === 'step' || value === 'step_instance' ? value : undefined;
 }
 
+function approvalEnvelopeOperation(
+  value: unknown,
+): NonNullable<ToolCall['approvalEnvelope']>['operation'] | undefined {
+  return value === 'approved_retry' ? value : undefined;
+}
+
 function instructionSignals(
   value: unknown,
 ): NonNullable<ToolCall['contentBoundary']>['instructionSignals'] | undefined {
@@ -706,6 +712,57 @@ function toWorkflowResume(
   return Object.values(workflowResume).some((v) => v !== undefined) ? workflowResume : undefined;
 }
 
+function toApprovalEnvelope(
+  root: Record<string, unknown>,
+  input: Record<string, unknown>,
+): ToolCall['approvalEnvelope'] | undefined {
+  const raw = asRecord(root.approval_envelope);
+  const camelRaw = asRecord(root.approvalEnvelope);
+  const inputRaw = asRecord(input.approval_envelope);
+  const inputCamelRaw = asRecord(input.approvalEnvelope);
+  const source =
+    Object.keys(inputRaw).length > 0
+      ? inputRaw
+      : Object.keys(inputCamelRaw).length > 0
+        ? inputCamelRaw
+        : Object.keys(raw).length > 0
+          ? raw
+          : camelRaw;
+  if (Object.keys(source).length === 0) return undefined;
+
+  const approvalEnvelope: NonNullable<ToolCall['approvalEnvelope']> = {};
+  approvalEnvelope.operation =
+    approvalEnvelopeOperation(source.operation) ??
+    approvalEnvelopeOperation(source.kind);
+  approvalEnvelope.riskLevel =
+    interventionRiskLevel(source.riskLevel) ??
+    interventionRiskLevel(source.risk_level) ??
+    interventionRiskLevel(source.risk);
+  approvalEnvelope.freshnessWindowMs =
+    num(source, 'freshnessWindowMs') ??
+    num(source, 'freshness_window_ms') ??
+    num(source, 'ttlMs') ??
+    num(source, 'ttl_ms');
+  approvalEnvelope.observedAt =
+    str(source, 'observedAt') ??
+    str(source, 'observed_at') ??
+    str(source, 'timestamp');
+  approvalEnvelope.artifactDigest =
+    str(source, 'artifactDigest') ??
+    str(source, 'artifact_digest') ??
+    str(source, 'artifact');
+  approvalEnvelope.verificationDigest =
+    str(source, 'verificationDigest') ??
+    str(source, 'verification_digest') ??
+    str(source, 'verification');
+  approvalEnvelope.targetDigest =
+    str(source, 'targetDigest') ??
+    str(source, 'target_digest') ??
+    str(source, 'target');
+
+  return Object.values(approvalEnvelope).some((v) => v !== undefined) ? approvalEnvelope : undefined;
+}
+
 /**
  * Pure mapping from a raw Claude Code hook payload to an Aegis ToolCall.
  *
@@ -715,8 +772,8 @@ function toWorkflowResume(
  * - `tool_input.file_path` (Write/Edit/Read) -> `paths: [...]`.
  * - `handoff` or `tool_input.handoff` -> structured handoff metadata for SwarmLab-derived gates.
  * - `verification` / `completion` / `recall` / `content_boundary` / `fact_lifecycle` /
- *   `coordination` / `intervention` / `workflow_resume` are parsed into the matching structured
- *   metadata surfaces when present.
+ *   `coordination` / `intervention` / `workflow_resume` / `approval_envelope` are parsed into the
+ *   matching structured metadata surfaces when present.
  *
  * No throws — safe to unit test in isolation.
  */
@@ -762,6 +819,8 @@ export function toToolCall(hookInput: unknown): ToolCall {
   if (intervention !== undefined) call.intervention = intervention;
   const workflowResume = toWorkflowResume(root, input);
   if (workflowResume !== undefined) call.workflowResume = workflowResume;
+  const approvalEnvelope = toApprovalEnvelope(root, input);
+  if (approvalEnvelope !== undefined) call.approvalEnvelope = approvalEnvelope;
   return call;
 }
 

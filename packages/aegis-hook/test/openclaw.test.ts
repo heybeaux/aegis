@@ -182,6 +182,34 @@ describe('OpenClaw adapter', () => {
         riskLevel: 'high',
       },
     });
+
+    expect(
+      openClawToolCall({
+        toolName: 'task',
+        params: {
+          approval_envelope: {
+            operation: 'approved_retry',
+            risk_level: 'high',
+            freshness_window_ms: 60000,
+            observed_at: '2026-09-04T06:30:00.000Z',
+            artifact_digest: 'artifact:v1',
+            verification_digest: 'verify:v1',
+            target_digest: 'target:v1',
+          },
+        },
+      }),
+    ).toEqual({
+      tool: 'Delegate',
+      approvalEnvelope: {
+        operation: 'approved_retry',
+        riskLevel: 'high',
+        freshnessWindowMs: 60000,
+        observedAt: '2026-09-04T06:30:00.000Z',
+        artifactDigest: 'artifact:v1',
+        verificationDigest: 'verify:v1',
+        targetDigest: 'target:v1',
+      },
+    });
   });
 
   it('evaluates in fail-open shadow mode and records an exact decision join key', async () => {

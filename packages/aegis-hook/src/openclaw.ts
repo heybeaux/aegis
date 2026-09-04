@@ -358,6 +358,39 @@ function normalizeWorkflowResume(value: unknown): ToolCall['workflowResume'] | u
   return Object.values(normalized).some((value) => value !== undefined) ? normalized : undefined;
 }
 
+function normalizeApprovalEnvelope(value: unknown): ToolCall['approvalEnvelope'] | undefined {
+  const record = asRecord(value);
+  if (Object.keys(record).length === 0) return undefined;
+
+  const operation = stringValue(record, 'operation', 'kind');
+  const riskLevel = stringValue(record, 'riskLevel', 'risk_level', 'risk');
+  const artifactDigest = stringValue(record, 'artifactDigest', 'artifact_digest', 'artifact');
+  const verificationDigest = stringValue(
+    record,
+    'verificationDigest',
+    'verification_digest',
+    'verification',
+  );
+  const targetDigest = stringValue(record, 'targetDigest', 'target_digest', 'target');
+  const observedAt = stringValue(record, 'observedAt', 'observed_at', 'timestamp');
+
+  const normalized: NonNullable<ToolCall['approvalEnvelope']> = {};
+  if (operation === 'approved_retry') normalized.operation = operation;
+  if (riskLevel === 'low' || riskLevel === 'medium' || riskLevel === 'high') {
+    normalized.riskLevel = riskLevel;
+  }
+  const freshnessWindowMs = record['freshnessWindowMs'] ?? record['freshness_window_ms'] ?? record['ttlMs'] ?? record['ttl_ms'];
+  if (typeof freshnessWindowMs === 'number' && Number.isFinite(freshnessWindowMs)) {
+    normalized.freshnessWindowMs = freshnessWindowMs;
+  }
+  if (observedAt !== undefined) normalized.observedAt = observedAt;
+  if (artifactDigest !== undefined) normalized.artifactDigest = artifactDigest;
+  if (verificationDigest !== undefined) normalized.verificationDigest = verificationDigest;
+  if (targetDigest !== undefined) normalized.targetDigest = targetDigest;
+
+  return Object.values(normalized).some((value) => value !== undefined) ? normalized : undefined;
+}
+
 export function openClawToolCall(event: OpenClawToolEvent): ToolCall {
   const params = event.params;
   const tool = normalizeToolName(event.toolName);
@@ -402,6 +435,12 @@ export function openClawToolCall(event: OpenClawToolEvent): ToolCall {
   );
   if (workflowResume !== undefined) {
     call.workflowResume = workflowResume;
+  }
+  const approvalEnvelope = normalizeApprovalEnvelope(
+    params['approvalEnvelope'] ?? params['approval_envelope'],
+  );
+  if (approvalEnvelope !== undefined) {
+    call.approvalEnvelope = approvalEnvelope;
   }
   return call;
 }

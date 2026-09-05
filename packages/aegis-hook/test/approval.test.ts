@@ -66,6 +66,37 @@ describe('approval store', () => {
     expect(approvalId(original, evaluation)).not.toBe(approvalId(artifactDrifted, evaluation));
   });
 
+  it('binds approval to actor, workspace, intent, authorization, and exact session by default', () => {
+    const dir = tmp();
+    const provenance = { actorId: 'user:beaux', sessionId: 'session:a', workspaceId: 'workspace:aegis', taskIntentId: 'intent:publish', authorizationDigest: 'auth:epoch-1', grantScope: 'exact_session' as const };
+    const approvedCall: ToolCall = { ...call, approvalProvenance: provenance };
+    try {
+      const pending = requestApproval(approvedCall, evaluation, dir);
+      approvePending(pending.id, dir);
+      for (const retry of [
+        { ...provenance, actorId: 'agent:other' },
+        { ...provenance, sessionId: 'session:b' },
+        { ...provenance, workspaceId: 'workspace:other' },
+        { ...provenance, taskIntentId: 'intent:other' },
+        { ...provenance, authorizationDigest: 'auth:revoked' },
+      ]) {
+        expect(consumeApproval({ ...call, approvalProvenance: retry }, evaluation, dir)).toBe(false);
+      }
+      expect(consumeApproval(approvedCall, evaluation, dir)).toBe(true);
+    } finally { rmSync(dir, { recursive: true, force: true }); }
+  });
+
+  it('preserves explicit workspace-scoped portability across sibling sessions', () => {
+    const dir = tmp();
+    const provenance = { actorId: 'user:beaux', sessionId: 'session:a', workspaceId: 'workspace:aegis', taskIntentId: 'intent:publish', authorizationDigest: 'auth:epoch-1', grantScope: 'workspace' as const };
+    const approvedCall: ToolCall = { ...call, approvalProvenance: provenance };
+    try {
+      const pending = requestApproval(approvedCall, evaluation, dir);
+      approvePending(pending.id, dir);
+      expect(consumeApproval({ ...approvedCall, approvalProvenance: { ...provenance, sessionId: 'session:b' } }, evaluation, dir)).toBe(true);
+    } finally { rmSync(dir, { recursive: true, force: true }); }
+  });
+
   it('requests, approves, and consumes a one-shot approval', () => {
     const dir = tmp();
     try {

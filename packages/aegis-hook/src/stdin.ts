@@ -712,6 +712,32 @@ function toWorkflowResume(
   return Object.values(workflowResume).some((v) => v !== undefined) ? workflowResume : undefined;
 }
 
+function approvalGrantScope(
+  value: unknown,
+): NonNullable<ToolCall['approvalProvenance']>['grantScope'] | undefined {
+  return value === 'exact_session' || value === 'workspace' ? value : undefined;
+}
+
+function toApprovalProvenance(
+  root: Record<string, unknown>,
+  input: Record<string, unknown>,
+): ToolCall['approvalProvenance'] | undefined {
+  const raw = asRecord(root.approval_provenance);
+  const camelRaw = asRecord(root.approvalProvenance);
+  const inputRaw = asRecord(input.approval_provenance);
+  const inputCamelRaw = asRecord(input.approvalProvenance);
+  const source = Object.keys(inputRaw).length > 0 ? inputRaw : Object.keys(inputCamelRaw).length > 0 ? inputCamelRaw : Object.keys(raw).length > 0 ? raw : camelRaw;
+  if (Object.keys(source).length === 0) return undefined;
+  const provenance: NonNullable<ToolCall['approvalProvenance']> = {};
+  provenance.actorId = str(source, 'actorId') ?? str(source, 'actor_id');
+  provenance.sessionId = str(source, 'sessionId') ?? str(source, 'session_id');
+  provenance.workspaceId = str(source, 'workspaceId') ?? str(source, 'workspace_id');
+  provenance.taskIntentId = str(source, 'taskIntentId') ?? str(source, 'task_intent_id');
+  provenance.authorizationDigest = str(source, 'authorizationDigest') ?? str(source, 'authorization_digest');
+  provenance.grantScope = approvalGrantScope(source.grantScope) ?? approvalGrantScope(source.grant_scope) ?? approvalGrantScope(source.scope);
+  return Object.values(provenance).some((v) => v !== undefined) ? provenance : undefined;
+}
+
 function toApprovalEnvelope(
   root: Record<string, unknown>,
   input: Record<string, unknown>,
@@ -821,6 +847,8 @@ export function toToolCall(hookInput: unknown): ToolCall {
   if (workflowResume !== undefined) call.workflowResume = workflowResume;
   const approvalEnvelope = toApprovalEnvelope(root, input);
   if (approvalEnvelope !== undefined) call.approvalEnvelope = approvalEnvelope;
+  const approvalProvenance = toApprovalProvenance(root, input);
+  if (approvalProvenance !== undefined) call.approvalProvenance = approvalProvenance;
   return call;
 }
 

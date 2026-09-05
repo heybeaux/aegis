@@ -355,4 +355,13 @@ describe('toToolCall', () => {
       }),
     ).toEqual({ tool: 'Delegate' });
   });
+
+  it('maps approval provenance metadata from snake_case tool input', () => {
+    const mapped = toToolCall({ tool_name: 'Bash', tool_input: { command: 'npm publish', approval_provenance: {
+      actor_id: 'user:beaux', session_id: 'session:a', workspace_id: 'workspace:aegis',
+      task_intent_id: 'intent:publish', authorization_digest: 'auth:epoch-1', grant_scope: 'exact_session',
+    } } });
+    expect(mapped.approvalProvenance).toEqual({ actorId: 'user:beaux', sessionId: 'session:a', workspaceId: 'workspace:aegis', taskIntentId: 'intent:publish', authorizationDigest: 'auth:epoch-1', grantScope: 'exact_session' });
+  });
+
 });

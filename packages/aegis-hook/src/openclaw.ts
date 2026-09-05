@@ -358,6 +358,25 @@ function normalizeWorkflowResume(value: unknown): ToolCall['workflowResume'] | u
   return Object.values(normalized).some((value) => value !== undefined) ? normalized : undefined;
 }
 
+function normalizeApprovalProvenance(value: unknown): ToolCall['approvalProvenance'] | undefined {
+  const record = asRecord(value);
+  if (Object.keys(record).length === 0) return undefined;
+  const normalized: NonNullable<ToolCall['approvalProvenance']> = {};
+  const actorId = stringValue(record, 'actorId', 'actor_id');
+  const sessionId = stringValue(record, 'sessionId', 'session_id');
+  const workspaceId = stringValue(record, 'workspaceId', 'workspace_id');
+  const taskIntentId = stringValue(record, 'taskIntentId', 'task_intent_id');
+  const authorizationDigest = stringValue(record, 'authorizationDigest', 'authorization_digest');
+  const grantScope = stringValue(record, 'grantScope', 'grant_scope', 'scope');
+  if (actorId !== undefined) normalized.actorId = actorId;
+  if (sessionId !== undefined) normalized.sessionId = sessionId;
+  if (workspaceId !== undefined) normalized.workspaceId = workspaceId;
+  if (taskIntentId !== undefined) normalized.taskIntentId = taskIntentId;
+  if (authorizationDigest !== undefined) normalized.authorizationDigest = authorizationDigest;
+  if (grantScope === 'exact_session' || grantScope === 'workspace') normalized.grantScope = grantScope;
+  return Object.values(normalized).some((v) => v !== undefined) ? normalized : undefined;
+}
+
 function normalizeApprovalEnvelope(value: unknown): ToolCall['approvalEnvelope'] | undefined {
   const record = asRecord(value);
   if (Object.keys(record).length === 0) return undefined;
@@ -441,6 +460,12 @@ export function openClawToolCall(event: OpenClawToolEvent): ToolCall {
   );
   if (approvalEnvelope !== undefined) {
     call.approvalEnvelope = approvalEnvelope;
+  }
+  const approvalProvenance = normalizeApprovalProvenance(
+    params['approvalProvenance'] ?? params['approval_provenance'],
+  );
+  if (approvalProvenance !== undefined) {
+    call.approvalProvenance = approvalProvenance;
   }
   return call;
 }

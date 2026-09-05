@@ -260,4 +260,12 @@ describe('OpenClaw adapter', () => {
       rmSync(home, { recursive: true, force: true });
     }
   });
+
+  it('normalizes approval provenance metadata', () => {
+    const call = openClawToolCall({ toolName: 'exec', params: { command: 'npm publish', approval_provenance: {
+      actor_id: 'user:beaux', session_id: 'session:a', workspace_id: 'workspace:aegis', task_intent_id: 'intent:publish', authorization_digest: 'auth:epoch-1', grant_scope: 'workspace',
+    } } });
+    expect(call.approvalProvenance).toEqual({ actorId: 'user:beaux', sessionId: 'session:a', workspaceId: 'workspace:aegis', taskIntentId: 'intent:publish', authorizationDigest: 'auth:epoch-1', grantScope: 'workspace' });
+  });
+
 });

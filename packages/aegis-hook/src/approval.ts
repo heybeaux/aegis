@@ -16,6 +16,7 @@ export interface ApprovalRecord {
   tool: string;
   actionKey?: string;
   approvalEnvelope?: NonNullable<ToolCall['approvalEnvelope']>;
+  approvalProvenance?: NonNullable<ToolCall['approvalProvenance']>;
 }
 
 export interface ApprovalPaths {
@@ -58,6 +59,21 @@ function approvalEnvelopeBinding(
     ...(artifactDigest !== undefined ? { artifactDigest } : {}),
     ...(verificationDigest !== undefined ? { verificationDigest } : {}),
     ...(targetDigest !== undefined ? { targetDigest } : {}),
+  };
+}
+
+function approvalProvenanceBinding(
+  value: ToolCall['approvalProvenance'],
+): NonNullable<ToolCall['approvalProvenance']> | undefined {
+  if (value === undefined) return undefined;
+  const { actorId, sessionId, workspaceId, taskIntentId, authorizationDigest, grantScope } = value;
+  return {
+    ...(actorId !== undefined ? { actorId } : {}),
+    ...(workspaceId !== undefined ? { workspaceId } : {}),
+    ...(taskIntentId !== undefined ? { taskIntentId } : {}),
+    ...(authorizationDigest !== undefined ? { authorizationDigest } : {}),
+    ...(grantScope !== undefined ? { grantScope } : {}),
+    ...(grantScope !== 'workspace' && sessionId !== undefined ? { sessionId } : {}),
   };
 }
 
@@ -120,6 +136,7 @@ function signaturePayload(call: ToolCall, evaluation: Evaluation): unknown {
       intervention: call.intervention,
       workflowResume: call.workflowResume,
       approvalEnvelope: approvalEnvelopeBinding(call.approvalEnvelope),
+      approvalProvenance: approvalProvenanceBinding(call.approvalProvenance),
     },
     evaluation: {
       action: evaluation.action,
@@ -172,6 +189,9 @@ function recordFor(
     ...(actionKey !== undefined ? { actionKey } : {}),
     ...(approvalEnvelopeForRecord(call.approvalEnvelope) !== undefined
       ? { approvalEnvelope: approvalEnvelopeForRecord(call.approvalEnvelope) }
+      : {}),
+    ...(approvalProvenanceBinding(call.approvalProvenance) !== undefined
+      ? { approvalProvenance: approvalProvenanceBinding(call.approvalProvenance) }
       : {}),
   };
 }

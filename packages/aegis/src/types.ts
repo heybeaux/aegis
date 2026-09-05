@@ -294,6 +294,21 @@ export interface ApprovalEnvelopeMetadata {
   targetDigest?: string;
 }
 
+export interface ApprovalProvenanceMetadata {
+  /** Stable identity of the human or principal whose authority granted this approval. */
+  actorId?: string;
+  /** Runtime session that requested the approval. */
+  sessionId?: string;
+  /** Workspace / tenant boundary in which the approval was granted. */
+  workspaceId?: string;
+  /** Stable task-intent or operation identity, independent of command bytes. */
+  taskIntentId?: string;
+  /** Digest or epoch of the actor's current authorization state. */
+  authorizationDigest?: string;
+  /** Declared portability of this approval. Session scope is the safe default. */
+  grantScope?: 'exact_session' | 'workspace';
+}
+
 export interface ToolCall {
   /** Claude Code / OpenClaw tool name, e.g. "Bash", "Write", "Edit", "Read". */
   tool: string;
@@ -325,6 +340,8 @@ export interface ToolCall {
   workflowResume?: WorkflowResumeMetadata;
   /** Optional structured approval-envelope metadata from SwarmLab RT-17. */
   approvalEnvelope?: ApprovalEnvelopeMetadata;
+  /** Optional approval-consumer provenance metadata from SwarmLab RT-18. */
+  approvalProvenance?: ApprovalProvenanceMetadata;
 }
 
 /** One rule that fired during evaluation. */

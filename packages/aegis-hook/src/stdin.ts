@@ -738,6 +738,50 @@ function toApprovalProvenance(
   return Object.values(provenance).some((v) => v !== undefined) ? provenance : undefined;
 }
 
+function toApprovalDelegation(
+  root: Record<string, unknown>,
+  input: Record<string, unknown>,
+): ToolCall['approvalDelegation'] | undefined {
+  const raw = asRecord(root.approval_delegation);
+  const camelRaw = asRecord(root.approvalDelegation);
+  const inputRaw = asRecord(input.approval_delegation);
+  const inputCamelRaw = asRecord(input.approvalDelegation);
+  const source =
+    Object.keys(inputRaw).length > 0
+      ? inputRaw
+      : Object.keys(inputCamelRaw).length > 0
+        ? inputCamelRaw
+        : Object.keys(raw).length > 0
+          ? raw
+          : camelRaw;
+  if (Object.keys(source).length === 0) return undefined;
+
+  const delegation: NonNullable<ToolCall['approvalDelegation']> = {};
+  delegation.effectiveConsumerId =
+    str(source, 'effectiveConsumerId') ?? str(source, 'effective_consumer_id');
+  const declaredScope = source.declaredScope ?? source.declared_scope;
+  if (declaredScope === 'none' || declaredScope === 'direct' || declaredScope === 'bounded') {
+    delegation.declaredScope = declaredScope;
+  }
+  delegation.maxDepth = num(source, 'maxDepth') ?? num(source, 'max_depth');
+  if (Array.isArray(source.links)) {
+    delegation.links = source.links.map((value) => {
+      const link = asRecord(value);
+      const normalized: NonNullable<NonNullable<ToolCall['approvalDelegation']>['links']>[number] = {};
+      normalized.actorId = str(link, 'actorId') ?? str(link, 'actor_id');
+      normalized.verified = bool(link, 'verified');
+      normalized.authorityLevel = num(link, 'authorityLevel') ?? num(link, 'authority_level');
+      return normalized;
+    });
+  }
+  delegation.revoked = bool(source, 'revoked');
+  delegation.revocationChecked =
+    bool(source, 'revocationChecked') ?? bool(source, 'revocation_checked');
+  delegation.structurallyValid =
+    bool(source, 'structurallyValid') ?? bool(source, 'structurally_valid');
+  return Object.values(delegation).some((v) => v !== undefined) ? delegation : undefined;
+}
+
 function toApprovalEnvelope(
   root: Record<string, unknown>,
   input: Record<string, unknown>,
@@ -849,6 +893,8 @@ export function toToolCall(hookInput: unknown): ToolCall {
   if (approvalEnvelope !== undefined) call.approvalEnvelope = approvalEnvelope;
   const approvalProvenance = toApprovalProvenance(root, input);
   if (approvalProvenance !== undefined) call.approvalProvenance = approvalProvenance;
+  const approvalDelegation = toApprovalDelegation(root, input);
+  if (approvalDelegation !== undefined) call.approvalDelegation = approvalDelegation;
   return call;
 }
 

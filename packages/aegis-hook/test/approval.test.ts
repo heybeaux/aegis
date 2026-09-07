@@ -51,6 +51,34 @@ function approvalRetryCall(overrides: Partial<NonNullable<ToolCall['approvalEnve
   };
 }
 
+function delegatedCall(
+  effectiveConsumerId: string,
+  links: NonNullable<ToolCall['approvalDelegation']>['links'],
+  overrides: Partial<NonNullable<ToolCall['approvalDelegation']>> = {},
+): ToolCall {
+  return {
+    ...call,
+    approvalProvenance: {
+      actorId: 'agent:root',
+      sessionId: 'session:root',
+      workspaceId: 'workspace:aegis',
+      taskIntentId: 'intent:publish',
+      authorizationDigest: 'auth:epoch-1',
+      grantScope: 'exact_session',
+    },
+    approvalDelegation: {
+      effectiveConsumerId,
+      declaredScope: 'bounded',
+      maxDepth: 2,
+      links,
+      revoked: false,
+      revocationChecked: true,
+      structurallyValid: true,
+      ...overrides,
+    },
+  };
+}
+
 describe('approval store', () => {
   it('generates a stable id for the exact call/evaluation pair', () => {
     expect(approvalId(call, evaluation)).toMatch(/^aegis_[a-f0-9]{16}$/);
@@ -64,6 +92,72 @@ describe('approval store', () => {
 
     expect(approvalId(original, evaluation)).toBe(approvalId(laterRetry, evaluation));
     expect(approvalId(original, evaluation)).not.toBe(approvalId(artifactDrifted, evaluation));
+  });
+
+  it('lets verified bounded delegates consume while binding the effective consumer and full chain', () => {
+    const dir = tmp();
+    const rootCall = delegatedCall('agent:root', [
+      { actorId: 'agent:root', authorityLevel: 10, verified: true },
+    ]);
+    const directCall = delegatedCall('agent:direct', [
+      { actorId: 'agent:root', authorityLevel: 10, verified: true },
+      { actorId: 'agent:direct', authorityLevel: 8, verified: true },
+    ]);
+    const boundedCall = delegatedCall('agent:leaf', [
+      { actorId: 'agent:root', authorityLevel: 10, verified: true },
+      { actorId: 'agent:direct', authorityLevel: 8, verified: true },
+      { actorId: 'agent:leaf', authorityLevel: 5, verified: true },
+    ]);
+    try {
+      const directPending = requestApproval(rootCall, evaluation, dir);
+      approvePending(directPending.id, dir);
+      expect(consumeApproval(directCall, evaluation, dir)).toBe(true);
+
+      const boundedPending = requestApproval(rootCall, evaluation, dir);
+      approvePending(boundedPending.id, dir);
+      expect(consumeApproval(boundedCall, evaluation, dir)).toBe(true);
+    } finally { rmSync(dir, { recursive: true, force: true }); }
+  });
+
+  it('rejects laundering, unverified, over-depth, expanded, revoked, and malformed chains', () => {
+    const dir = tmp();
+    const rootCall = delegatedCall('agent:root', [
+      { actorId: 'agent:root', authorityLevel: 10, verified: true },
+    ]);
+    try {
+      for (const invalid of [
+        delegatedCall('agent:launderer', [
+          { actorId: 'agent:root', authorityLevel: 10, verified: true },
+          { actorId: 'agent:direct', authorityLevel: 8, verified: true },
+        ]),
+        delegatedCall('agent:direct', [
+          { actorId: 'agent:root', authorityLevel: 10, verified: true },
+          { actorId: 'agent:direct', authorityLevel: 8, verified: false },
+        ]),
+        delegatedCall('agent:leaf', [
+          { actorId: 'agent:root', authorityLevel: 10, verified: true },
+          { actorId: 'agent:direct', authorityLevel: 8, verified: true },
+          { actorId: 'agent:middle', authorityLevel: 6, verified: true },
+          { actorId: 'agent:leaf', authorityLevel: 5, verified: true },
+        ]),
+        delegatedCall('agent:direct', [
+          { actorId: 'agent:root', authorityLevel: 10, verified: true },
+          { actorId: 'agent:direct', authorityLevel: 11, verified: true },
+        ]),
+        delegatedCall('agent:direct', [
+          { actorId: 'agent:root', authorityLevel: 10, verified: true },
+          { actorId: 'agent:direct', authorityLevel: 8, verified: true },
+        ], { revoked: true }),
+        delegatedCall('agent:direct', [
+          { actorId: 'agent:root', authorityLevel: 10, verified: true },
+          { actorId: 'agent:direct', authorityLevel: 8, verified: true },
+        ], { structurallyValid: false }),
+      ]) {
+        const pending = requestApproval(rootCall, evaluation, dir);
+        approvePending(pending.id, dir);
+        expect(consumeApproval(invalid, evaluation, dir)).toBe(false);
+      }
+    } finally { rmSync(dir, { recursive: true, force: true }); }
   });
 
   it('binds approval to actor, workspace, intent, authorization, and exact session by default', () => {

@@ -268,4 +268,23 @@ describe('OpenClaw adapter', () => {
     expect(call.approvalProvenance).toEqual({ actorId: 'user:beaux', sessionId: 'session:a', workspaceId: 'workspace:aegis', taskIntentId: 'intent:publish', authorizationDigest: 'auth:epoch-1', grantScope: 'workspace' });
   });
 
+  it('normalizes approval delegation metadata', () => {
+    const call = openClawToolCall({ toolName: 'exec', params: { command: 'npm publish', approval_delegation: {
+      effective_consumer_id: 'agent:child', declared_scope: 'bounded', max_depth: 2,
+      links: [
+        { actor_id: 'user:beaux', verified: true, authority_level: 10 },
+        { actor_id: 'agent:child', verified: true, authority_level: 7 },
+      ],
+      revoked: false, revocation_checked: true, structurally_valid: true,
+    } } });
+    expect(call.approvalDelegation).toEqual({
+      effectiveConsumerId: 'agent:child', declaredScope: 'bounded', maxDepth: 2,
+      links: [
+        { actorId: 'user:beaux', verified: true, authorityLevel: 10 },
+        { actorId: 'agent:child', verified: true, authorityLevel: 7 },
+      ],
+      revoked: false, revocationChecked: true, structurallyValid: true,
+    });
+  });
+
 });

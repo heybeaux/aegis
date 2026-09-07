@@ -17,6 +17,7 @@ export interface ApprovalRecord {
   actionKey?: string;
   approvalEnvelope?: NonNullable<ToolCall['approvalEnvelope']>;
   approvalProvenance?: NonNullable<ToolCall['approvalProvenance']>;
+  approvalDelegation?: NonNullable<ToolCall['approvalDelegation']>;
 }
 
 export interface ApprovalPaths {
@@ -77,6 +78,62 @@ function approvalProvenanceBinding(
   };
 }
 
+function approvalProvenanceSignatureBinding(
+  provenance: ToolCall['approvalProvenance'],
+  delegation: ToolCall['approvalDelegation'],
+): NonNullable<ToolCall['approvalProvenance']> | undefined {
+  const bound = approvalProvenanceBinding(provenance);
+  if (bound === undefined || delegation === undefined) return bound;
+  const { actorId: _actorId, ...withoutActor } = bound;
+  return withoutActor;
+}
+
+function approvalDelegationBinding(
+  value: ToolCall['approvalDelegation'],
+): Pick<
+  NonNullable<ToolCall['approvalDelegation']>,
+  'declaredScope' | 'maxDepth'
+> | undefined {
+  if (value === undefined) return undefined;
+  const { declaredScope, maxDepth } = value;
+  return {
+    ...(declaredScope !== undefined ? { declaredScope } : {}),
+    ...(maxDepth !== undefined ? { maxDepth } : {}),
+  };
+}
+
+function approvalDelegationForRecord(
+  value: ToolCall['approvalDelegation'],
+): NonNullable<ToolCall['approvalDelegation']> | undefined {
+  if (value === undefined) return undefined;
+  const {
+    effectiveConsumerId,
+    declaredScope,
+    maxDepth,
+    links,
+    revoked,
+    revocationChecked,
+    structurallyValid,
+  } = value;
+  return {
+    ...(effectiveConsumerId !== undefined ? { effectiveConsumerId } : {}),
+    ...(declaredScope !== undefined ? { declaredScope } : {}),
+    ...(maxDepth !== undefined ? { maxDepth } : {}),
+    ...(links !== undefined
+      ? {
+          links: links.map((link) => ({
+            ...(link.actorId !== undefined ? { actorId: link.actorId } : {}),
+            ...(link.verified !== undefined ? { verified: link.verified } : {}),
+            ...(link.authorityLevel !== undefined ? { authorityLevel: link.authorityLevel } : {}),
+          })),
+        }
+      : {}),
+    ...(revoked !== undefined ? { revoked } : {}),
+    ...(revocationChecked !== undefined ? { revocationChecked } : {}),
+    ...(structurallyValid !== undefined ? { structurallyValid } : {}),
+  };
+}
+
 function approvalEnvelopeObservedAt(value: ToolCall['approvalEnvelope']): string | undefined {
   return value?.observedAt;
 }
@@ -97,6 +154,61 @@ function parseIsoMillis(value: string | undefined): number | undefined {
   if (value === undefined) return undefined;
   const parsed = Date.parse(value);
   return Number.isFinite(parsed) ? parsed : undefined;
+}
+
+function approvalDelegationValid(
+  approved: ApprovalRecord,
+  call: ToolCall,
+): boolean {
+  const granted = approved.approvalDelegation;
+  const retry = call.approvalDelegation;
+  if (granted === undefined && retry === undefined) return true;
+  if (granted === undefined || retry === undefined) return false;
+
+  const rootActor = approved.approvalProvenance?.actorId;
+  const consumer = retry.effectiveConsumerId;
+  const declaredScope = granted.declaredScope;
+  const links = retry.links;
+  const maxDepth = granted.maxDepth;
+  if (
+    rootActor === undefined ||
+    consumer === undefined ||
+    declaredScope === undefined ||
+    links === undefined ||
+    links.length === 0 ||
+    maxDepth === undefined ||
+    !Number.isSafeInteger(maxDepth) ||
+    maxDepth < 0 ||
+    retry.revocationChecked !== true ||
+    retry.revoked !== false ||
+    retry.structurallyValid !== true ||
+    links.length - 1 > maxDepth ||
+    links[0]?.actorId !== rootActor ||
+    links[links.length - 1]?.actorId !== consumer
+  ) {
+    return false;
+  }
+  const depth = links.length - 1;
+  if (consumer === rootActor && depth === 0) return true;
+  if (declaredScope === 'none' || (declaredScope === 'direct' && depth !== 1)) return false;
+  if (declaredScope !== 'direct' && declaredScope !== 'bounded') return false;
+
+  let parentAuthority: number | undefined;
+  for (let i = 0; i < links.length; i += 1) {
+    const link = links[i];
+    if (
+      link === undefined ||
+      link.actorId === undefined ||
+      link.verified !== true ||
+      link.authorityLevel === undefined ||
+      !Number.isFinite(link.authorityLevel) ||
+      (i > 0 && parentAuthority !== undefined && link.authorityLevel > parentAuthority)
+    ) {
+      return false;
+    }
+    parentAuthority = link.authorityLevel;
+  }
+  return true;
 }
 
 function approvalExpired(approved: ApprovalRecord | undefined, call: ToolCall): boolean {
@@ -136,7 +248,11 @@ function signaturePayload(call: ToolCall, evaluation: Evaluation): unknown {
       intervention: call.intervention,
       workflowResume: call.workflowResume,
       approvalEnvelope: approvalEnvelopeBinding(call.approvalEnvelope),
-      approvalProvenance: approvalProvenanceBinding(call.approvalProvenance),
+      approvalProvenance: approvalProvenanceSignatureBinding(
+        call.approvalProvenance,
+        call.approvalDelegation,
+      ),
+      approvalDelegation: approvalDelegationBinding(call.approvalDelegation),
     },
     evaluation: {
       action: evaluation.action,
@@ -193,6 +309,9 @@ function recordFor(
     ...(approvalProvenanceBinding(call.approvalProvenance) !== undefined
       ? { approvalProvenance: approvalProvenanceBinding(call.approvalProvenance) }
       : {}),
+    ...(approvalDelegationForRecord(call.approvalDelegation) !== undefined
+      ? { approvalDelegation: approvalDelegationForRecord(call.approvalDelegation) }
+      : {}),
   };
 }
 
@@ -242,6 +361,14 @@ export function consumeApproval(call: ToolCall, evaluation: Evaluation, dir?: st
   const approved = readRecord(consumingPath);
   const expected = approvalSignature(call, evaluation);
   if (approved?.signature !== expected) {
+    try {
+      renameSync(consumingPath, paths.approvedPath);
+    } catch {
+      rmSync(consumingPath, { force: true });
+    }
+    return false;
+  }
+  if (approved !== undefined && !approvalDelegationValid(approved, call)) {
     try {
       renameSync(consumingPath, paths.approvedPath);
     } catch {

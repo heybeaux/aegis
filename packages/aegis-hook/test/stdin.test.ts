@@ -364,4 +364,23 @@ describe('toToolCall', () => {
     expect(mapped.approvalProvenance).toEqual({ actorId: 'user:beaux', sessionId: 'session:a', workspaceId: 'workspace:aegis', taskIntentId: 'intent:publish', authorizationDigest: 'auth:epoch-1', grantScope: 'exact_session' });
   });
 
+  it('maps approval delegation metadata from snake_case tool input', () => {
+    const mapped = toToolCall({ tool_name: 'Bash', tool_input: { command: 'npm publish', approval_delegation: {
+      effective_consumer_id: 'agent:child', declared_scope: 'direct', max_depth: 1,
+      links: [
+        { actor_id: 'user:beaux', verified: true, authority_level: 10 },
+        { actor_id: 'agent:child', verified: true, authority_level: 8 },
+      ],
+      revoked: false, revocation_checked: true, structurally_valid: true,
+    } } });
+    expect(mapped.approvalDelegation).toEqual({
+      effectiveConsumerId: 'agent:child', declaredScope: 'direct', maxDepth: 1,
+      links: [
+        { actorId: 'user:beaux', verified: true, authorityLevel: 10 },
+        { actorId: 'agent:child', verified: true, authorityLevel: 8 },
+      ],
+      revoked: false, revocationChecked: true, structurallyValid: true,
+    });
+  });
+
 });

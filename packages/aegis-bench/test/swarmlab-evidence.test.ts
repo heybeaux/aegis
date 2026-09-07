@@ -10,8 +10,8 @@ describe('SwarmLab evidence gate', () => {
   it('passes when all stack mappings are landed with verified evidence', () => {
     const result = evaluateSwarmLabEvidence();
     expect(result.status).toBe('passed');
-    expect(result.total).toBe(18);
-    expect(result.passed).toBe(18);
+    expect(result.total).toBe(19);
+    expect(result.passed).toBe(19);
     expect(result.failed).toBe(0);
     expect(result.partial).toBe(0);
     expect(result.pendingImplementation).toBe(0);
@@ -167,6 +167,12 @@ describe('SwarmLab evidence gate', () => {
     expect(rt18?.evidenceTier).toBe('verified');
     expect(rt18?.metrics.find((m) => m.name === 'aegisCrossActorExecutionRate')?.before).toBe(1);
     expect(rt18?.metrics.find((m) => m.name === 'aegisProvenanceAccuracy')?.after).toBe(1);
+
+    const rt19 = result.cases.find((c) => c.id === 'RT-19');
+    expect(rt19?.status).toBe('passed');
+    expect(rt19?.evidenceTier).toBe('verified');
+    expect(rt19?.metrics.find((m) => m.name === 'aegisWrappedLaunderingExecutionRate')?.before).toBe(1);
+    expect(rt19?.metrics.find((m) => m.name === 'aegisWrappedDelegationAccuracy')?.after).toBe(1);
   });
 
   it('covers the currently proven stack failure classes', () => {
@@ -190,6 +196,7 @@ describe('SwarmLab evidence gate', () => {
       'RT-16',
       'RT-17',
       'RT-18',
+      'RT-19',
     ]);
 
     const mappings = SWARMLAB_EVIDENCE_CASES.map((c) => c.aegisMapping).join('\n');
@@ -211,11 +218,12 @@ describe('SwarmLab evidence gate', () => {
     expect(mappings).toContain('step integrity');
     expect(mappings).toContain('approval envelope');
     expect(mappings).toContain('scope-aware provenance binding');
+    expect(mappings).toContain('effective-consumer binding');
   });
 
   it('renders a report banner matching the evaluated evidence range', () => {
     const markdown = swarmLabEvidenceToMarkdown(evaluateSwarmLabEvidence());
-    expect(markdown).toContain('REPLAY-VERIFIED SWARMLAB RETESTS (RT-01..RT-18)');
+    expect(markdown).toContain('REPLAY-VERIFIED SWARMLAB RETESTS (RT-01..RT-19)');
     expect(markdown).not.toContain('RT-01..RT-10');
     expect(markdown).toContain('0 provisional evidence tier');
     expect(markdown).toContain('| RT-06 | passed | landed | verified |');
@@ -229,6 +237,7 @@ describe('SwarmLab evidence gate', () => {
     expect(markdown).toContain('| RT-16 | passed | landed | verified |');
     expect(markdown).toContain('| RT-17 | passed | landed | verified |');
     expect(markdown).toContain('| RT-18 | passed | landed | verified |');
+    expect(markdown).toContain('| RT-19 | passed | landed | verified |');
   });
 
   it('fails loudly when a proven metric regresses', () => {

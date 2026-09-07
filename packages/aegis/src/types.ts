@@ -309,6 +309,32 @@ export interface ApprovalProvenanceMetadata {
   grantScope?: 'exact_session' | 'workspace';
 }
 
+export interface ApprovalDelegationLinkMetadata {
+  /** Principal or agent represented by this root-to-consumer chain node. */
+  actorId?: string;
+  /** Whether a trusted host independently verified this node. */
+  verified?: boolean;
+  /** Comparable authority level; each child must be no greater than its parent. */
+  authorityLevel?: number;
+}
+
+export interface ApprovalDelegationMetadata {
+  /** Effective principal or agent consuming the approved capability. */
+  effectiveConsumerId?: string;
+  /** Root-declared portability of authority across delegation boundaries. */
+  declaredScope?: 'none' | 'direct' | 'bounded';
+  /** Maximum permitted delegation hops. */
+  maxDepth?: number;
+  /** Ordered root-to-leaf delegation chain. */
+  links?: ApprovalDelegationLinkMetadata[];
+  /** Whether the chain was revoked before this attempt. */
+  revoked?: boolean;
+  /** Whether the trusted host checked revocation state. */
+  revocationChecked?: boolean;
+  /** Whether the trusted host considers the chain structurally well formed. */
+  structurallyValid?: boolean;
+}
+
 export interface ToolCall {
   /** Claude Code / OpenClaw tool name, e.g. "Bash", "Write", "Edit", "Read". */
   tool: string;
@@ -342,6 +368,8 @@ export interface ToolCall {
   approvalEnvelope?: ApprovalEnvelopeMetadata;
   /** Optional approval-consumer provenance metadata from SwarmLab RT-18. */
   approvalProvenance?: ApprovalProvenanceMetadata;
+  /** Optional delegated-consumer authority chain metadata from SwarmLab RT-19. */
+  approvalDelegation?: ApprovalDelegationMetadata;
 }
 
 /** One rule that fired during evaluation. */

@@ -377,6 +377,51 @@ function normalizeApprovalProvenance(value: unknown): ToolCall['approvalProvenan
   return Object.values(normalized).some((v) => v !== undefined) ? normalized : undefined;
 }
 
+function normalizeApprovalDelegation(value: unknown): ToolCall['approvalDelegation'] | undefined {
+  const record = asRecord(value);
+  if (Object.keys(record).length === 0) return undefined;
+  const normalized: NonNullable<ToolCall['approvalDelegation']> = {};
+  const effectiveConsumerId = stringValue(
+    record,
+    'effectiveConsumerId',
+    'effective_consumer_id',
+  );
+  if (effectiveConsumerId !== undefined) normalized.effectiveConsumerId = effectiveConsumerId;
+  const declaredScope = record['declaredScope'] ?? record['declared_scope'];
+  if (declaredScope === 'none' || declaredScope === 'direct' || declaredScope === 'bounded') {
+    normalized.declaredScope = declaredScope;
+  }
+  const maxDepth = record['maxDepth'] ?? record['max_depth'];
+  if (typeof maxDepth === 'number' && Number.isFinite(maxDepth)) normalized.maxDepth = maxDepth;
+  if (Array.isArray(record['links'])) {
+    normalized.links = record['links'].map((value) => {
+      const link = asRecord(value);
+      const normalizedLink: NonNullable<NonNullable<ToolCall['approvalDelegation']>['links']>[number] = {};
+      const actorId = stringValue(link, 'actorId', 'actor_id');
+      if (actorId !== undefined) normalizedLink.actorId = actorId;
+      const verified = boolValue(link, 'verified');
+      if (verified !== undefined) normalizedLink.verified = verified;
+      const authorityLevel = link['authorityLevel'] ?? link['authority_level'];
+      if (typeof authorityLevel === 'number' && Number.isFinite(authorityLevel)) {
+        normalizedLink.authorityLevel = authorityLevel;
+      }
+      return normalizedLink;
+    });
+  }
+  normalized.revoked = boolValue(record, 'revoked');
+  normalized.revocationChecked = boolValue(
+    record,
+    'revocationChecked',
+    'revocation_checked',
+  );
+  normalized.structurallyValid = boolValue(
+    record,
+    'structurallyValid',
+    'structurally_valid',
+  );
+  return Object.values(normalized).some((v) => v !== undefined) ? normalized : undefined;
+}
+
 function normalizeApprovalEnvelope(value: unknown): ToolCall['approvalEnvelope'] | undefined {
   const record = asRecord(value);
   if (Object.keys(record).length === 0) return undefined;
@@ -466,6 +511,12 @@ export function openClawToolCall(event: OpenClawToolEvent): ToolCall {
   );
   if (approvalProvenance !== undefined) {
     call.approvalProvenance = approvalProvenance;
+  }
+  const approvalDelegation = normalizeApprovalDelegation(
+    params['approvalDelegation'] ?? params['approval_delegation'],
+  );
+  if (approvalDelegation !== undefined) {
+    call.approvalDelegation = approvalDelegation;
   }
   return call;
 }

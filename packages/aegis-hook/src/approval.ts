@@ -20,6 +20,32 @@ export interface ApprovalRecord {
   approvalDelegation?: NonNullable<ToolCall['approvalDelegation']>;
 }
 
+export interface ApprovalExecutionPermit {
+  id: string;
+  approvalId: string;
+}
+
+export interface ApprovalExecutionSnapshot {
+  approvalId: string;
+  authorizationDigest?: string;
+  effectiveConsumerId?: string;
+  links?: NonNullable<ToolCall['approvalDelegation']>['links'];
+  revoked?: boolean;
+  revocationChecked?: boolean;
+  structurallyValid?: boolean;
+}
+
+interface ApprovalExecutionPermitRecord {
+  id: string;
+  approvalId: string;
+  signature: string;
+  authorizationDigest?: string;
+  effectiveConsumerId?: string;
+  links?: NonNullable<ToolCall['approvalDelegation']>['links'];
+  declaredScope?: NonNullable<ToolCall['approvalDelegation']>['declaredScope'];
+  maxDepth?: number;
+}
+
 export interface ApprovalPaths {
   dir: string;
   pendingPath: string;
@@ -125,6 +151,7 @@ function approvalDelegationForRecord(
             ...(link.actorId !== undefined ? { actorId: link.actorId } : {}),
             ...(link.verified !== undefined ? { verified: link.verified } : {}),
             ...(link.authorityLevel !== undefined ? { authorityLevel: link.authorityLevel } : {}),
+            ...(link.revoked !== undefined ? { revoked: link.revoked } : {}),
           })),
         }
       : {}),
@@ -202,6 +229,7 @@ function approvalDelegationValid(
       link.verified !== true ||
       link.authorityLevel === undefined ||
       !Number.isFinite(link.authorityLevel) ||
+      link.revoked === true ||
       (i > 0 && parentAuthority !== undefined && link.authorityLevel > parentAuthority)
     ) {
       return false;
@@ -384,4 +412,118 @@ export function consumeApproval(call: ToolCall, evaluation: Evaluation, dir?: st
   rmSync(consumingPath, { force: true });
   rmSync(paths.pendingPath, { force: true });
   return true;
+}
+
+
+function executionPermitId(approvalIdValue: string, signature: string): string {
+  return `permit_${createHash('sha256').update(`${approvalIdValue}:${signature}`).digest('hex').slice(0, 24)}`;
+}
+
+function executionPermitPath(id: string, dir?: string): string {
+  if (!/^permit_[a-f0-9]{24}$/.test(id)) throw new Error(`invalid execution permit id: ${id}`);
+  return join(approvalDir(dir), `${id}.ready.json`);
+}
+
+/**
+ * Create a host-finalized execution permit after a successful approval consumption.
+ * The caller must pass the exact call/evaluation that produced the consumed decision.
+ */
+export function createExecutionPermit(
+  call: ToolCall,
+  evaluation: Evaluation,
+  approvalIdValue: string,
+  dir?: string,
+): ApprovalExecutionPermit {
+  if (approvalIdValue !== approvalId(call, evaluation)) {
+    throw new Error('approval id does not match the consumed call');
+  }
+  const delegation = call.approvalDelegation;
+  const signature = approvalSignature(call, evaluation);
+  const id = executionPermitId(approvalIdValue, signature);
+  const record: ApprovalExecutionPermitRecord = {
+    id,
+    approvalId: approvalIdValue,
+    signature,
+    ...(call.approvalProvenance?.authorizationDigest !== undefined
+      ? { authorizationDigest: call.approvalProvenance.authorizationDigest }
+      : {}),
+    ...(delegation?.effectiveConsumerId !== undefined
+      ? { effectiveConsumerId: delegation.effectiveConsumerId }
+      : {}),
+    ...(delegation?.links !== undefined
+      ? { links: delegation.links.map((link) => ({ ...link })) }
+      : {}),
+    ...(delegation?.declaredScope !== undefined ? { declaredScope: delegation.declaredScope } : {}),
+    ...(delegation?.maxDepth !== undefined ? { maxDepth: delegation.maxDepth } : {}),
+  };
+  mkdirSync(approvalDir(dir), { recursive: true });
+  const path = executionPermitPath(id, dir);
+  if (existsSync(path)) throw new Error(`execution permit already exists for ${approvalIdValue}`);
+  writeFileSync(path, JSON.stringify(record, null, 2) + '\n', { encoding: 'utf8', flag: 'wx' });
+  return { id, approvalId: approvalIdValue };
+}
+
+function executionSnapshotValid(
+  record: ApprovalExecutionPermitRecord,
+  current: ApprovalExecutionSnapshot,
+): boolean {
+  if (
+    current.approvalId !== record.approvalId ||
+    current.revocationChecked !== true ||
+    current.revoked !== false ||
+    current.structurallyValid !== true ||
+    record.authorizationDigest === undefined ||
+    current.authorizationDigest !== record.authorizationDigest ||
+    record.effectiveConsumerId === undefined ||
+    current.effectiveConsumerId !== record.effectiveConsumerId ||
+    record.links === undefined ||
+    current.links === undefined ||
+    record.declaredScope === undefined ||
+    record.maxDepth === undefined ||
+    !Number.isSafeInteger(record.maxDepth) ||
+    record.maxDepth < 0 ||
+    stable(record.links) !== stable(current.links) ||
+    current.links.length === 0 ||
+    current.links.length - 1 > record.maxDepth ||
+    current.links[current.links.length - 1]?.actorId !== current.effectiveConsumerId
+  ) return false;
+  const depth = current.links.length - 1;
+  if (record.declaredScope === 'none' && depth !== 0) return false;
+  if (record.declaredScope === 'direct' && depth !== 1) return false;
+  if (record.declaredScope !== 'none' && record.declaredScope !== 'direct' && record.declaredScope !== 'bounded') return false;
+  let parentAuthority: number | undefined;
+  for (const link of current.links) {
+    if (
+      link.actorId === undefined ||
+      link.verified !== true ||
+      link.revoked === true ||
+      link.authorityLevel === undefined ||
+      !Number.isFinite(link.authorityLevel) ||
+      (parentAuthority !== undefined && link.authorityLevel > parentAuthority)
+    ) return false;
+    parentAuthority = link.authorityLevel;
+  }
+  return true;
+}
+
+/**
+ * Atomically consume a one-shot permit against the latest host-supplied authority snapshot.
+ * Invalid snapshots burn the permit and force a fresh approval; a concurrent/replayed caller loses
+ * the atomic rename and cannot execute.
+ */
+export function finalizeExecutionPermit(
+  permit: ApprovalExecutionPermit,
+  current: ApprovalExecutionSnapshot,
+  dir?: string,
+): boolean {
+  if (permit.approvalId !== current.approvalId) return false;
+  const path = executionPermitPath(permit.id, dir);
+  const finalizing = join(approvalDir(dir), `${permit.id}.finalizing.json`);
+  try { renameSync(path, finalizing); } catch { return false; }
+  try {
+    const record = readRecord(finalizing) as ApprovalExecutionPermitRecord | undefined;
+    return record?.id === permit.id && executionSnapshotValid(record, current);
+  } finally {
+    rmSync(finalizing, { force: true });
+  }
 }

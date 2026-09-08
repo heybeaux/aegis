@@ -42,9 +42,13 @@ export {
   approvalSignature,
   approvePending,
   consumeApproval,
+  createExecutionPermit,
+  finalizeExecutionPermit,
   requestApproval,
   type ApprovalRecord,
   type ApprovalPaths,
+  type ApprovalExecutionPermit,
+  type ApprovalExecutionSnapshot,
 } from './approval.js';
 export { writeTelemetry, type TelemetryEvent } from './telemetry.js';
 export {

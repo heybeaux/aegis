@@ -267,3 +267,91 @@ describe('approval store', () => {
     }
   });
 });
+
+describe('approval execution permits', () => {
+  it('finalizes once against an unchanged current authority snapshot', async () => {
+    const { createExecutionPermit, finalizeExecutionPermit } = await import('../src/approval.js');
+    const dir = tmp();
+    const approvedCall = delegatedCall('agent:direct', [
+      { actorId: 'agent:root', authorityLevel: 10, verified: true },
+      { actorId: 'agent:direct', authorityLevel: 8, verified: true },
+    ]);
+    try {
+      const permit = createExecutionPermit(approvedCall, evaluation, approvalId(approvedCall, evaluation), dir);
+      const current = {
+        approvalId: permit.approvalId,
+        authorizationDigest: approvedCall.approvalProvenance?.authorizationDigest,
+        effectiveConsumerId: approvedCall.approvalDelegation?.effectiveConsumerId,
+        links: approvedCall.approvalDelegation?.links,
+        revoked: false,
+        revocationChecked: true,
+        structurallyValid: true,
+      };
+      expect(finalizeExecutionPermit(permit, current, dir)).toBe(true);
+      expect(finalizeExecutionPermit(permit, current, dir)).toBe(false);
+    } finally { rmSync(dir, { recursive: true, force: true }); }
+  });
+
+  it.each([
+    ['authorization epoch rotation', { authorizationDigest: 'auth:epoch-2' }],
+    ['full delegation revocation', { revoked: true }],
+    ['missing revocation check', { revocationChecked: false }],
+    ['consumer drift', { effectiveConsumerId: 'agent:other' }],
+    ['malformed current chain', { structurallyValid: false }],
+  ])('burns the permit when %s is observed at execution', async (_name, patch) => {
+    const { createExecutionPermit, finalizeExecutionPermit } = await import('../src/approval.js');
+    const dir = tmp();
+    const approvedCall = delegatedCall('agent:direct', [
+      { actorId: 'agent:root', authorityLevel: 10, verified: true },
+      { actorId: 'agent:direct', authorityLevel: 8, verified: true },
+    ]);
+    try {
+      const permit = createExecutionPermit(approvedCall, evaluation, approvalId(approvedCall, evaluation), dir);
+      const current = {
+        approvalId: permit.approvalId,
+        authorizationDigest: approvedCall.approvalProvenance?.authorizationDigest,
+        effectiveConsumerId: approvedCall.approvalDelegation?.effectiveConsumerId,
+        links: approvedCall.approvalDelegation?.links,
+        revoked: false,
+        revocationChecked: true,
+        structurallyValid: true,
+        ...patch,
+      };
+      expect(finalizeExecutionPermit(permit, current, dir)).toBe(false);
+      expect(finalizeExecutionPermit(permit, { ...current, ...patch, revoked: false, revocationChecked: true, structurallyValid: true }, dir)).toBe(false);
+    } finally { rmSync(dir, { recursive: true, force: true }); }
+  });
+
+  it('rejects revoked/expanded intermediate links and mismatched approval ids', async () => {
+    const { createExecutionPermit, finalizeExecutionPermit } = await import('../src/approval.js');
+    const approvedCall = delegatedCall('agent:direct', [
+      { actorId: 'agent:root', authorityLevel: 10, verified: true },
+      { actorId: 'agent:direct', authorityLevel: 8, verified: true },
+    ]);
+    for (const links of [
+      [
+        { actorId: 'agent:root', authorityLevel: 10, verified: true },
+        { actorId: 'agent:direct', authorityLevel: 8, verified: true, revoked: true },
+      ],
+      [
+        { actorId: 'agent:root', authorityLevel: 10, verified: true },
+        { actorId: 'agent:direct', authorityLevel: 11, verified: true },
+      ],
+    ]) {
+      const dir = tmp();
+      try {
+        const permit = createExecutionPermit(approvedCall, evaluation, approvalId(approvedCall, evaluation), dir);
+        expect(finalizeExecutionPermit(permit, {
+          approvalId: permit.approvalId,
+          authorizationDigest: approvedCall.approvalProvenance?.authorizationDigest,
+          effectiveConsumerId: approvedCall.approvalDelegation?.effectiveConsumerId,
+          links,
+          revoked: false,
+          revocationChecked: true,
+          structurallyValid: true,
+        }, dir)).toBe(false);
+      } finally { rmSync(dir, { recursive: true, force: true }); }
+    }
+    expect(() => createExecutionPermit(approvedCall, evaluation, 'aegis_0000000000000000')).toThrow(/does not match/);
+  });
+});

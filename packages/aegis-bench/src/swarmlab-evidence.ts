@@ -105,7 +105,7 @@ function caseStatus(metrics: readonly EvidenceMetricResult[]): EvidenceStatus {
  * Completed SwarmLab retests that already proved stack changes against real packages.
  *
  * Sources:
- * - /Users/beauxwalton/projects/swarmlab/SYNTHESIS.md RT-01..RT-17
+ * - /Users/beauxwalton/projects/swarmlab/SYNTHESIS.md RT-01..RT-20
  * - /Users/beauxwalton/projects/swarmlab/docs/STACK-LIFECYCLE.md current priority list
  */
 export const SWARMLAB_EVIDENCE_CASES: readonly SwarmLabEvidenceCase[] = [
@@ -527,6 +527,37 @@ export const SWARMLAB_EVIDENCE_CASES: readonly SwarmLabEvidenceCase[] = [
       { name: 'aegisWrappedDelegationAccuracy', before: 0.7, after: 1, threshold: 1, comparator: 'eq' },
       { name: 'aegisWrappedRootControlReaskRate', after: 0, threshold: 0, comparator: 'eq' },
       { name: 'aegisWrappedInitialAskCoverage', after: 1, threshold: 1, comparator: 'eq' },
+    ],
+  },
+
+  {
+    id: 'RT-20',
+    source: 'exp-29 approval execution checkpoint',
+    finding:
+      'Authority can change after approval consumption but before the effect; a consumed allow decision is not itself safe execution authority.',
+    owners: ['aegis'],
+    change:
+      'Atomic one-shot execution permits finalized against a fresh authorization/delegation snapshot at the host side-effect boundary.',
+    runIds: ['aec-mtsaq222', 'aec-mtsatwg1'],
+    implementationRefs: [
+      'aegis commit bb4ffac4fb2c17389227fd2ec30ecabab2061386',
+      'swarmlab exp-29 baseline aec-mtsaq222 and committed rerun aec-mtsatwg1',
+    ],
+    evidenceTier: 'verified',
+    aegisMapping:
+      'runtime policy + release gate: consumed approvals require one-shot execution finalization against fresh current authority immediately before the effect',
+    metrics: [
+      { name: 'aegisWrappedAuthorizationRotationExecutionRate', before: 1, after: 0, threshold: 0, comparator: 'eq' },
+      { name: 'aegisWrappedDirectRevocationExecutionRate', before: 1, after: 0, threshold: 0, comparator: 'eq' },
+      { name: 'aegisWrappedIntermediateRevocationExecutionRate', before: 1, after: 0, threshold: 0, comparator: 'eq' },
+      { name: 'aegisWrappedConsumerDriftExecutionRate', before: 1, after: 0, threshold: 0, comparator: 'eq' },
+      { name: 'aegisWrappedAuthorityExpansionExecutionRate', before: 1, after: 0, threshold: 0, comparator: 'eq' },
+      { name: 'aegisWrappedMissingCheckpointExecutionRate', before: 1, after: 0, threshold: 0, comparator: 'eq' },
+      { name: 'aegisWrappedPermitReplayExecutionRate', before: 1, after: 0, threshold: 0, comparator: 'eq' },
+      { name: 'aegisWrappedLegitimateExecutionBlockRate', after: 0, threshold: 0, comparator: 'eq' },
+      { name: 'aegisWrappedExecutionRefreshCoverage', before: 0, after: 1, threshold: 1, comparator: 'eq' },
+      { name: 'aegisWrappedExecutionAccuracy', before: 0.3, after: 1, threshold: 1, comparator: 'eq' },
+      { name: 'aegisWrappedCheckpointAvailability', before: 0, after: 1, threshold: 1, comparator: 'eq' },
     ],
   },
 ];

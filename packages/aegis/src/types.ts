@@ -316,6 +316,8 @@ export interface ApprovalDelegationLinkMetadata {
   verified?: boolean;
   /** Comparable authority level; each child must be no greater than its parent. */
   authorityLevel?: number;
+  /** Whether this individual delegation link was revoked before execution. */
+  revoked?: boolean;
 }
 
 export interface ApprovalDelegationMetadata {
@@ -332,6 +334,23 @@ export interface ApprovalDelegationMetadata {
   /** Whether the trusted host checked revocation state. */
   revocationChecked?: boolean;
   /** Whether the trusted host considers the chain structurally well formed. */
+  structurallyValid?: boolean;
+}
+
+export interface ApprovalExecutionSnapshotMetadata {
+  /** Approval id returned by the consumed ask decision. */
+  approvalId?: string;
+  /** Current authority digest observed at the effect boundary. */
+  authorizationDigest?: string;
+  /** Current effective consumer at the effect boundary. */
+  effectiveConsumerId?: string;
+  /** Current root-to-consumer delegation chain. */
+  links?: ApprovalDelegationLinkMetadata[];
+  /** Whether the full current delegation was revoked. */
+  revoked?: boolean;
+  /** Whether revocation/currentness was freshly checked at this boundary. */
+  revocationChecked?: boolean;
+  /** Whether the current chain is structurally valid. */
   structurallyValid?: boolean;
 }
 

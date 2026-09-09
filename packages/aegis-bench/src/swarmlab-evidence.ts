@@ -560,6 +560,23 @@ export const SWARMLAB_EVIDENCE_CASES: readonly SwarmLabEvidenceCase[] = [
       { name: 'aegisWrappedCheckpointAvailability', before: 0, after: 1, threshold: 1, comparator: 'eq' },
     ],
   },
+  {
+    id: 'RT-21',
+    source: 'SwarmLab exp-30 distributed execution-permit store (baseline dps-mttq7j53; post-fix dps-mttq9s83)',
+    finding: 'Local filesystem permits replay across hosts; a shared transactional store makes finalization globally one-shot and fail-closed.',
+    owners: ['aegis'],
+    change: 'Added host-provided shared transactional permit-store contract and globally one-shot create/finalize APIs.',
+    runIds: ['dps-mttq7j53', 'dps-mttq9s83'],
+    implementationRefs: ['1c79f8d00e1108fcf477c3a3fe734cfc788caed5'],
+    evidenceTier: 'verified',
+    implementationStatus: 'landed',
+    aegisMapping: 'Host-provided atomic create-if-absent/destructive-take execution permit store contract.',
+    metrics: [
+      { name: 'aegisWrappedUnsafeClasses', before: 5, after: 0, threshold: 0, comparator: 'eq' },
+      { name: 'aegisWrappedDistributedAccuracy', before: 2 / 7, after: 1, threshold: 1, comparator: 'eq' },
+      { name: 'aegisWrappedSharedStoreApiAvailability', before: 0, after: 1, threshold: 1, comparator: 'eq' },
+    ],
+  },
 ];
 
 export function evaluateSwarmLabEvidence(

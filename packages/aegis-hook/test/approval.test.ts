@@ -1,5 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import { mkdtempSync, existsSync, rmSync } from 'node:fs';
+import { setTimeout as delay } from 'node:timers/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import type { Evaluation, ToolCall } from '@heybeaux/lattice-aegis';
@@ -353,5 +354,83 @@ describe('approval execution permits', () => {
       } finally { rmSync(dir, { recursive: true, force: true }); }
     }
     expect(() => createExecutionPermit(approvedCall, evaluation, 'aegis_0000000000000000')).toThrow(/does not match/);
+  });
+
+  it('uses a shared transactional store for globally one-shot cross-host finalization', async () => {
+    const { createExecutionPermitWithStore, finalizeExecutionPermitWithStore } = await import('../src/approval.js');
+    const records = new Map<string, any>();
+    const store = {
+      async create(record: any) {
+        if (records.has(record.id)) return false;
+        records.set(record.id, structuredClone(record));
+        return true;
+      },
+      async take(id: string) {
+        await delay(1);
+        const record = records.get(id);
+        records.delete(id);
+        return record;
+      },
+    };
+    const approvedCall = delegatedCall('agent:direct', [
+      { actorId: 'agent:root', authorityLevel: 10, verified: true },
+      { actorId: 'agent:direct', authorityLevel: 8, verified: true },
+    ]);
+    const id = approvalId(approvedCall, evaluation);
+    const permit = await createExecutionPermitWithStore(approvedCall, evaluation, id, store);
+    const current = {
+      approvalId: permit.approvalId,
+      authorizationDigest: approvedCall.approvalProvenance?.authorizationDigest,
+      effectiveConsumerId: approvedCall.approvalDelegation?.effectiveConsumerId,
+      links: approvedCall.approvalDelegation?.links,
+      revoked: false,
+      revocationChecked: true,
+      structurallyValid: true,
+    };
+    const results = await Promise.all([
+      finalizeExecutionPermitWithStore(permit, current, store),
+      finalizeExecutionPermitWithStore(permit, current, store),
+    ]);
+    expect(results.filter(Boolean)).toHaveLength(1);
+    expect(await finalizeExecutionPermitWithStore(permit, current, store)).toBe(false);
+  });
+
+  it('burns invalid shared permits, rejects duplicate create, and fails closed on store errors', async () => {
+    const { createExecutionPermitWithStore, finalizeExecutionPermitWithStore } = await import('../src/approval.js');
+    const records = new Map<string, any>();
+    const store = {
+      async create(record: any) {
+        if (records.has(record.id)) return false;
+        records.set(record.id, structuredClone(record));
+        return true;
+      },
+      async take(id: string) {
+        const record = records.get(id);
+        records.delete(id);
+        return record;
+      },
+    };
+    const approvedCall = delegatedCall('agent:direct', [
+      { actorId: 'agent:root', authorityLevel: 10, verified: true },
+      { actorId: 'agent:direct', authorityLevel: 8, verified: true },
+    ]);
+    const id = approvalId(approvedCall, evaluation);
+    const permit = await createExecutionPermitWithStore(approvedCall, evaluation, id, store);
+    await expect(createExecutionPermitWithStore(approvedCall, evaluation, id, store)).rejects.toThrow(/already exists/);
+    const current = {
+      approvalId: permit.approvalId,
+      authorizationDigest: 'auth:rotated',
+      effectiveConsumerId: approvedCall.approvalDelegation?.effectiveConsumerId,
+      links: approvedCall.approvalDelegation?.links,
+      revoked: false,
+      revocationChecked: true,
+      structurallyValid: true,
+    };
+    expect(await finalizeExecutionPermitWithStore(permit, current, store)).toBe(false);
+    expect(await finalizeExecutionPermitWithStore(permit, { ...current, authorizationDigest: 'auth:epoch-1' }, store)).toBe(false);
+    const unavailable = { async create() { throw new Error('down'); }, async take() { throw new Error('down'); } };
+    await expect(createExecutionPermitWithStore(approvedCall, evaluation, id, unavailable)).rejects.toThrow(/unavailable/);
+    expect(await finalizeExecutionPermitWithStore(permit, { ...current, authorizationDigest: 'auth:epoch-1' }, unavailable)).toBe(false);
+    expect(await finalizeExecutionPermitWithStore({ id: '../bad', approvalId: id }, { ...current, approvalId: id }, store)).toBe(false);
   });
 });

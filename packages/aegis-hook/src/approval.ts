@@ -35,7 +35,7 @@ export interface ApprovalExecutionSnapshot {
   structurallyValid?: boolean;
 }
 
-interface ApprovalExecutionPermitRecord {
+export interface ApprovalExecutionPermitRecord {
   id: string;
   approvalId: string;
   signature: string;
@@ -44,6 +44,16 @@ interface ApprovalExecutionPermitRecord {
   links?: NonNullable<ToolCall['approvalDelegation']>['links'];
   declaredScope?: NonNullable<ToolCall['approvalDelegation']>['declaredScope'];
   maxDepth?: number;
+}
+
+/**
+ * Host-provided shared transactional storage for execution permits.
+ * `create` must atomically insert only when absent. `take` must atomically
+ * return and delete at most one record across every participating host.
+ */
+export interface ApprovalExecutionPermitStore {
+  create(record: ApprovalExecutionPermitRecord): Promise<boolean>;
+  take(id: string): Promise<ApprovalExecutionPermitRecord | undefined>;
 }
 
 export interface ApprovalPaths {
@@ -424,23 +434,18 @@ function executionPermitPath(id: string, dir?: string): string {
   return join(approvalDir(dir), `${id}.ready.json`);
 }
 
-/**
- * Create a host-finalized execution permit after a successful approval consumption.
- * The caller must pass the exact call/evaluation that produced the consumed decision.
- */
-export function createExecutionPermit(
+function executionPermitRecord(
   call: ToolCall,
   evaluation: Evaluation,
   approvalIdValue: string,
-  dir?: string,
-): ApprovalExecutionPermit {
+): ApprovalExecutionPermitRecord {
   if (approvalIdValue !== approvalId(call, evaluation)) {
     throw new Error('approval id does not match the consumed call');
   }
   const delegation = call.approvalDelegation;
   const signature = approvalSignature(call, evaluation);
   const id = executionPermitId(approvalIdValue, signature);
-  const record: ApprovalExecutionPermitRecord = {
+  return {
     id,
     approvalId: approvalIdValue,
     signature,
@@ -456,11 +461,45 @@ export function createExecutionPermit(
     ...(delegation?.declaredScope !== undefined ? { declaredScope: delegation.declaredScope } : {}),
     ...(delegation?.maxDepth !== undefined ? { maxDepth: delegation.maxDepth } : {}),
   };
+}
+
+/**
+ * Create a host-finalized execution permit after a successful approval consumption.
+ * The caller must pass the exact call/evaluation that produced the consumed decision.
+ */
+export function createExecutionPermit(
+  call: ToolCall,
+  evaluation: Evaluation,
+  approvalIdValue: string,
+  dir?: string,
+): ApprovalExecutionPermit {
+  const record = executionPermitRecord(call, evaluation, approvalIdValue);
   mkdirSync(approvalDir(dir), { recursive: true });
-  const path = executionPermitPath(id, dir);
+  const path = executionPermitPath(record.id, dir);
   if (existsSync(path)) throw new Error(`execution permit already exists for ${approvalIdValue}`);
   writeFileSync(path, JSON.stringify(record, null, 2) + '\n', { encoding: 'utf8', flag: 'wx' });
-  return { id, approvalId: approvalIdValue };
+  return { id: record.id, approvalId: approvalIdValue };
+}
+
+/**
+ * Create a globally one-shot permit in a host-provided transactional store.
+ * Store failure and duplicate creation fail closed by rejecting the operation.
+ */
+export async function createExecutionPermitWithStore(
+  call: ToolCall,
+  evaluation: Evaluation,
+  approvalIdValue: string,
+  store: ApprovalExecutionPermitStore,
+): Promise<ApprovalExecutionPermit> {
+  const record = executionPermitRecord(call, evaluation, approvalIdValue);
+  let created = false;
+  try {
+    created = await store.create(record);
+  } catch (error) {
+    throw new Error('execution permit store unavailable during create', { cause: error });
+  }
+  if (!created) throw new Error(`execution permit already exists for ${approvalIdValue}`);
+  return { id: record.id, approvalId: record.approvalId };
 }
 
 function executionSnapshotValid(
@@ -526,4 +565,28 @@ export function finalizeExecutionPermit(
   } finally {
     rmSync(finalizing, { force: true });
   }
+}
+
+/**
+ * Atomically take and burn a permit from shared storage before validating the latest snapshot.
+ * Missing, malformed, replayed, or unavailable store results fail closed. Store errors are
+ * deliberately converted to `false` at this side-effect boundary.
+ */
+export async function finalizeExecutionPermitWithStore(
+  permit: ApprovalExecutionPermit,
+  current: ApprovalExecutionSnapshot,
+  store: ApprovalExecutionPermitStore,
+): Promise<boolean> {
+  if (!/^permit_[a-f0-9]{24}$/.test(permit.id)) return false;
+  if (!/^aegis_[a-f0-9]{16}$/.test(permit.approvalId)) return false;
+  if (permit.approvalId !== current.approvalId) return false;
+  let record: ApprovalExecutionPermitRecord | undefined;
+  try {
+    record = await store.take(permit.id);
+  } catch {
+    return false;
+  }
+  return record?.id === permit.id &&
+    record.approvalId === permit.approvalId &&
+    executionSnapshotValid(record, current);
 }

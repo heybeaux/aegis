@@ -43,11 +43,15 @@ export {
   approvePending,
   consumeApproval,
   createExecutionPermit,
+  createExecutionPermitWithStore,
   finalizeExecutionPermit,
+  finalizeExecutionPermitWithStore,
   requestApproval,
   type ApprovalRecord,
   type ApprovalPaths,
   type ApprovalExecutionPermit,
+  type ApprovalExecutionPermitRecord,
+  type ApprovalExecutionPermitStore,
   type ApprovalExecutionSnapshot,
 } from './approval.js';
 export { writeTelemetry, type TelemetryEvent } from './telemetry.js';

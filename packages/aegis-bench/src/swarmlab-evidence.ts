@@ -638,7 +638,26 @@ function fmt(n: number, unit?: string): string {
 }
 
 export function swarmLabEvidenceToMarkdown(result: EvidenceGateResult): string {
-  const lines: string[] = [];
+  const lines: string[] = [  {
+    id: 'RT-22',
+    source: 'SwarmLab exp-31 indeterminate permit-take reconciliation (baseline ipr-mtv5qhsb; post-fix ipr-mtv5qhur)',
+    finding: 'A remote destructive take can commit before its acknowledgement is lost; boolean failure cannot distinguish a retryable miss from indeterminate ownership.',
+    owners: ['aegis'],
+    change: 'Added stable operation IDs, atomic prepare/status-claim reconciliation, and execute/blocked/indeterminate finalization results.',
+    runIds: ['ipr-mtv5qhsb', 'ipr-mtv5qhur'],
+    implementationRefs: ['08e9b5e'],
+    evidenceTier: 'verified',
+    implementationStatus: 'landed',
+    aegisMapping: 'Reconciliation-capable remote permit finalization with explicit indeterminate outcomes and one-shot operation-result claims.',
+    metrics: [
+      { name: 'aegisWrappedCommittedTakeOrphanRate', before: 3 / 7, after: 0, threshold: 0, comparator: 'eq' },
+      { name: 'aegisWrappedAmbiguityMisclassificationRate', before: 1 / 7, after: 0, threshold: 0, comparator: 'eq' },
+      { name: 'aegisWrappedReconciliationAccuracy', before: 3 / 7, after: 1, threshold: 1, comparator: 'eq' },
+      { name: 'aegisWrappedReconciliationApiAvailability', before: 0, after: 1, threshold: 1, comparator: 'eq' },
+      { name: 'aegisWrappedIdempotentReplaySafety', before: 0, after: 1, threshold: 1, comparator: 'eq' },
+    ],
+  },
+];
   const firstCaseId = result.cases.at(0)?.id ?? 'none';
   const lastCaseId = result.cases.at(-1)?.id ?? 'none';
   const caseRange = firstCaseId === lastCaseId ? firstCaseId : `${firstCaseId}..${lastCaseId}`;

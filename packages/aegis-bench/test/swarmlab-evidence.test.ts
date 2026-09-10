@@ -205,6 +205,7 @@ describe('SwarmLab evidence gate', () => {
       'RT-19',
       'RT-20',
       'RT-21',
+      'RT-22',
     ]);
 
     const mappings = SWARMLAB_EVIDENCE_CASES.map((c) => c.aegisMapping).join('\n');
@@ -228,11 +229,12 @@ describe('SwarmLab evidence gate', () => {
     expect(mappings).toContain('scope-aware provenance binding');
     expect(mappings).toContain('effective-consumer binding');
     expect(mappings).toContain('one-shot execution finalization');
+    expect(mappings).toContain('explicit indeterminate outcomes');
   });
 
   it('renders a report banner matching the evaluated evidence range', () => {
     const markdown = swarmLabEvidenceToMarkdown(evaluateSwarmLabEvidence());
-    expect(markdown).toContain('REPLAY-VERIFIED SWARMLAB RETESTS (RT-01..RT-21)');
+    expect(markdown).toContain('REPLAY-VERIFIED SWARMLAB RETESTS (RT-01..RT-22)');
     expect(markdown).not.toContain('RT-01..RT-10');
     expect(markdown).toContain('0 provisional evidence tier');
     expect(markdown).toContain('| RT-06 | passed | landed | verified |');
@@ -248,6 +250,8 @@ describe('SwarmLab evidence gate', () => {
     expect(markdown).toContain('| RT-18 | passed | landed | verified |');
     expect(markdown).toContain('| RT-19 | passed | landed | verified |');
     expect(markdown).toContain('| RT-20 | passed | landed | verified |');
+    expect(markdown).toContain('| RT-21 | passed | landed | verified |');
+    expect(markdown).toContain('| RT-22 | passed | landed | verified |');
   });
 
   it('fails loudly when a proven metric regresses', () => {

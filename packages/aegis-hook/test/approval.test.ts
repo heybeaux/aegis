@@ -434,3 +434,62 @@ describe('approval execution permits', () => {
     expect(await finalizeExecutionPermitWithStore({ id: '../bad', approvalId: id }, { ...current, approvalId: id }, store)).toBe(false);
   });
 });
+
+describe('reconciled approval execution permit store', () => {
+  async function fixture() {
+    const { createExecutionPermitWithStore, finalizeExecutionPermitWithReconciliation } = await import('../src/approval.js');
+    const records = new Map<string, any>();
+    const operations = new Map<string, any>();
+    let precommitFailures = 0, postcommitTimeouts = 0, statusFailures = 0;
+    const store = {
+      async create(record: any) { if (records.has(record.id)) return false; records.set(record.id, structuredClone(record)); return true; },
+      async take(id: string) { const record = records.get(id); records.delete(id); return record; },
+      async prepareTake(id: string, operationId: string) {
+        if (precommitFailures-- > 0) throw new Error('precommit');
+        if (operations.has(operationId)) return true;
+        const record = records.get(id); if (!record) return false;
+        records.delete(id); operations.set(operationId, structuredClone(record));
+        if (postcommitTimeouts-- > 0) throw new Error('postcommit timeout');
+        return true;
+      },
+      async claimPreparedTake(operationId: string) {
+        if (statusFailures-- > 0) throw new Error('status unavailable');
+        const record = operations.get(operationId); operations.delete(operationId); return record;
+      },
+    };
+    const approvedCall = delegatedCall('agent:direct', [
+      { actorId: 'agent:root', authorityLevel: 10, verified: true },
+      { actorId: 'agent:direct', authorityLevel: 8, verified: true },
+    ]);
+    const id = approvalId(approvedCall, evaluation);
+    const permit = await createExecutionPermitWithStore(approvedCall, evaluation, id, store);
+    const current = { approvalId: permit.approvalId, authorizationDigest: approvedCall.approvalProvenance?.authorizationDigest, effectiveConsumerId: approvedCall.approvalDelegation?.effectiveConsumerId, links: approvedCall.approvalDelegation?.links, revoked: false, revocationChecked: true, structurallyValid: true };
+    return { store, permit, current, finalizeExecutionPermitWithReconciliation, failPrecommit: () => { precommitFailures = 1; }, timeoutPostcommit: () => { postcommitTimeouts = 1; }, failStatus: () => { statusFailures = 1; } };
+  }
+
+  it('reconciles acknowledgement loss after a committed take and executes once', async () => {
+    const f = await fixture(); f.timeoutPostcommit();
+    await expect(f.finalizeExecutionPermitWithReconciliation(f.permit, f.current, 'op_timeout', f.store)).resolves.toEqual({ status: 'execute', retryable: false });
+    await expect(f.finalizeExecutionPermitWithReconciliation(f.permit, f.current, 'op_timeout', f.store)).resolves.toEqual({ status: 'blocked', retryable: true, reason: 'not_taken' });
+  });
+
+  it('marks unavailable status indeterminate without authorizing execution', async () => {
+    const f = await fixture(); f.timeoutPostcommit(); f.failStatus();
+    await expect(f.finalizeExecutionPermitWithReconciliation(f.permit, f.current, 'op_status_down', f.store)).resolves.toEqual({ status: 'indeterminate', retryable: false, reason: 'status_unavailable' });
+  });
+
+  it('allows a new operation after a definite pre-commit failure and burns invalid snapshots', async () => {
+    const retry = await fixture(); retry.failPrecommit();
+    await expect(retry.finalizeExecutionPermitWithReconciliation(retry.permit, retry.current, 'op_pre_fail', retry.store)).resolves.toEqual({ status: 'blocked', retryable: true, reason: 'not_taken' });
+    await expect(retry.finalizeExecutionPermitWithReconciliation(retry.permit, retry.current, 'op_retry', retry.store)).resolves.toEqual({ status: 'execute', retryable: false });
+
+    const invalid = await fixture(); invalid.timeoutPostcommit();
+    await expect(invalid.finalizeExecutionPermitWithReconciliation(invalid.permit, { ...invalid.current, authorizationDigest: 'auth:rotated' }, 'op_invalid', invalid.store)).resolves.toEqual({ status: 'blocked', retryable: false, reason: 'invalid_snapshot' });
+    await expect(invalid.finalizeExecutionPermitWithReconciliation(invalid.permit, invalid.current, 'op_invalid_retry', invalid.store)).resolves.toEqual({ status: 'blocked', retryable: true, reason: 'not_taken' });
+  });
+
+  it('rejects malformed operation ids before touching shared storage', async () => {
+    const f = await fixture();
+    await expect(f.finalizeExecutionPermitWithReconciliation(f.permit, f.current, '../bad', f.store)).resolves.toEqual({ status: 'blocked', retryable: false, reason: 'invalid_snapshot' });
+  });
+});

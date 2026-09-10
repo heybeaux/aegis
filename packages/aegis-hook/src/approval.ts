@@ -590,3 +590,71 @@ export async function finalizeExecutionPermitWithStore(
     record.approvalId === permit.approvalId &&
     executionSnapshotValid(record, current);
 }
+
+export type ApprovalExecutionFinalizationStatus = 'execute' | 'blocked' | 'indeterminate';
+
+export interface ApprovalExecutionFinalizationResult {
+  status: ApprovalExecutionFinalizationStatus;
+  /** True only when a fresh operation id may safely retry the take. */
+  retryable: boolean;
+  reason?: 'not_taken' | 'invalid_snapshot' | 'store_unavailable' | 'status_unavailable';
+}
+
+/**
+ * Reconciliation-capable shared storage. Implementations MUST commit the permit removal and
+ * operation-journal entry in one transaction. `claimPreparedTake` MUST atomically return and
+ * delete the operation result, so a successful finalization can authorize execution once only.
+ */
+export interface ReconciledApprovalExecutionPermitStore extends ApprovalExecutionPermitStore {
+  prepareTake(id: string, operationId: string): Promise<boolean>;
+  claimPreparedTake(operationId: string): Promise<ApprovalExecutionPermitRecord | undefined>;
+}
+
+function validExecutionOperationId(value: string): boolean {
+  return /^op_[a-zA-Z0-9][a-zA-Z0-9._:-]{0,127}$/.test(value);
+}
+
+/**
+ * Finalize a shared permit without collapsing acknowledgement loss into a false definitive answer.
+ *
+ * A thrown `prepareTake` is intentionally followed by operation-status reconciliation: the store
+ * may have committed before transport failed. If status cannot be read, the answer is explicitly
+ * indeterminate and execution remains blocked. The claimed operation result is destructive, making
+ * repeated reconciliation and duplicate operation ids one-shot.
+ */
+export async function finalizeExecutionPermitWithReconciliation(
+  permit: ApprovalExecutionPermit,
+  current: ApprovalExecutionSnapshot,
+  operationId: string,
+  store: ReconciledApprovalExecutionPermitStore,
+): Promise<ApprovalExecutionFinalizationResult> {
+  const blocked = (
+    reason: NonNullable<ApprovalExecutionFinalizationResult['reason']>,
+    retryable = false,
+  ): ApprovalExecutionFinalizationResult => ({ status: 'blocked', retryable, reason });
+  if (!/^permit_[a-f0-9]{24}$/.test(permit.id)) return blocked('invalid_snapshot');
+  if (!/^aegis_[a-f0-9]{16}$/.test(permit.approvalId)) return blocked('invalid_snapshot');
+  if (permit.approvalId !== current.approvalId) return blocked('invalid_snapshot');
+  if (!validExecutionOperationId(operationId)) return blocked('invalid_snapshot');
+
+  try {
+    const prepared = await store.prepareTake(permit.id, operationId);
+    if (!prepared) return blocked('not_taken', true);
+  } catch {
+    // Outcome is unknown: reconcile the operation journal below rather than guessing.
+  }
+
+  let record: ApprovalExecutionPermitRecord | undefined;
+  try {
+    record = await store.claimPreparedTake(operationId);
+  } catch {
+    return { status: 'indeterminate', retryable: false, reason: 'status_unavailable' };
+  }
+  if (record === undefined) return blocked('not_taken', true);
+  if (
+    record.id !== permit.id ||
+    record.approvalId !== permit.approvalId ||
+    !executionSnapshotValid(record, current)
+  ) return blocked('invalid_snapshot');
+  return { status: 'execute', retryable: false };
+}

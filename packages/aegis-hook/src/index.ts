@@ -46,12 +46,16 @@ export {
   createExecutionPermitWithStore,
   finalizeExecutionPermit,
   finalizeExecutionPermitWithStore,
+  finalizeExecutionPermitWithReconciliation,
   requestApproval,
   type ApprovalRecord,
   type ApprovalPaths,
   type ApprovalExecutionPermit,
   type ApprovalExecutionPermitRecord,
   type ApprovalExecutionPermitStore,
+  type ReconciledApprovalExecutionPermitStore,
+  type ApprovalExecutionFinalizationResult,
+  type ApprovalExecutionFinalizationStatus,
   type ApprovalExecutionSnapshot,
 } from './approval.js';
 export { writeTelemetry, type TelemetryEvent } from './telemetry.js';

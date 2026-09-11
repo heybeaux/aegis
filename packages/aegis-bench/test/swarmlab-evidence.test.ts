@@ -10,8 +10,8 @@ describe('SwarmLab evidence gate', () => {
   it('passes when all stack mappings are landed with verified evidence', () => {
     const result = evaluateSwarmLabEvidence();
     expect(result.status).toBe('passed');
-    expect(result.total).toBe(22);
-    expect(result.passed).toBe(22);
+    expect(result.total).toBe(25);
+    expect(result.passed).toBe(25);
     expect(result.failed).toBe(0);
     expect(result.partial).toBe(0);
     expect(result.pendingImplementation).toBe(0);
@@ -206,6 +206,9 @@ describe('SwarmLab evidence gate', () => {
       'RT-20',
       'RT-21',
       'RT-22',
+      'RT-23',
+      'RT-24',
+      'RT-25',
     ]);
 
     const mappings = SWARMLAB_EVIDENCE_CASES.map((c) => c.aegisMapping).join('\n');
@@ -230,11 +233,14 @@ describe('SwarmLab evidence gate', () => {
     expect(mappings).toContain('effective-consumer binding');
     expect(mappings).toContain('one-shot execution finalization');
     expect(mappings).toContain('explicit indeterminate outcomes');
+    expect(mappings).toContain('retained effect commitments');
+    expect(mappings).toContain('atomic fence');
+    expect(mappings).toContain('verified desired-state receipt');
   });
 
   it('renders a report banner matching the evaluated evidence range', () => {
     const markdown = swarmLabEvidenceToMarkdown(evaluateSwarmLabEvidence());
-    expect(markdown).toContain('REPLAY-VERIFIED SWARMLAB RETESTS (RT-01..RT-22)');
+    expect(markdown).toContain('REPLAY-VERIFIED SWARMLAB RETESTS (RT-01..RT-25)');
     expect(markdown).not.toContain('RT-01..RT-10');
     expect(markdown).toContain('0 provisional evidence tier');
     expect(markdown).toContain('| RT-06 | passed | landed | verified |');
@@ -252,6 +258,9 @@ describe('SwarmLab evidence gate', () => {
     expect(markdown).toContain('| RT-20 | passed | landed | verified |');
     expect(markdown).toContain('| RT-21 | passed | landed | verified |');
     expect(markdown).toContain('| RT-22 | passed | landed | verified |');
+    expect(markdown).toContain('| RT-23 | passed | landed | verified |');
+    expect(markdown).toContain('| RT-24 | passed | landed | verified |');
+    expect(markdown).toContain('| RT-25 | passed | landed | verified |');
   });
 
   it('fails loudly when a proven metric regresses', () => {

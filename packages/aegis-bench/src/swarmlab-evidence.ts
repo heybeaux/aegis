@@ -596,6 +596,52 @@ export const SWARMLAB_EVIDENCE_CASES: readonly SwarmLabEvidenceCase[] = [
       { name: 'aegisWrappedIdempotentReplaySafety', before: 0, after: 1, threshold: 1, comparator: 'eq' },
     ],
   },
+  {
+    id: 'RT-23',
+    source: 'SwarmLab exp-32 execution-effect commitment journal (baseline eecj-mtwe2v9f; post-fix eecj-mtweb62a)',
+    finding: 'Destructive authorization claims leave no durable truth after execute; a retained effect journal prevents unsafe replay after caller crashes.',
+    owners: ['aegis'],
+    change: 'Added durable authorized/started/committed effect state and executed/not_executed/indeterminate resolution.',
+    runIds: ['eecj-mtwe2v9f', 'eecj-mtweb62a'],
+    implementationRefs: ['72d800a'],
+    evidenceTier: 'verified', implementationStatus: 'landed',
+    aegisMapping: 'retained effect commitments preserve post-authorization crash truth and block indeterminate replay',
+    metrics: [
+      { name: 'aegisWrappedUnsafeDuplicateEffectRate', before: 6 / 7, after: 0, threshold: 0, comparator: 'eq' },
+      { name: 'aegisWrappedEffectMisclassificationRate', before: 5 / 7, after: 0, threshold: 0, comparator: 'eq' },
+      { name: 'aegisWrappedEffectResolutionAccuracy', before: 1 / 7, after: 1, threshold: 1, comparator: 'eq' },
+      { name: 'aegisWrappedEffectJournalApiAvailability', before: 0, after: 1, threshold: 1, comparator: 'eq' },
+    ],
+  },
+  {
+    id: 'RT-24',
+    source: 'SwarmLab exp-33 concurrent effect-start fencing (baseline cesf-mtwekmqk; post-fix cesf-mtweks7l)',
+    finding: 'Retryable effect status is an observation, not exclusive start authority; concurrent resumers need a linearizable start fence.',
+    owners: ['aegis'], change: 'Added fresh-authority-checked atomic authorized-to-started effect transition.',
+    runIds: ['cesf-mtwekmqk', 'cesf-mtweks7l'], implementationRefs: ['6c78a98'], evidenceTier: 'verified', implementationStatus: 'landed',
+    aegisMapping: 'effect start requires a fresh-authority-checked atomic fence immediately before action',
+    metrics: [
+      { name: 'aegisWrappedDuplicateEffectRate', before: 4 / 7, after: 0, threshold: 0, comparator: 'eq' },
+      { name: 'aegisWrappedIndeterminateStartExecutionRate', before: 1 / 7, after: 0, threshold: 0, comparator: 'eq' },
+      { name: 'aegisWrappedStartDecisionAccuracy', before: 3 / 7, after: 1, threshold: 1, comparator: 'eq' },
+      { name: 'aegisWrappedStartFenceApiAvailability', before: 0, after: 1, threshold: 1, comparator: 'eq' },
+    ],
+  },
+  {
+    id: 'RT-25',
+    source: 'SwarmLab exp-34 effect-outcome receipt binding (baseline erb-mtweqq7o; post-fix erb-mtweqxk3)',
+    finding: 'Operation IDs are bearer callbacks; terminal effect truth needs exact attribution and a verified desired-state receipt.',
+    owners: ['aegis'], change: 'Added exact permit/approval/operation receipt binding and atomic first-receipt terminal persistence.',
+    runIds: ['erb-mtweqq7o', 'erb-mtweqxk3'], implementationRefs: ['4107b2e'], evidenceTier: 'verified', implementationStatus: 'landed',
+    aegisMapping: 'effect completion requires an exactly bound verified desired-state receipt and conflict-safe terminal write',
+    metrics: [
+      { name: 'aegisWrappedFalseExecutedRate', before: 6 / 8, after: 0, threshold: 0, comparator: 'eq' },
+      { name: 'aegisWrappedMisboundCommitRate', before: 3 / 8, after: 0, threshold: 0, comparator: 'eq' },
+      { name: 'aegisWrappedUnverifiedCommitRate', before: 2 / 8, after: 0, threshold: 0, comparator: 'eq' },
+      { name: 'aegisWrappedCompletionAccuracy', before: 2 / 8, after: 1, threshold: 1, comparator: 'eq' },
+      { name: 'aegisWrappedCompletionApiAvailability', before: 0, after: 1, threshold: 1, comparator: 'eq' },
+    ],
+  },
 
 ];
 

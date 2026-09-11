@@ -642,6 +642,21 @@ export const SWARMLAB_EVIDENCE_CASES: readonly SwarmLabEvidenceCase[] = [
       { name: 'aegisWrappedCompletionApiAvailability', before: 0, after: 1, threshold: 1, comparator: 'eq' },
     ],
   },
+  {
+    id: 'RT-26',
+    source: 'SwarmLab exp-35 effect-failure receipt binding',
+    finding: 'Known effect failure needs a receipt-bound terminal path; otherwise every non-success after start remains indeterminate.',
+    owners: ['aegis'], change: 'Added verified negative receipts, a durable failed state, idempotent replay, and committed-success monotonicity.',
+    runIds: ['efrb-mtwl39ot', 'efrb-mtwl5l6q'], implementationRefs: ['8240fa5'], evidenceTier: 'verified', implementationStatus: 'landed',
+    aegisMapping: 'verified effect failure requires exact receipt binding and a monotonic conflict-safe terminal write',
+    metrics: [
+      { name: 'aegisWrappedMissedKnownFailureRate', before: 2 / 10, after: 0, threshold: 0, comparator: 'eq' },
+      { name: 'aegisWrappedFailureAccuracy', before: 2 / 10, after: 1, threshold: 1, comparator: 'eq' },
+      { name: 'aegisWrappedFailureApiAvailability', before: 0, after: 1, threshold: 1, comparator: 'eq' },
+      { name: 'aegisWrappedIdempotentFailureSafety', before: 0, after: 1, threshold: 1, comparator: 'eq' },
+      { name: 'aegisWrappedTerminalMonotonicitySafety', before: 1, after: 1, threshold: 1, comparator: 'eq' },
+    ],
+  },
 
 ];
 

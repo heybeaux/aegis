@@ -855,3 +855,70 @@ export async function beginExecutionEffect(
   }
   return { status: 'execute', retryable: false };
 }
+
+export interface ApprovalExecutionEffectReceipt {
+  permitId: string;
+  approvalId: string;
+  operationId: string;
+  /** Host-produced digest of independently inspected desired-state evidence. */
+  receiptDigest: string;
+  /** True only after the host has independently verified the desired state. */
+  verified: boolean;
+}
+
+export type ApprovalExecutionEffectCommitStatus =
+  | 'committed'
+  | 'already_committed'
+  | 'conflict'
+  | 'not_started';
+
+export interface ReceiptedApprovalExecutionPermitStore extends JournaledApprovalExecutionPermitStore {
+  /** Atomically persist the first receipt and commit the effect; exact duplicates are idempotent. */
+  completeEffect(
+    operationId: string,
+    receipt: ApprovalExecutionEffectReceipt,
+  ): Promise<ApprovalExecutionEffectCommitStatus>;
+}
+
+export type ApprovalExecutionEffectCompletionStatus = 'executed' | 'blocked' | 'indeterminate';
+export interface ApprovalExecutionEffectCompletionResult {
+  status: ApprovalExecutionEffectCompletionStatus;
+  reason?: 'invalid_receipt' | 'unverified_receipt' | 'receipt_conflict' |
+    'effect_not_started' | 'store_unavailable';
+}
+
+function validReceiptDigest(value: string): boolean {
+  return /^sha256:[a-f0-9]{64}$/.test(value);
+}
+
+/**
+ * Attribute a terminal success to the exact started effect using a verified desired-state receipt.
+ * The store owns the atomic first-write-wins terminal transition and exact-duplicate recognition.
+ */
+export async function completeExecutionEffect(
+  permit: ApprovalExecutionPermit,
+  operationId: string,
+  receipt: ApprovalExecutionEffectReceipt,
+  store: ReceiptedApprovalExecutionPermitStore,
+): Promise<ApprovalExecutionEffectCompletionResult> {
+  if (
+    !/^permit_[a-f0-9]{24}$/.test(permit.id) ||
+    !/^aegis_[a-f0-9]{16}$/.test(permit.approvalId) ||
+    !validExecutionOperationId(operationId) ||
+    receipt.permitId !== permit.id ||
+    receipt.approvalId !== permit.approvalId ||
+    receipt.operationId !== operationId ||
+    !validReceiptDigest(receipt.receiptDigest)
+  ) return { status: 'blocked', reason: 'invalid_receipt' };
+  if (receipt.verified !== true) return { status: 'blocked', reason: 'unverified_receipt' };
+
+  let result: ApprovalExecutionEffectCommitStatus;
+  try {
+    result = await store.completeEffect(operationId, { ...receipt });
+  } catch {
+    return { status: 'indeterminate', reason: 'store_unavailable' };
+  }
+  if (result === 'committed' || result === 'already_committed') return { status: 'executed' };
+  if (result === 'conflict') return { status: 'blocked', reason: 'receipt_conflict' };
+  return { status: 'blocked', reason: 'effect_not_started' };
+}

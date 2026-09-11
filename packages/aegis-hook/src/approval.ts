@@ -792,6 +792,9 @@ export async function resolveExecutionEffect(
   const indeterminate = (
     reason: NonNullable<ApprovalExecutionEffectResolutionResult['reason']>,
   ): ApprovalExecutionEffectResolutionResult => ({ status: 'indeterminate', retryable: false, reason });
+  if (!presentObject(permit) || !presentObject(current)) {
+    return { status: 'not_executed', retryable: false, reason: 'invalid_snapshot' };
+  }
   if (
     !/^permit_[a-f0-9]{24}$/.test(permit.id) ||
     !/^aegis_[a-f0-9]{16}$/.test(permit.approvalId) ||
@@ -839,6 +842,7 @@ export async function beginExecutionEffect(
   const blocked = (
     reason: NonNullable<ApprovalExecutionFinalizationResult['reason']>,
   ): ApprovalExecutionFinalizationResult => ({ status: 'blocked', retryable: false, reason });
+  if (!presentObject(permit) || !presentObject(current)) return blocked('invalid_snapshot');
   if (
     !/^permit_[a-f0-9]{24}$/.test(permit.id) ||
     !/^aegis_[a-f0-9]{16}$/.test(permit.approvalId) ||
@@ -948,6 +952,16 @@ export interface ApprovalExecutionEffectFailureResult {
     'effect_not_started' | 'store_unavailable';
 }
 
+/**
+ * Governance boundaries must fail closed on absent structured input rather than throwing.
+ * A caller that passes a null/undefined permit, snapshot, or receipt is an untrusted or buggy
+ * host; a thrown TypeError would escape the decision path and could be caught upstream as a
+ * transient error, so every effect boundary treats missing input as invalid, not exceptional.
+ */
+function presentObject(value: unknown): value is Record<string, unknown> {
+  return typeof value === 'object' && value !== null;
+}
+
 function validFailureCode(value: string): boolean {
   return /^[a-z0-9_]{1,64}$/.test(value);
 }
@@ -962,6 +976,9 @@ export async function failExecutionEffect(
   receipt: ApprovalExecutionEffectFailureReceipt,
   store: FailureReceiptedApprovalExecutionPermitStore,
 ): Promise<ApprovalExecutionEffectFailureResult> {
+  if (!presentObject(permit) || !presentObject(receipt)) {
+    return { status: 'blocked', reason: 'invalid_receipt' };
+  }
   if (
     !/^permit_[a-f0-9]{24}$/.test(permit.id) ||
     !/^aegis_[a-f0-9]{16}$/.test(permit.approvalId) ||
@@ -995,6 +1012,9 @@ export async function completeExecutionEffect(
   receipt: ApprovalExecutionEffectReceipt,
   store: ReceiptedApprovalExecutionPermitStore,
 ): Promise<ApprovalExecutionEffectCompletionResult> {
+  if (!presentObject(permit) || !presentObject(receipt)) {
+    return { status: 'blocked', reason: 'invalid_receipt' };
+  }
   if (
     !/^permit_[a-f0-9]{24}$/.test(permit.id) ||
     !/^aegis_[a-f0-9]{16}$/.test(permit.approvalId) ||

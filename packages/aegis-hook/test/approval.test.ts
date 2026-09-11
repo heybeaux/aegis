@@ -701,3 +701,56 @@ describe('effect outcome receipt binding', () => {
   it('blocks wrong permit/approval/operation, absent digest, and unverified receipt',async()=>{const cases=[async()=>{const f=await fixture();return f.completeExecutionEffect(f.permit,'op_receipt',{...f.receipt,permitId:'permit_000000000000000000000000'},f.store);},async()=>{const f=await fixture();return f.completeExecutionEffect(f.permit,'op_receipt',{...f.receipt,approvalId:'aegis_0000000000000000'},f.store);},async()=>{const f=await fixture();return f.completeExecutionEffect(f.permit,'op_receipt',{...f.receipt,operationId:'op_other'},f.store);},async()=>{const f=await fixture();return f.completeExecutionEffect(f.permit,'op_receipt',{...f.receipt,receiptDigest:''},f.store);},async()=>{const f=await fixture();return f.completeExecutionEffect(f.permit,'op_receipt',{...f.receipt,verified:false},f.store);}];for(const run of cases)expect((await run()).status).toBe('blocked');});
   it('rejects conflicting terminal receipts and reports unavailable writes indeterminate',async()=>{const f=await fixture();await f.completeExecutionEffect(f.permit,'op_receipt',f.receipt,f.store);await expect(f.completeExecutionEffect(f.permit,'op_receipt',{...f.receipt,receiptDigest:`sha256:${'b'.repeat(64)}`},f.store)).resolves.toEqual({status:'blocked',reason:'receipt_conflict'});const down=await fixture();down.fail();await expect(down.completeExecutionEffect(down.permit,'op_receipt',down.receipt,down.store)).resolves.toEqual({status:'indeterminate',reason:'store_unavailable'});});
 });
+
+describe('execution effect boundaries fail closed on absent input', () => {
+  const permit = { id: `permit_${'a'.repeat(24)}`, approvalId: `aegis_${'b'.repeat(16)}` };
+  const operationId = 'op_absent_input';
+  const snapshot = { approvalId: permit.approvalId };
+  const receipt = {
+    permitId: permit.id, approvalId: permit.approvalId, operationId,
+    receiptDigest: `sha256:${'c'.repeat(64)}`, verified: true, failureCode: 'external_rejected',
+  };
+  const store = {
+    async create() { return true; }, async take() { return undefined; },
+    async prepareEffect() { return true; }, async claimPreparedEffect() { return undefined; },
+    async beginEffect() { return true; }, async commitEffect() { return true; },
+    async readEffect() { return undefined; }, async burnEffect() { return true; },
+    async completeEffect() { return 'committed' as const; },
+    async failEffect() { return 'failed' as const; },
+  } as any;
+
+  it('never throws and never authorizes when permit/snapshot/receipt is null or undefined', async () => {
+    const { completeExecutionEffect, failExecutionEffect, beginExecutionEffect, resolveExecutionEffect } =
+      await import('../src/approval.js');
+    for (const absent of [null, undefined] as any[]) {
+      const outcomes = [
+        await completeExecutionEffect(absent, operationId, receipt as any, store),
+        await completeExecutionEffect(permit as any, operationId, absent, store),
+        await failExecutionEffect(absent, operationId, receipt as any, store),
+        await failExecutionEffect(permit as any, operationId, absent, store),
+        await beginExecutionEffect(absent, snapshot as any, operationId, store),
+        await beginExecutionEffect(permit as any, absent, operationId, store),
+        await resolveExecutionEffect(absent, snapshot as any, operationId, store),
+        await resolveExecutionEffect(permit as any, absent, operationId, store),
+      ];
+      for (const outcome of outcomes) {
+        expect(outcome.status).not.toBe('execute');
+        expect(outcome.status).not.toBe('executed');
+        expect(outcome.status).not.toBe('failed');
+      }
+    }
+  });
+
+  it('classifies absent input as invalid rather than a retryable or unknown store fault', async () => {
+    const { completeExecutionEffect, failExecutionEffect, beginExecutionEffect, resolveExecutionEffect } =
+      await import('../src/approval.js');
+    await expect(completeExecutionEffect(null as any, operationId, receipt as any, store))
+      .resolves.toEqual({ status: 'blocked', reason: 'invalid_receipt' });
+    await expect(failExecutionEffect(permit as any, operationId, null as any, store))
+      .resolves.toEqual({ status: 'blocked', reason: 'invalid_receipt' });
+    await expect(beginExecutionEffect(permit as any, null as any, operationId, store))
+      .resolves.toEqual({ status: 'blocked', retryable: false, reason: 'invalid_snapshot' });
+    await expect(resolveExecutionEffect(null as any, snapshot as any, operationId, store))
+      .resolves.toEqual({ status: 'not_executed', retryable: false, reason: 'invalid_snapshot' });
+  });
+});

@@ -661,7 +661,7 @@ export async function finalizeExecutionPermitWithReconciliation(
 }
 
 
-export type ApprovalExecutionEffectState = 'authorized' | 'started' | 'committed' | 'burned';
+export type ApprovalExecutionEffectState = 'authorized' | 'started' | 'committed' | 'failed' | 'burned';
 
 export interface ApprovalExecutionEffectRecord {
   operationId: string;
@@ -681,7 +681,7 @@ function effectRecordMatches(
   if (
     effect.operationId !== operationId ||
     effect.claimed !== true && effect.claimed !== false ||
-    !['authorized', 'started', 'committed', 'burned'].includes(String(effect.state)) ||
+    !['authorized', 'started', 'committed', 'failed', 'burned'].includes(String(effect.state)) ||
     effect.permit === null ||
     typeof effect.permit !== 'object'
   ) return false;
@@ -728,7 +728,7 @@ export interface ApprovalExecutionEffectResolutionResult {
   status: ApprovalExecutionEffectResolutionStatus;
   /** True only for an untouched, still-valid authorization whose effect may now run. */
   retryable: boolean;
-  reason?: 'not_started' | 'effect_started' | 'effect_committed' | 'authorization_burned' |
+  reason?: 'not_started' | 'effect_started' | 'effect_committed' | 'effect_failed' | 'authorization_burned' |
     'invalid_snapshot' | 'journal_missing' | 'journal_unavailable';
 }
 
@@ -809,6 +809,9 @@ export async function resolveExecutionEffect(
 
   if (effect.state === 'committed') {
     return { status: 'executed', retryable: false, reason: 'effect_committed' };
+  }
+  if (effect.state === 'failed') {
+    return { status: 'not_executed', retryable: false, reason: 'effect_failed' };
   }
   if (effect.state === 'started') return indeterminate('effect_started');
   if (effect.state === 'burned') {
@@ -917,6 +920,69 @@ export interface ApprovalExecutionEffectCompletionResult {
 
 function validReceiptDigest(value: string): boolean {
   return /^sha256:[a-f0-9]{64}$/.test(value);
+}
+
+export interface ApprovalExecutionEffectFailureReceipt extends ApprovalExecutionEffectReceipt {
+  /** Stable machine-readable classification of the independently verified non-success. */
+  failureCode: string;
+}
+
+export type ApprovalExecutionEffectFailureCommitStatus =
+  | 'failed'
+  | 'already_failed'
+  | 'conflict'
+  | 'not_started';
+
+export interface FailureReceiptedApprovalExecutionPermitStore extends JournaledApprovalExecutionPermitStore {
+  /** Atomically persist the first negative receipt; committed success remains monotonic. */
+  failEffect(
+    operationId: string,
+    receipt: ApprovalExecutionEffectFailureReceipt,
+  ): Promise<ApprovalExecutionEffectFailureCommitStatus>;
+}
+
+export type ApprovalExecutionEffectFailureStatus = 'failed' | 'blocked' | 'indeterminate';
+export interface ApprovalExecutionEffectFailureResult {
+  status: ApprovalExecutionEffectFailureStatus;
+  reason?: 'invalid_receipt' | 'unverified_receipt' | 'receipt_conflict' |
+    'effect_not_started' | 'store_unavailable';
+}
+
+function validFailureCode(value: string): boolean {
+  return /^[a-z0-9_]{1,64}$/.test(value);
+}
+
+/**
+ * Persist independently verified non-success for the exact started effect. Unknown timeouts must
+ * not call this boundary: without verified negative evidence they remain honestly indeterminate.
+ */
+export async function failExecutionEffect(
+  permit: ApprovalExecutionPermit,
+  operationId: string,
+  receipt: ApprovalExecutionEffectFailureReceipt,
+  store: FailureReceiptedApprovalExecutionPermitStore,
+): Promise<ApprovalExecutionEffectFailureResult> {
+  if (
+    !/^permit_[a-f0-9]{24}$/.test(permit.id) ||
+    !/^aegis_[a-f0-9]{16}$/.test(permit.approvalId) ||
+    !validExecutionOperationId(operationId) ||
+    receipt.permitId !== permit.id ||
+    receipt.approvalId !== permit.approvalId ||
+    receipt.operationId !== operationId ||
+    !validReceiptDigest(receipt.receiptDigest) ||
+    !validFailureCode(receipt.failureCode)
+  ) return { status: 'blocked', reason: 'invalid_receipt' };
+  if (receipt.verified !== true) return { status: 'blocked', reason: 'unverified_receipt' };
+
+  let result: ApprovalExecutionEffectFailureCommitStatus;
+  try {
+    result = await store.failEffect(operationId, { ...receipt });
+  } catch {
+    return { status: 'indeterminate', reason: 'store_unavailable' };
+  }
+  if (result === 'failed' || result === 'already_failed') return { status: 'failed' };
+  if (result === 'conflict') return { status: 'blocked', reason: 'receipt_conflict' };
+  return { status: 'blocked', reason: 'effect_not_started' };
 }
 
 /**

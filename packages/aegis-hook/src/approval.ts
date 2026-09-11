@@ -658,3 +658,134 @@ export async function finalizeExecutionPermitWithReconciliation(
   ) return blocked('invalid_snapshot');
   return { status: 'execute', retryable: false };
 }
+
+
+export type ApprovalExecutionEffectState = 'authorized' | 'started' | 'committed' | 'burned';
+
+export interface ApprovalExecutionEffectRecord {
+  operationId: string;
+  permit: ApprovalExecutionPermitRecord;
+  state: ApprovalExecutionEffectState;
+  /** True after one caller has received the initial execute authority. */
+  claimed: boolean;
+}
+
+/**
+ * Durable post-authorization journal supplied by the host.
+ *
+ * `prepareEffect` MUST atomically remove the permit and insert an `authorized` effect record.
+ * Reusing an operation id for the same permit is idempotent; binding it to another permit fails.
+ * `claimPreparedEffect` MUST authorize at most one initial caller while retaining the record.
+ * `beginEffect` is written immediately before invoking the external effect, `commitEffect`
+ * immediately after successful completion, and `readEffect` MUST be a durable cross-host read.
+ * `burnEffect` permanently invalidates an uncommitted authorization.
+ */
+export interface JournaledApprovalExecutionPermitStore extends ApprovalExecutionPermitStore {
+  prepareEffect(id: string, operationId: string): Promise<boolean>;
+  claimPreparedEffect(operationId: string): Promise<ApprovalExecutionPermitRecord | undefined>;
+  beginEffect(operationId: string): Promise<boolean>;
+  commitEffect(operationId: string): Promise<boolean>;
+  readEffect(operationId: string): Promise<ApprovalExecutionEffectRecord | undefined>;
+  burnEffect(operationId: string): Promise<boolean>;
+}
+
+export type ApprovalExecutionEffectResolutionStatus = 'executed' | 'not_executed' | 'indeterminate';
+
+export interface ApprovalExecutionEffectResolutionResult {
+  status: ApprovalExecutionEffectResolutionStatus;
+  /** True only for an untouched, still-valid authorization whose effect may now run. */
+  retryable: boolean;
+  reason?: 'not_started' | 'effect_started' | 'effect_committed' | 'authorization_burned' |
+    'invalid_snapshot' | 'journal_missing' | 'journal_unavailable';
+}
+
+/**
+ * Finalize a permit into a retained effect authorization. Unlike RT-22's destructive operation
+ * claim, this leaves durable state available after `execute` has been returned.
+ */
+export async function finalizeExecutionPermitWithEffectJournal(
+  permit: ApprovalExecutionPermit,
+  current: ApprovalExecutionSnapshot,
+  operationId: string,
+  store: JournaledApprovalExecutionPermitStore,
+): Promise<ApprovalExecutionFinalizationResult> {
+  const blocked = (
+    reason: NonNullable<ApprovalExecutionFinalizationResult['reason']>,
+    retryable = false,
+  ): ApprovalExecutionFinalizationResult => ({ status: 'blocked', retryable, reason });
+  if (!/^permit_[a-f0-9]{24}$/.test(permit.id)) return blocked('invalid_snapshot');
+  if (!/^aegis_[a-f0-9]{16}$/.test(permit.approvalId)) return blocked('invalid_snapshot');
+  if (permit.approvalId !== current.approvalId) return blocked('invalid_snapshot');
+  if (!validExecutionOperationId(operationId)) return blocked('invalid_snapshot');
+
+  let prepared = false;
+  try {
+    prepared = await store.prepareEffect(permit.id, operationId);
+  } catch {
+    return { status: 'indeterminate', retryable: false, reason: 'store_unavailable' };
+  }
+  if (!prepared) return blocked('not_taken', true);
+
+  let record: ApprovalExecutionPermitRecord | undefined;
+  try {
+    record = await store.claimPreparedEffect(operationId);
+  } catch {
+    return { status: 'indeterminate', retryable: false, reason: 'status_unavailable' };
+  }
+  if (record === undefined) return blocked('not_taken');
+  if (
+    record.id !== permit.id ||
+    record.approvalId !== permit.approvalId ||
+    !executionSnapshotValid(record, current)
+  ) {
+    try { await store.burnEffect(operationId); } catch { /* already fail closed */ }
+    return blocked('invalid_snapshot');
+  }
+  return { status: 'execute', retryable: false };
+}
+
+/** Resolve a crashed effect without guessing from a missing permit or operation claim. */
+export async function resolveExecutionEffect(
+  permit: ApprovalExecutionPermit,
+  current: ApprovalExecutionSnapshot,
+  operationId: string,
+  store: JournaledApprovalExecutionPermitStore,
+): Promise<ApprovalExecutionEffectResolutionResult> {
+  const indeterminate = (
+    reason: NonNullable<ApprovalExecutionEffectResolutionResult['reason']>,
+  ): ApprovalExecutionEffectResolutionResult => ({ status: 'indeterminate', retryable: false, reason });
+  if (
+    !/^permit_[a-f0-9]{24}$/.test(permit.id) ||
+    !/^aegis_[a-f0-9]{16}$/.test(permit.approvalId) ||
+    permit.approvalId !== current.approvalId ||
+    !validExecutionOperationId(operationId)
+  ) return { status: 'not_executed', retryable: false, reason: 'invalid_snapshot' };
+
+  let effect: ApprovalExecutionEffectRecord | undefined;
+  try {
+    effect = await store.readEffect(operationId);
+  } catch {
+    return indeterminate('journal_unavailable');
+  }
+  if (
+    effect === undefined ||
+    effect.operationId !== operationId ||
+    effect.permit.id !== permit.id ||
+    effect.permit.approvalId !== permit.approvalId
+  ) return indeterminate('journal_missing');
+
+  if (effect.state === 'committed') {
+    return { status: 'executed', retryable: false, reason: 'effect_committed' };
+  }
+  if (effect.state === 'started') return indeterminate('effect_started');
+  if (effect.state === 'burned') {
+    return { status: 'not_executed', retryable: false, reason: 'authorization_burned' };
+  }
+  if (effect.state !== 'authorized' || !effect.claimed) return indeterminate('journal_missing');
+
+  if (!executionSnapshotValid(effect.permit, current)) {
+    try { await store.burnEffect(operationId); } catch { return indeterminate('journal_unavailable'); }
+    return { status: 'not_executed', retryable: false, reason: 'invalid_snapshot' };
+  }
+  return { status: 'not_executed', retryable: true, reason: 'not_started' };
+}

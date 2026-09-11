@@ -493,3 +493,84 @@ describe('reconciled approval execution permit store', () => {
     await expect(f.finalizeExecutionPermitWithReconciliation(f.permit, f.current, '../bad', f.store)).resolves.toEqual({ status: 'blocked', retryable: false, reason: 'invalid_snapshot' });
   });
 });
+
+describe('journaled approval execution effects', () => {
+  async function fixture() {
+    const {
+      createExecutionPermitWithStore,
+      finalizeExecutionPermitWithEffectJournal,
+      resolveExecutionEffect,
+    } = await import('../src/approval.js');
+    const records = new Map<string, any>();
+    const effects = new Map<string, any>();
+    let readsUnavailable = 0;
+    const store = {
+      async create(record: any) { if (records.has(record.id)) return false; records.set(record.id, structuredClone(record)); return true; },
+      async take(id: string) { const record = records.get(id); records.delete(id); return record; },
+      async prepareEffect(id: string, operationId: string) {
+        const existing = effects.get(operationId);
+        if (existing) return existing.permit.id === id;
+        const record = records.get(id); if (!record) return false;
+        records.delete(id); effects.set(operationId, { operationId, permit: structuredClone(record), state: 'authorized', claimed: false }); return true;
+      },
+      async claimPreparedEffect(operationId: string) {
+        const effect = effects.get(operationId);
+        if (!effect || effect.claimed || effect.state !== 'authorized') return undefined;
+        effect.claimed = true; return structuredClone(effect.permit);
+      },
+      async beginEffect(operationId: string) { const effect = effects.get(operationId); if (!effect || !effect.claimed || effect.state !== 'authorized') return false; effect.state = 'started'; return true; },
+      async commitEffect(operationId: string) { const effect = effects.get(operationId); if (!effect || effect.state !== 'started') return false; effect.state = 'committed'; return true; },
+      async readEffect(operationId: string) { if (readsUnavailable-- > 0) throw new Error('down'); const effect = effects.get(operationId); return effect ? structuredClone(effect) : undefined; },
+      async burnEffect(operationId: string) { const effect = effects.get(operationId); if (!effect || effect.state === 'committed') return false; effect.state = 'burned'; return true; },
+    };
+    const approvedCall = delegatedCall('agent:direct', [
+      { actorId: 'agent:root', authorityLevel: 10, verified: true },
+      { actorId: 'agent:direct', authorityLevel: 8, verified: true },
+    ]);
+    const id = approvalId(approvedCall, evaluation);
+    const permit = await createExecutionPermitWithStore(approvedCall, evaluation, id, store);
+    const current = { approvalId: permit.approvalId, authorizationDigest: approvedCall.approvalProvenance?.authorizationDigest, effectiveConsumerId: approvedCall.approvalDelegation?.effectiveConsumerId, links: approvedCall.approvalDelegation?.links, revoked: false, revocationChecked: true, structurallyValid: true };
+    return { store, effects, permit, current, finalizeExecutionPermitWithEffectJournal, resolveExecutionEffect, failRead: () => { readsUnavailable = 1; } };
+  }
+
+  it('retains committed effect truth and resolves duplicate/cross-host reads idempotently', async () => {
+    const f = await fixture();
+    await expect(f.finalizeExecutionPermitWithEffectJournal(f.permit, f.current, 'op_commit', f.store)).resolves.toEqual({ status: 'execute', retryable: false });
+    await expect(f.store.beginEffect('op_commit')).resolves.toBe(true);
+    await expect(f.store.commitEffect('op_commit')).resolves.toBe(true);
+    await expect(f.resolveExecutionEffect(f.permit, f.current, 'op_commit', f.store)).resolves.toEqual({ status: 'executed', retryable: false, reason: 'effect_committed' });
+    await expect(f.resolveExecutionEffect(f.permit, f.current, 'op_commit', f.store)).resolves.toEqual({ status: 'executed', retryable: false, reason: 'effect_committed' });
+    await expect(f.finalizeExecutionPermitWithEffectJournal(f.permit, f.current, 'op_commit', f.store)).resolves.toEqual({ status: 'blocked', retryable: false, reason: 'not_taken' });
+  });
+
+  it('distinguishes untouched authorization from a started ambiguous effect', async () => {
+    const untouched = await fixture();
+    await untouched.finalizeExecutionPermitWithEffectJournal(untouched.permit, untouched.current, 'op_untouched', untouched.store);
+    await expect(untouched.resolveExecutionEffect(untouched.permit, untouched.current, 'op_untouched', untouched.store)).resolves.toEqual({ status: 'not_executed', retryable: true, reason: 'not_started' });
+
+    const started = await fixture();
+    await started.finalizeExecutionPermitWithEffectJournal(started.permit, started.current, 'op_started', started.store);
+    await started.store.beginEffect('op_started');
+    await expect(started.resolveExecutionEffect(started.permit, started.current, 'op_started', started.store)).resolves.toEqual({ status: 'indeterminate', retryable: false, reason: 'effect_started' });
+  });
+
+  it('fails closed on journal loss/unavailability and burns invalid fresh authority', async () => {
+    const unavailable = await fixture();
+    await unavailable.finalizeExecutionPermitWithEffectJournal(unavailable.permit, unavailable.current, 'op_down', unavailable.store);
+    unavailable.failRead();
+    await expect(unavailable.resolveExecutionEffect(unavailable.permit, unavailable.current, 'op_down', unavailable.store)).resolves.toEqual({ status: 'indeterminate', retryable: false, reason: 'journal_unavailable' });
+
+    const invalid = await fixture();
+    await invalid.finalizeExecutionPermitWithEffectJournal(invalid.permit, invalid.current, 'op_invalid_resume', invalid.store);
+    await expect(invalid.resolveExecutionEffect(invalid.permit, { ...invalid.current, authorizationDigest: 'auth:rotated' }, 'op_invalid_resume', invalid.store)).resolves.toEqual({ status: 'not_executed', retryable: false, reason: 'invalid_snapshot' });
+    await expect(invalid.resolveExecutionEffect(invalid.permit, invalid.current, 'op_invalid_resume', invalid.store)).resolves.toEqual({ status: 'not_executed', retryable: false, reason: 'authorization_burned' });
+    await expect(invalid.resolveExecutionEffect(invalid.permit, invalid.current, 'op_missing', invalid.store)).resolves.toEqual({ status: 'indeterminate', retryable: false, reason: 'journal_missing' });
+  });
+
+  it('rejects malformed operation identifiers without touching the journal', async () => {
+    const f = await fixture();
+    await expect(f.finalizeExecutionPermitWithEffectJournal(f.permit, f.current, '../bad', f.store)).resolves.toEqual({ status: 'blocked', retryable: false, reason: 'invalid_snapshot' });
+    await expect(f.resolveExecutionEffect(f.permit, f.current, '../bad', f.store)).resolves.toEqual({ status: 'not_executed', retryable: false, reason: 'invalid_snapshot' });
+    expect(f.effects.size).toBe(0);
+  });
+});

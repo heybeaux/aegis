@@ -671,6 +671,38 @@ export interface ApprovalExecutionEffectRecord {
   claimed: boolean;
 }
 
+function effectRecordMatches(
+  value: unknown,
+  permit: ApprovalExecutionPermit,
+  operationId: string,
+): value is ApprovalExecutionEffectRecord {
+  if (value === null || typeof value !== 'object') return false;
+  const effect = value as Partial<ApprovalExecutionEffectRecord>;
+  if (
+    effect.operationId !== operationId ||
+    effect.claimed !== true && effect.claimed !== false ||
+    !['authorized', 'started', 'committed', 'burned'].includes(String(effect.state)) ||
+    effect.permit === null ||
+    typeof effect.permit !== 'object'
+  ) return false;
+  return permitRecordMatches(effect.permit, permit);
+}
+
+function permitRecordMatches(
+  value: unknown,
+  permit: ApprovalExecutionPermit,
+): value is ApprovalExecutionPermitRecord {
+  if (value === null || typeof value !== 'object') return false;
+  const record = value as Partial<ApprovalExecutionPermitRecord>;
+  if (
+    record.id !== permit.id ||
+    record.approvalId !== permit.approvalId ||
+    typeof record.signature !== 'string' ||
+    record.signature.length === 0
+  ) return false;
+  return executionPermitId(record.approvalId, record.signature) === record.id;
+}
+
 /**
  * Durable post-authorization journal supplied by the host.
  *
@@ -719,27 +751,32 @@ export async function finalizeExecutionPermitWithEffectJournal(
   if (permit.approvalId !== current.approvalId) return blocked('invalid_snapshot');
   if (!validExecutionOperationId(operationId)) return blocked('invalid_snapshot');
 
-  let prepared = false;
+  let prepared: boolean | undefined;
   try {
     prepared = await store.prepareEffect(permit.id, operationId);
   } catch {
-    return { status: 'indeterminate', retryable: false, reason: 'store_unavailable' };
+    // The atomic prepare may have committed before its acknowledgement was lost. Reconcile the
+    // retained claim below instead of orphaning it or claiming a definitive store failure.
   }
-  if (!prepared) return blocked('not_taken', true);
+  if (prepared === false) return blocked('not_taken', true);
 
-  let record: ApprovalExecutionPermitRecord | undefined;
+  let record: unknown;
   try {
     record = await store.claimPreparedEffect(operationId);
   } catch {
     return { status: 'indeterminate', retryable: false, reason: 'status_unavailable' };
   }
-  if (record === undefined) return blocked('not_taken');
+  if (record === undefined) return blocked('not_taken', prepared === undefined);
   if (
-    record.id !== permit.id ||
-    record.approvalId !== permit.approvalId ||
+    !permitRecordMatches(record, permit) ||
     !executionSnapshotValid(record, current)
   ) {
-    try { await store.burnEffect(operationId); } catch { /* already fail closed */ }
+    try {
+      const burned = await store.burnEffect(operationId);
+      if (!burned) return { status: 'indeterminate', retryable: false, reason: 'status_unavailable' };
+    } catch {
+      return { status: 'indeterminate', retryable: false, reason: 'status_unavailable' };
+    }
     return blocked('invalid_snapshot');
   }
   return { status: 'execute', retryable: false };
@@ -762,18 +799,13 @@ export async function resolveExecutionEffect(
     !validExecutionOperationId(operationId)
   ) return { status: 'not_executed', retryable: false, reason: 'invalid_snapshot' };
 
-  let effect: ApprovalExecutionEffectRecord | undefined;
+  let effect: unknown;
   try {
     effect = await store.readEffect(operationId);
   } catch {
     return indeterminate('journal_unavailable');
   }
-  if (
-    effect === undefined ||
-    effect.operationId !== operationId ||
-    effect.permit.id !== permit.id ||
-    effect.permit.approvalId !== permit.approvalId
-  ) return indeterminate('journal_missing');
+  if (!effectRecordMatches(effect, permit, operationId)) return indeterminate('journal_missing');
 
   if (effect.state === 'committed') {
     return { status: 'executed', retryable: false, reason: 'effect_committed' };
@@ -811,18 +843,13 @@ export async function beginExecutionEffect(
     !validExecutionOperationId(operationId)
   ) return blocked('invalid_snapshot');
 
-  let effect: ApprovalExecutionEffectRecord | undefined;
+  let effect: unknown;
   try {
     effect = await store.readEffect(operationId);
   } catch {
     return { status: 'indeterminate', retryable: false, reason: 'status_unavailable' };
   }
-  if (
-    effect === undefined ||
-    effect.operationId !== operationId ||
-    effect.permit.id !== permit.id ||
-    effect.permit.approvalId !== permit.approvalId
-  ) return blocked('journal_missing');
+  if (!effectRecordMatches(effect, permit, operationId)) return blocked('journal_missing');
   if (effect.state === 'committed') return blocked('effect_committed');
   if (effect.state === 'started') return blocked('effect_started');
   if (effect.state === 'burned') return blocked('authorization_burned');
@@ -844,8 +871,9 @@ export async function beginExecutionEffect(
   if (!started) {
     // A failed CAS can mean another host just started or committed. Read once to report honestly.
     try {
-      const latest = await store.readEffect(operationId);
-      if (latest?.state === 'committed') return blocked('effect_committed');
+      const latest: unknown = await store.readEffect(operationId);
+      if (!effectRecordMatches(latest, permit, operationId)) return blocked('journal_missing');
+      if (latest.state === 'committed') return blocked('effect_committed');
       if (latest?.state === 'started') return blocked('effect_started');
       if (latest?.state === 'burned') return blocked('authorization_burned');
     } catch {

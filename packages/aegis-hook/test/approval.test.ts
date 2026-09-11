@@ -500,6 +500,7 @@ describe('journaled approval execution effects', () => {
       createExecutionPermitWithStore,
       finalizeExecutionPermitWithEffectJournal,
       resolveExecutionEffect,
+      beginExecutionEffect,
     } = await import('../src/approval.js');
     const records = new Map<string, any>();
     const effects = new Map<string, any>();
@@ -530,7 +531,7 @@ describe('journaled approval execution effects', () => {
     const id = approvalId(approvedCall, evaluation);
     const permit = await createExecutionPermitWithStore(approvedCall, evaluation, id, store);
     const current = { approvalId: permit.approvalId, authorizationDigest: approvedCall.approvalProvenance?.authorizationDigest, effectiveConsumerId: approvedCall.approvalDelegation?.effectiveConsumerId, links: approvedCall.approvalDelegation?.links, revoked: false, revocationChecked: true, structurallyValid: true };
-    return { store, effects, permit, current, finalizeExecutionPermitWithEffectJournal, resolveExecutionEffect, failRead: () => { readsUnavailable = 1; } };
+    return { store, effects, permit, current, finalizeExecutionPermitWithEffectJournal, resolveExecutionEffect, beginExecutionEffect, failRead: () => { readsUnavailable = 1; } };
   }
 
   it('retains committed effect truth and resolves duplicate/cross-host reads idempotently', async () => {
@@ -565,6 +566,34 @@ describe('journaled approval execution effects', () => {
     await expect(invalid.resolveExecutionEffect(invalid.permit, { ...invalid.current, authorizationDigest: 'auth:rotated' }, 'op_invalid_resume', invalid.store)).resolves.toEqual({ status: 'not_executed', retryable: false, reason: 'invalid_snapshot' });
     await expect(invalid.resolveExecutionEffect(invalid.permit, invalid.current, 'op_invalid_resume', invalid.store)).resolves.toEqual({ status: 'not_executed', retryable: false, reason: 'authorization_burned' });
     await expect(invalid.resolveExecutionEffect(invalid.permit, invalid.current, 'op_missing', invalid.store)).resolves.toEqual({ status: 'indeterminate', retryable: false, reason: 'journal_missing' });
+  });
+
+  it('reconciles lost prepare acknowledgements without requiring a pre-claim journal read', async () => {
+    const f = await fixture();
+    const originalPrepare = f.store.prepareEffect;
+    f.store.prepareEffect = async (id: string, operationId: string) => {
+      await originalPrepare(id, operationId);
+      throw new Error('acknowledgement lost after commit');
+    };
+    f.failRead();
+    await expect(f.finalizeExecutionPermitWithEffectJournal(f.permit, f.current, 'op_ack_lost', f.store)).resolves.toEqual({ status: 'execute', retryable: false });
+  });
+
+  it('treats malformed journal values and failed invalidation as indeterminate', async () => {
+    const malformed = await fixture();
+    await malformed.finalizeExecutionPermitWithEffectJournal(malformed.permit, malformed.current, 'op_malformed', malformed.store);
+    malformed.effects.set('op_malformed', { operationId: 'op_malformed', state: 'committed', claimed: true } as any);
+    await expect(malformed.resolveExecutionEffect(malformed.permit, malformed.current, 'op_malformed', malformed.store)).resolves.toEqual({ status: 'indeterminate', retryable: false, reason: 'journal_missing' });
+    await expect(malformed.beginExecutionEffect(malformed.permit, malformed.current, 'op_malformed', malformed.store)).resolves.toEqual({ status: 'blocked', retryable: false, reason: 'journal_missing' });
+
+    const failedBurn = await fixture();
+    failedBurn.store.claimPreparedEffect = async () => ({
+      id: failedBurn.permit.id,
+      approvalId: failedBurn.permit.approvalId,
+      signature: 'tampered',
+    });
+    failedBurn.store.burnEffect = async () => false;
+    await expect(failedBurn.finalizeExecutionPermitWithEffectJournal(failedBurn.permit, failedBurn.current, 'op_failed_burn', failedBurn.store)).resolves.toEqual({ status: 'indeterminate', retryable: false, reason: 'status_unavailable' });
   });
 
   it('rejects malformed operation identifiers without touching the journal', async () => {

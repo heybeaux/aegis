@@ -597,7 +597,8 @@ export interface ApprovalExecutionFinalizationResult {
   status: ApprovalExecutionFinalizationStatus;
   /** True only when a fresh operation id may safely retry the take. */
   retryable: boolean;
-  reason?: 'not_taken' | 'invalid_snapshot' | 'store_unavailable' | 'status_unavailable';
+  reason?: 'not_taken' | 'invalid_snapshot' | 'store_unavailable' | 'status_unavailable' |
+    'effect_started' | 'effect_committed' | 'authorization_burned' | 'journal_missing';
 }
 
 /**
@@ -788,4 +789,69 @@ export async function resolveExecutionEffect(
     return { status: 'not_executed', retryable: false, reason: 'invalid_snapshot' };
   }
   return { status: 'not_executed', retryable: true, reason: 'not_started' };
+}
+
+/**
+ * Revalidate and atomically fence the transition immediately before the host invokes an effect.
+ * A successful compare-and-set authorizes exactly one caller; all losing callers remain blocked.
+ */
+export async function beginExecutionEffect(
+  permit: ApprovalExecutionPermit,
+  current: ApprovalExecutionSnapshot,
+  operationId: string,
+  store: JournaledApprovalExecutionPermitStore,
+): Promise<ApprovalExecutionFinalizationResult> {
+  const blocked = (
+    reason: NonNullable<ApprovalExecutionFinalizationResult['reason']>,
+  ): ApprovalExecutionFinalizationResult => ({ status: 'blocked', retryable: false, reason });
+  if (
+    !/^permit_[a-f0-9]{24}$/.test(permit.id) ||
+    !/^aegis_[a-f0-9]{16}$/.test(permit.approvalId) ||
+    permit.approvalId !== current.approvalId ||
+    !validExecutionOperationId(operationId)
+  ) return blocked('invalid_snapshot');
+
+  let effect: ApprovalExecutionEffectRecord | undefined;
+  try {
+    effect = await store.readEffect(operationId);
+  } catch {
+    return { status: 'indeterminate', retryable: false, reason: 'status_unavailable' };
+  }
+  if (
+    effect === undefined ||
+    effect.operationId !== operationId ||
+    effect.permit.id !== permit.id ||
+    effect.permit.approvalId !== permit.approvalId
+  ) return blocked('journal_missing');
+  if (effect.state === 'committed') return blocked('effect_committed');
+  if (effect.state === 'started') return blocked('effect_started');
+  if (effect.state === 'burned') return blocked('authorization_burned');
+  if (effect.state !== 'authorized' || !effect.claimed) return blocked('journal_missing');
+
+  if (!executionSnapshotValid(effect.permit, current)) {
+    try { await store.burnEffect(operationId); } catch {
+      return { status: 'indeterminate', retryable: false, reason: 'status_unavailable' };
+    }
+    return blocked('invalid_snapshot');
+  }
+
+  let started = false;
+  try {
+    started = await store.beginEffect(operationId);
+  } catch {
+    return { status: 'indeterminate', retryable: false, reason: 'status_unavailable' };
+  }
+  if (!started) {
+    // A failed CAS can mean another host just started or committed. Read once to report honestly.
+    try {
+      const latest = await store.readEffect(operationId);
+      if (latest?.state === 'committed') return blocked('effect_committed');
+      if (latest?.state === 'started') return blocked('effect_started');
+      if (latest?.state === 'burned') return blocked('authorization_burned');
+    } catch {
+      return { status: 'indeterminate', retryable: false, reason: 'status_unavailable' };
+    }
+    return { status: 'indeterminate', retryable: false, reason: 'status_unavailable' };
+  }
+  return { status: 'execute', retryable: false };
 }

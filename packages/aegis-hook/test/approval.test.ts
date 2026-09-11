@@ -574,3 +574,61 @@ describe('journaled approval execution effects', () => {
     expect(f.effects.size).toBe(0);
   });
 });
+
+describe('execution effect start fencing', () => {
+  async function fixture() {
+    const { createExecutionPermitWithStore, finalizeExecutionPermitWithEffectJournal, beginExecutionEffect } = await import('../src/approval.js');
+    const records = new Map<string, any>();
+    const effects = new Map<string, any>();
+    let beginUnavailable = 0;
+    const store = {
+      async create(record: any) { if (records.has(record.id)) return false; records.set(record.id, structuredClone(record)); return true; },
+      async take(id: string) { const value = records.get(id); records.delete(id); return value; },
+      async prepareEffect(id: string, operationId: string) { const existing = effects.get(operationId); if (existing) return existing.permit.id === id; const record = records.get(id); if (!record) return false; records.delete(id); effects.set(operationId, { operationId, permit: structuredClone(record), state: 'authorized', claimed: false }); return true; },
+      async claimPreparedEffect(operationId: string) { const effect = effects.get(operationId); if (!effect || effect.claimed || effect.state !== 'authorized') return undefined; effect.claimed = true; return structuredClone(effect.permit); },
+      async beginEffect(operationId: string) { if (beginUnavailable-- > 0) throw new Error('down'); await delay(1); const effect = effects.get(operationId); if (!effect || !effect.claimed || effect.state !== 'authorized') return false; effect.state = 'started'; return true; },
+      async commitEffect(operationId: string) { const effect = effects.get(operationId); if (!effect || effect.state !== 'started') return false; effect.state = 'committed'; return true; },
+      async readEffect(operationId: string) { const effect = effects.get(operationId); return effect ? structuredClone(effect) : undefined; },
+      async burnEffect(operationId: string) { const effect = effects.get(operationId); if (!effect || effect.state === 'committed') return false; effect.state = 'burned'; return true; },
+    };
+    const approvedCall = delegatedCall('agent:direct', [{ actorId: 'agent:root', authorityLevel: 10, verified: true }, { actorId: 'agent:direct', authorityLevel: 8, verified: true }]);
+    const id = approvalId(approvedCall, evaluation);
+    const permit = await createExecutionPermitWithStore(approvedCall, evaluation, id, store);
+    const current = { approvalId: permit.approvalId, authorizationDigest: approvedCall.approvalProvenance?.authorizationDigest, effectiveConsumerId: approvedCall.approvalDelegation?.effectiveConsumerId, links: approvedCall.approvalDelegation?.links, revoked: false, revocationChecked: true, structurallyValid: true };
+    await finalizeExecutionPermitWithEffectJournal(permit, current, 'op_start_fence', store);
+    return { store, permit, current, beginExecutionEffect, failBegin: () => { beginUnavailable = 1; } };
+  }
+
+  it('authorizes exactly one of two concurrent starters', async () => {
+    const f = await fixture();
+    const results = await Promise.all([
+      f.beginExecutionEffect(f.permit, f.current, 'op_start_fence', f.store),
+      f.beginExecutionEffect(f.permit, f.current, 'op_start_fence', f.store),
+    ]);
+    expect(results.filter((result) => result.status === 'execute')).toHaveLength(1);
+    expect(results.filter((result) => result.status === 'blocked')).toHaveLength(1);
+  });
+
+  it('is idempotently blocked after start and commit', async () => {
+    const started = await fixture();
+    await expect(started.beginExecutionEffect(started.permit, started.current, 'op_start_fence', started.store)).resolves.toEqual({ status: 'execute', retryable: false });
+    await expect(started.beginExecutionEffect(started.permit, started.current, 'op_start_fence', started.store)).resolves.toEqual({ status: 'blocked', retryable: false, reason: 'effect_started' });
+    await started.store.commitEffect('op_start_fence');
+    await expect(started.beginExecutionEffect(started.permit, started.current, 'op_start_fence', started.store)).resolves.toEqual({ status: 'blocked', retryable: false, reason: 'effect_committed' });
+  });
+
+  it('burns invalid fresh authority and returns indeterminate on unavailable CAS', async () => {
+    const invalid = await fixture();
+    await expect(invalid.beginExecutionEffect(invalid.permit, { ...invalid.current, authorizationDigest: 'auth:rotated' }, 'op_start_fence', invalid.store)).resolves.toEqual({ status: 'blocked', retryable: false, reason: 'invalid_snapshot' });
+    await expect(invalid.beginExecutionEffect(invalid.permit, invalid.current, 'op_start_fence', invalid.store)).resolves.toEqual({ status: 'blocked', retryable: false, reason: 'authorization_burned' });
+
+    const unavailable = await fixture(); unavailable.failBegin();
+    await expect(unavailable.beginExecutionEffect(unavailable.permit, unavailable.current, 'op_start_fence', unavailable.store)).resolves.toEqual({ status: 'indeterminate', retryable: false, reason: 'status_unavailable' });
+  });
+
+  it('rejects malformed and mismatched operations without starting', async () => {
+    const f = await fixture();
+    await expect(f.beginExecutionEffect(f.permit, f.current, '../bad', f.store)).resolves.toEqual({ status: 'blocked', retryable: false, reason: 'invalid_snapshot' });
+    await expect(f.beginExecutionEffect(f.permit, f.current, 'op_other', f.store)).resolves.toEqual({ status: 'blocked', retryable: false, reason: 'journal_missing' });
+  });
+});

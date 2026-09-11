@@ -49,6 +49,7 @@ export {
   finalizeExecutionPermitWithReconciliation,
   finalizeExecutionPermitWithEffectJournal,
   resolveExecutionEffect,
+  beginExecutionEffect,
   requestApproval,
   type ApprovalRecord,
   type ApprovalPaths,

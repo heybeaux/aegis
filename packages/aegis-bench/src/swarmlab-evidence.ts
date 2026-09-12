@@ -657,6 +657,22 @@ export const SWARMLAB_EVIDENCE_CASES: readonly SwarmLabEvidenceCase[] = [
       { name: 'aegisWrappedTerminalMonotonicitySafety', before: 1, after: 1, threshold: 1, comparator: 'eq' },
     ],
   },
+  {
+    id: 'RT-27',
+    source: 'SwarmLab exp-36 terminal receipt acknowledgement reconciliation',
+    finding: 'A terminal receipt write may commit before its transport acknowledgement is lost; exact durable readback distinguishes committed truth from pre-commit failure without accepting a different terminal receipt.',
+    owners: ['aegis'], change: 'Added exact success/failure receipt reconciliation after terminal-store exceptions, with conflict and unavailable-read fail-closed handling.',
+    runIds: ['tra-mty0gffk', 'tra-mty0hgii'], implementationRefs: ['2238094'], evidenceTier: 'verified', implementationStatus: 'landed',
+    aegisMapping: 'lost terminal receipt acknowledgements require exact durable readback before reporting indeterminate',
+    metrics: [
+      { name: 'aegisWrappedCommittedReceiptOrphanRate', before: 2 / 10, after: 0, threshold: 0, comparator: 'eq' },
+      { name: 'aegisWrappedTerminalMisclassificationRate', before: 4 / 10, after: 0, threshold: 0, comparator: 'eq' },
+      { name: 'aegisWrappedReconciliationAccuracy', before: 6 / 10, after: 1, threshold: 1, comparator: 'eq' },
+      { name: 'aegisWrappedIdempotentReconciliationSafety', before: 1, after: 1, threshold: 1, comparator: 'eq' },
+      { name: 'aegisWrappedUnavailableReadFailClosedSafety', before: 1, after: 1, threshold: 1, comparator: 'eq' },
+    ],
+  },
+
 
 ];
 

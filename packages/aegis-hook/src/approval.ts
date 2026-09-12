@@ -669,6 +669,10 @@ export interface ApprovalExecutionEffectRecord {
   state: ApprovalExecutionEffectState;
   /** True after one caller has received the initial execute authority. */
   claimed: boolean;
+  /** Exact first successful terminal receipt, retained for lost-acknowledgement reconciliation. */
+  successReceipt?: ApprovalExecutionEffectReceipt;
+  /** Exact first failed terminal receipt, retained for lost-acknowledgement reconciliation. */
+  failureReceipt?: ApprovalExecutionEffectFailureReceipt;
 }
 
 function effectRecordMatches(
@@ -966,6 +970,60 @@ function validFailureCode(value: string): boolean {
   return /^[a-z0-9_]{1,64}$/.test(value);
 }
 
+function successReceiptMatches(
+  value: unknown,
+  expected: ApprovalExecutionEffectReceipt,
+): boolean {
+  if (!presentObject(value)) return false;
+  return value.permitId === expected.permitId &&
+    value.approvalId === expected.approvalId &&
+    value.operationId === expected.operationId &&
+    value.receiptDigest === expected.receiptDigest &&
+    value.verified === true;
+}
+
+function failureReceiptMatches(
+  value: unknown,
+  expected: ApprovalExecutionEffectFailureReceipt,
+): boolean {
+  return successReceiptMatches(value, expected) &&
+    (value as Record<string, unknown>).failureCode === expected.failureCode;
+}
+
+/**
+ * A terminal write may have committed before its transport acknowledgement was lost. Read the
+ * retained journal once and accept only the exact receipt supplied by this caller. An opposite or
+ * different terminal receipt is a conflict; missing/non-terminal/unavailable truth stays unknown.
+ */
+async function reconcileTerminalReceipt(
+  permit: ApprovalExecutionPermit,
+  operationId: string,
+  receipt: ApprovalExecutionEffectReceipt | ApprovalExecutionEffectFailureReceipt,
+  kind: 'success' | 'failure',
+  store: JournaledApprovalExecutionPermitStore,
+): Promise<'success' | 'failure' | 'conflict' | 'indeterminate'> {
+  let effect: unknown;
+  try {
+    effect = await store.readEffect(operationId);
+  } catch {
+    return 'indeterminate';
+  }
+  if (!effectRecordMatches(effect, permit, operationId)) return 'indeterminate';
+  if (kind === 'success') {
+    if (effect.state === 'committed' && successReceiptMatches(effect.successReceipt, receipt)) {
+      return 'success';
+    }
+    if (effect.state === 'committed' || effect.state === 'failed') return 'conflict';
+  } else {
+    if (
+      effect.state === 'failed' &&
+      failureReceiptMatches(effect.failureReceipt, receipt as ApprovalExecutionEffectFailureReceipt)
+    ) return 'failure';
+    if (effect.state === 'committed' || effect.state === 'failed') return 'conflict';
+  }
+  return 'indeterminate';
+}
+
 /**
  * Persist independently verified non-success for the exact started effect. Unknown timeouts must
  * not call this boundary: without verified negative evidence they remain honestly indeterminate.
@@ -995,6 +1053,11 @@ export async function failExecutionEffect(
   try {
     result = await store.failEffect(operationId, { ...receipt });
   } catch {
+    const reconciled = await reconcileTerminalReceipt(
+      permit, operationId, receipt, 'failure', store,
+    );
+    if (reconciled === 'failure') return { status: 'failed' };
+    if (reconciled === 'conflict') return { status: 'blocked', reason: 'receipt_conflict' };
     return { status: 'indeterminate', reason: 'store_unavailable' };
   }
   if (result === 'failed' || result === 'already_failed') return { status: 'failed' };
@@ -1030,6 +1093,11 @@ export async function completeExecutionEffect(
   try {
     result = await store.completeEffect(operationId, { ...receipt });
   } catch {
+    const reconciled = await reconcileTerminalReceipt(
+      permit, operationId, receipt, 'success', store,
+    );
+    if (reconciled === 'success') return { status: 'executed' };
+    if (reconciled === 'conflict') return { status: 'blocked', reason: 'receipt_conflict' };
     return { status: 'indeterminate', reason: 'store_unavailable' };
   }
   if (result === 'committed' || result === 'already_committed') return { status: 'executed' };

@@ -10,8 +10,8 @@ describe('SwarmLab evidence gate', () => {
   it('passes when all stack mappings are landed with verified evidence', () => {
     const result = evaluateSwarmLabEvidence();
     expect(result.status).toBe('passed');
-    expect(result.total).toBe(27);
-    expect(result.passed).toBe(27);
+    expect(result.total).toBe(28);
+    expect(result.passed).toBe(28);
     expect(result.failed).toBe(0);
     expect(result.partial).toBe(0);
     expect(result.pendingImplementation).toBe(0);
@@ -211,6 +211,7 @@ describe('SwarmLab evidence gate', () => {
       'RT-25',
       'RT-26',
       'RT-27',
+      'RT-28',
     ]);
 
     const mappings = SWARMLAB_EVIDENCE_CASES.map((c) => c.aegisMapping).join('\n');
@@ -240,11 +241,12 @@ describe('SwarmLab evidence gate', () => {
     expect(mappings).toContain('verified desired-state receipt');
     expect(mappings).toContain('verified effect failure requires exact receipt binding');
     expect(mappings).toContain('lost terminal receipt acknowledgements require exact durable readback');
+    expect(mappings).toContain('receipt-envelope integrity');
   });
 
   it('renders a report banner matching the evaluated evidence range', () => {
     const markdown = swarmLabEvidenceToMarkdown(evaluateSwarmLabEvidence());
-    expect(markdown).toContain('REPLAY-VERIFIED SWARMLAB RETESTS (RT-01..RT-27)');
+    expect(markdown).toContain('REPLAY-VERIFIED SWARMLAB RETESTS (RT-01..RT-28)');
     expect(markdown).not.toContain('RT-01..RT-10');
     expect(markdown).toContain('0 provisional evidence tier');
     expect(markdown).toContain('| RT-06 | passed | landed | verified |');
@@ -267,6 +269,7 @@ describe('SwarmLab evidence gate', () => {
     expect(markdown).toContain('| RT-25 | passed | landed | verified |');
     expect(markdown).toContain('| RT-26 | passed | landed | verified |');
     expect(markdown).toContain('| RT-27 | passed | landed | verified |');
+    expect(markdown).toContain('| RT-28 | passed | landed | verified |');
   });
 
   it('fails loudly when a proven metric regresses', () => {

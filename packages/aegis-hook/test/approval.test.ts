@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import { mkdtempSync, existsSync, rmSync } from 'node:fs';
 import { setTimeout as delay } from 'node:timers/promises';
+import { createHash } from 'node:crypto';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import type { Evaluation, ToolCall } from '@heybeaux/lattice-aegis';
@@ -783,5 +784,72 @@ describe('execution effect boundaries fail closed on absent input', () => {
       .resolves.toEqual({ status: 'blocked', retryable: false, reason: 'invalid_snapshot' });
     await expect(resolveExecutionEffect(null as any, snapshot as any, operationId, store))
       .resolves.toEqual({ status: 'not_executed', retryable: false, reason: 'invalid_snapshot' });
+  });
+});
+
+describe('terminal effect journal integrity', () => {
+  const approvalIdValue = `aegis_${'b'.repeat(16)}`;
+  const operationId = 'op_integrity';
+  const signature = 'integrity-signature';
+  const permit = {
+    id: `permit_${createHash('sha256').update(`${approvalIdValue}:${signature}`).digest('hex').slice(0, 24)}`,
+    approvalId: approvalIdValue,
+  };
+  const permitRecord = { ...permit, signature };
+  const current = { approvalId: permit.approvalId, revocationChecked: true, revoked: false, structurallyValid: true, authorizationDigest: 'auth:integrity', effectiveConsumerId: 'agent:direct', links: [{ actorId: 'agent:root', authorityLevel: 10, verified: true }, { actorId: 'agent:direct', authorityLevel: 8, verified: true }] };
+  Object.assign(permitRecord, { authorizationDigest: current.authorizationDigest, effectiveConsumerId: current.effectiveConsumerId, links: current.links, declaredScope: 'direct', maxDepth: 1 });
+  const success = { permitId: permit.id, approvalId: permit.approvalId, operationId, receiptDigest: `sha256:${'a'.repeat(64)}`, verified: true };
+  const failure = { ...success, receiptDigest: `sha256:${'b'.repeat(64)}`, failureCode: 'external_rejected' };
+  const storeFor = (effect: any) => ({
+    async create() { return true; }, async take() { return permitRecord; },
+    async prepareEffect() { return true; }, async claimPreparedEffect() { return permitRecord; },
+    async beginEffect() { return true; }, async commitEffect() { return true; },
+    async readEffect() { return structuredClone(effect); }, async burnEffect() { return true; },
+    async completeEffect() { return 'not_started' as const; }, async failEffect() { return 'not_started' as const; },
+  }) as any;
+
+  it('requires a valid matching receipt before resolving terminal certainty', async () => {
+    const { resolveExecutionEffect } = await import('../src/approval.js');
+    const incoherent = [
+      { state: 'committed' },
+      { state: 'failed' },
+      { state: 'committed', failureReceipt: failure },
+      { state: 'failed', successReceipt: success },
+      { state: 'committed', successReceipt: success, failureReceipt: failure },
+      { state: 'failed', successReceipt: success, failureReceipt: failure },
+      { state: 'committed', successReceipt: { ...success, receiptDigest: 'sha256:bad' } },
+      { state: 'failed', failureReceipt: { ...failure, permitId: `permit_${'c'.repeat(24)}` } },
+    ];
+    for (const fragment of incoherent) {
+      const effect = { operationId, permit: permitRecord, claimed: true, ...fragment };
+      await expect(resolveExecutionEffect(permit, current, operationId, storeFor(effect)))
+        .resolves.toEqual({ status: 'indeterminate', retryable: false, reason: 'journal_inconsistent' });
+    }
+  });
+
+  it('never derives retry authority from a terminal receipt on a nonterminal record', async () => {
+    const { resolveExecutionEffect, beginExecutionEffect } = await import('../src/approval.js');
+    const authorized = { operationId, permit: permitRecord, claimed: true, state: 'authorized', successReceipt: success };
+    const started = { operationId, permit: permitRecord, claimed: true, state: 'started', failureReceipt: failure };
+    await expect(resolveExecutionEffect(permit, current, operationId, storeFor(authorized)))
+      .resolves.toEqual({ status: 'indeterminate', retryable: false, reason: 'journal_inconsistent' });
+    await expect(resolveExecutionEffect(permit, current, operationId, storeFor(started)))
+      .resolves.toEqual({ status: 'indeterminate', retryable: false, reason: 'journal_inconsistent' });
+    await expect(beginExecutionEffect(permit, current, operationId, storeFor(authorized)))
+      .resolves.toEqual({ status: 'blocked', retryable: false, reason: 'journal_inconsistent' });
+  });
+
+  it('preserves coherent terminal truth and clean nonterminal semantics', async () => {
+    const { resolveExecutionEffect } = await import('../src/approval.js');
+    const rows = [
+      [{ state: 'committed', successReceipt: success }, { status: 'executed', retryable: false, reason: 'effect_committed' }],
+      [{ state: 'failed', failureReceipt: failure }, { status: 'not_executed', retryable: false, reason: 'effect_failed' }],
+      [{ state: 'authorized' }, { status: 'not_executed', retryable: true, reason: 'not_started' }],
+      [{ state: 'started' }, { status: 'indeterminate', retryable: false, reason: 'effect_started' }],
+    ] as const;
+    for (const [fragment, expected] of rows) {
+      const effect = { operationId, permit: permitRecord, claimed: true, ...fragment };
+      await expect(resolveExecutionEffect(permit, current, operationId, storeFor(effect))).resolves.toEqual(expected);
+    }
   });
 });

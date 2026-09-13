@@ -598,7 +598,7 @@ export interface ApprovalExecutionFinalizationResult {
   /** True only when a fresh operation id may safely retry the take. */
   retryable: boolean;
   reason?: 'not_taken' | 'invalid_snapshot' | 'store_unavailable' | 'status_unavailable' |
-    'effect_started' | 'effect_committed' | 'authorization_burned' | 'journal_missing';
+    'effect_started' | 'effect_committed' | 'authorization_burned' | 'journal_missing' | 'journal_inconsistent';
 }
 
 /**
@@ -733,7 +733,7 @@ export interface ApprovalExecutionEffectResolutionResult {
   /** True only for an untouched, still-valid authorization whose effect may now run. */
   retryable: boolean;
   reason?: 'not_started' | 'effect_started' | 'effect_committed' | 'effect_failed' | 'authorization_burned' |
-    'invalid_snapshot' | 'journal_missing' | 'journal_unavailable';
+    'invalid_snapshot' | 'journal_missing' | 'journal_unavailable' | 'journal_inconsistent';
 }
 
 /**
@@ -813,6 +813,9 @@ export async function resolveExecutionEffect(
     return indeterminate('journal_unavailable');
   }
   if (!effectRecordMatches(effect, permit, operationId)) return indeterminate('journal_missing');
+  if (!effectJournalCoherent(effect, permit, operationId, receiptCapableStore(store))) {
+    return indeterminate('journal_inconsistent');
+  }
 
   if (effect.state === 'committed') {
     return { status: 'executed', retryable: false, reason: 'effect_committed' };
@@ -861,6 +864,7 @@ export async function beginExecutionEffect(
     return { status: 'indeterminate', retryable: false, reason: 'status_unavailable' };
   }
   if (!effectRecordMatches(effect, permit, operationId)) return blocked('journal_missing');
+  if (!effectJournalCoherent(effect, permit, operationId, receiptCapableStore(store))) return blocked('journal_inconsistent');
   if (effect.state === 'committed') return blocked('effect_committed');
   if (effect.state === 'started') return blocked('effect_started');
   if (effect.state === 'burned') return blocked('authorization_burned');
@@ -970,6 +974,66 @@ function validFailureCode(value: string): boolean {
   return /^[a-z0-9_]{1,64}$/.test(value);
 }
 
+function validStoredSuccessReceipt(
+  value: unknown,
+  permit: ApprovalExecutionPermit,
+  operationId: string,
+): value is ApprovalExecutionEffectReceipt {
+  if (!presentObject(value)) return false;
+  return value.permitId === permit.id &&
+    value.approvalId === permit.approvalId &&
+    value.operationId === operationId &&
+    typeof value.receiptDigest === 'string' &&
+    validReceiptDigest(value.receiptDigest) &&
+    value.verified === true &&
+    !('failureCode' in value);
+}
+
+function validStoredFailureReceipt(
+  value: unknown,
+  permit: ApprovalExecutionPermit,
+  operationId: string,
+): value is ApprovalExecutionEffectFailureReceipt {
+  if (!presentObject(value)) return false;
+  return value.permitId === permit.id &&
+    value.approvalId === permit.approvalId &&
+    value.operationId === operationId &&
+    typeof value.receiptDigest === 'string' &&
+    validReceiptDigest(value.receiptDigest) &&
+    value.verified === true &&
+    typeof value.failureCode === 'string' &&
+    validFailureCode(value.failureCode);
+}
+
+/**
+ * Treat state and receipt as one integrity envelope. Terminal certainty requires exactly one
+ * valid receipt of the matching kind; nonterminal records must not carry terminal fragments.
+ * This is a defensive read boundary: hosts still own atomic persistence and repair.
+ */
+function receiptCapableStore(store: JournaledApprovalExecutionPermitStore): boolean {
+  const candidate = store as Partial<ReceiptedApprovalExecutionPermitStore & FailureReceiptedApprovalExecutionPermitStore>;
+  return typeof candidate.completeEffect === 'function' || typeof candidate.failEffect === 'function';
+}
+
+function effectJournalCoherent(
+  effect: ApprovalExecutionEffectRecord,
+  permit: ApprovalExecutionPermit,
+  operationId: string,
+  requireTerminalReceipt = true,
+): boolean {
+  const hasSuccess = effect.successReceipt !== undefined;
+  const hasFailure = effect.failureReceipt !== undefined;
+  if (effect.state === 'committed') {
+    if (!hasSuccess && !hasFailure && !requireTerminalReceipt) return true;
+    return validStoredSuccessReceipt(effect.successReceipt, permit, operationId) && !hasFailure;
+  }
+  if (effect.state === 'failed') {
+    if (!hasSuccess && !hasFailure && !requireTerminalReceipt) return true;
+    return validStoredFailureReceipt(effect.failureReceipt, permit, operationId) && !hasSuccess;
+  }
+  return !hasSuccess && !hasFailure;
+}
+
 function successReceiptMatches(
   value: unknown,
   expected: ApprovalExecutionEffectReceipt,
@@ -1009,6 +1073,7 @@ async function reconcileTerminalReceipt(
     return 'indeterminate';
   }
   if (!effectRecordMatches(effect, permit, operationId)) return 'indeterminate';
+  if (!effectJournalCoherent(effect, permit, operationId)) return 'indeterminate';
   if (kind === 'success') {
     if (effect.state === 'committed' && successReceiptMatches(effect.successReceipt, receipt)) {
       return 'success';

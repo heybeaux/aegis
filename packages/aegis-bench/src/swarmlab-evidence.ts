@@ -673,6 +673,21 @@ export const SWARMLAB_EVIDENCE_CASES: readonly SwarmLabEvidenceCase[] = [
     ],
   },
 
+  {
+    id: 'RT-28',
+    source: 'SwarmLab exp-37 terminal journal integrity',
+    finding: 'Terminal state and its retained exact receipt form one integrity envelope; split-brain fragments cannot justify terminal certainty or retry authority.',
+    owners: ['aegis'], change: 'Added receipt-capable journal coherence validation with explicit non-retryable inconsistent status.',
+    runIds: ['tji-mtzfwl8k', 'tji-mtzg16x0'], implementationRefs: ['625be09'], evidenceTier: 'verified', implementationStatus: 'landed',
+    aegisMapping: 'terminal effect state requires receipt-envelope integrity before certainty or retry',
+    metrics: [
+      { name: 'aegisWrappedFalseTerminalCertaintyRate', before: 1, after: 0, threshold: 0, comparator: 'eq' },
+      { name: 'aegisWrappedUnsafeRetryRate', before: 1 / 2, after: 0, threshold: 0, comparator: 'eq' },
+      { name: 'aegisWrappedIntegrityClassificationErrorRate', before: 10 / 14, after: 0, threshold: 0, comparator: 'eq' },
+      { name: 'aegisWrappedResolutionAccuracy', before: 4 / 14, after: 1, threshold: 1, comparator: 'eq' },
+      { name: 'aegisWrappedIntegrityApiAvailability', before: 1, after: 1, threshold: 1, comparator: 'eq' },
+    ],
+  },
 
 ];
 

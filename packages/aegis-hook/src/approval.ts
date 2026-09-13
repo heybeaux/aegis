@@ -598,7 +598,7 @@ export interface ApprovalExecutionFinalizationResult {
   /** True only when a fresh operation id may safely retry the take. */
   retryable: boolean;
   reason?: 'not_taken' | 'invalid_snapshot' | 'store_unavailable' | 'status_unavailable' |
-    'effect_started' | 'effect_committed' | 'authorization_burned' | 'journal_missing' | 'journal_inconsistent';
+    'effect_started' | 'effect_committed' | 'effect_failed' | 'authorization_burned' | 'journal_missing' | 'journal_inconsistent';
 }
 
 /**
@@ -888,9 +888,13 @@ export async function beginExecutionEffect(
     try {
       const latest: unknown = await store.readEffect(operationId);
       if (!effectRecordMatches(latest, permit, operationId)) return blocked('journal_missing');
+      if (!effectJournalCoherent(latest, permit, operationId, receiptCapableStore(store))) {
+        return blocked('journal_inconsistent');
+      }
       if (latest.state === 'committed') return blocked('effect_committed');
-      if (latest?.state === 'started') return blocked('effect_started');
-      if (latest?.state === 'burned') return blocked('authorization_burned');
+      if (latest.state === 'failed') return blocked('effect_failed');
+      if (latest.state === 'started') return blocked('effect_started');
+      if (latest.state === 'burned') return blocked('authorization_burned');
     } catch {
       return { status: 'indeterminate', retryable: false, reason: 'status_unavailable' };
     }

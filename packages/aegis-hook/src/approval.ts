@@ -598,7 +598,7 @@ export interface ApprovalExecutionFinalizationResult {
   /** True only when a fresh operation id may safely retry the take. */
   retryable: boolean;
   reason?: 'not_taken' | 'invalid_snapshot' | 'store_unavailable' | 'status_unavailable' |
-    'effect_started' | 'effect_committed' | 'effect_failed' | 'authorization_burned' | 'journal_missing' | 'journal_inconsistent';
+    'effect_started' | 'effect_committed' | 'effect_failed' | 'authorization_burned' | 'journal_missing' | 'journal_inconsistent' | 'journal_stale';
 }
 
 /**
@@ -673,6 +673,8 @@ export interface ApprovalExecutionEffectRecord {
   successReceipt?: ApprovalExecutionEffectReceipt;
   /** Exact first failed terminal receipt, retained for lost-acknowledgement reconciliation. */
   failureReceipt?: ApprovalExecutionEffectFailureReceipt;
+  /** Host-assigned monotonic revision when the store exposes authoritative revision truth. */
+  revision?: number;
 }
 
 function effectRecordMatches(
@@ -726,6 +728,15 @@ export interface JournaledApprovalExecutionPermitStore extends ApprovalExecution
   burnEffect(operationId: string): Promise<boolean>;
 }
 
+/**
+ * Optional causal-consistency extension for replicated journals. The host MUST return the
+ * authoritative monotonic high-water revision retained across failover, compaction, and restore.
+ * A visible record is current only when its positive safe-integer revision equals this watermark.
+ */
+export interface RevisionedApprovalExecutionPermitStore extends JournaledApprovalExecutionPermitStore {
+  readEffectRevision(operationId: string): Promise<number | undefined>;
+}
+
 export type ApprovalExecutionEffectResolutionStatus = 'executed' | 'not_executed' | 'indeterminate';
 
 export interface ApprovalExecutionEffectResolutionResult {
@@ -733,7 +744,7 @@ export interface ApprovalExecutionEffectResolutionResult {
   /** True only for an untouched, still-valid authorization whose effect may now run. */
   retryable: boolean;
   reason?: 'not_started' | 'effect_started' | 'effect_committed' | 'effect_failed' | 'authorization_burned' |
-    'invalid_snapshot' | 'journal_missing' | 'journal_unavailable' | 'journal_inconsistent';
+    'invalid_snapshot' | 'journal_missing' | 'journal_unavailable' | 'journal_inconsistent' | 'journal_stale';
 }
 
 /**
@@ -786,6 +797,40 @@ export async function finalizeExecutionPermitWithEffectJournal(
   return { status: 'execute', retryable: false };
 }
 
+type EffectRevisionIntegrity = 'legacy' | 'current' | 'stale' | 'inconsistent' | 'unavailable';
+
+function revisionCapableStore(
+  store: JournaledApprovalExecutionPermitStore,
+): store is RevisionedApprovalExecutionPermitStore {
+  return typeof (store as Partial<RevisionedApprovalExecutionPermitStore>).readEffectRevision === 'function';
+}
+
+/** Compare a replica-visible record with host-owned authoritative causal truth. */
+async function effectRevisionIntegrity(
+  effect: unknown,
+  operationId: string,
+  store: JournaledApprovalExecutionPermitStore,
+): Promise<EffectRevisionIntegrity> {
+  if (!revisionCapableStore(store)) return 'legacy';
+  let highWater: number | undefined;
+  try {
+    highWater = await store.readEffectRevision(operationId);
+  } catch {
+    return 'unavailable';
+  }
+  if (highWater === undefined) return effect === undefined ? 'current' : 'inconsistent';
+  if (!Number.isSafeInteger(highWater) || highWater <= 0) return 'inconsistent';
+  if (effect === undefined) return 'stale';
+  if (effect === null || typeof effect !== 'object') return 'inconsistent';
+  const revision = (effect as { revision?: unknown }).revision;
+  if (typeof revision !== 'number' || !Number.isSafeInteger(revision) || revision <= 0) {
+    return 'inconsistent';
+  }
+  if (revision < highWater) return 'stale';
+  if (revision > highWater) return 'inconsistent';
+  return 'current';
+}
+
 /** Resolve a crashed effect without guessing from a missing permit or operation claim. */
 export async function resolveExecutionEffect(
   permit: ApprovalExecutionPermit,
@@ -812,6 +857,10 @@ export async function resolveExecutionEffect(
   } catch {
     return indeterminate('journal_unavailable');
   }
+  const revisionIntegrity = await effectRevisionIntegrity(effect, operationId, store);
+  if (revisionIntegrity === 'unavailable') return indeterminate('journal_unavailable');
+  if (revisionIntegrity === 'stale') return indeterminate('journal_stale');
+  if (revisionIntegrity === 'inconsistent') return indeterminate('journal_inconsistent');
   if (!effectRecordMatches(effect, permit, operationId)) return indeterminate('journal_missing');
   if (!effectJournalCoherent(effect, permit, operationId, receiptCapableStore(store))) {
     return indeterminate('journal_inconsistent');
@@ -863,6 +912,12 @@ export async function beginExecutionEffect(
   } catch {
     return { status: 'indeterminate', retryable: false, reason: 'status_unavailable' };
   }
+  const revisionIntegrity = await effectRevisionIntegrity(effect, operationId, store);
+  if (revisionIntegrity === 'unavailable') {
+    return { status: 'indeterminate', retryable: false, reason: 'status_unavailable' };
+  }
+  if (revisionIntegrity === 'stale') return blocked('journal_stale');
+  if (revisionIntegrity === 'inconsistent') return blocked('journal_inconsistent');
   if (!effectRecordMatches(effect, permit, operationId)) return blocked('journal_missing');
   if (!effectJournalCoherent(effect, permit, operationId, receiptCapableStore(store))) return blocked('journal_inconsistent');
   if (effect.state === 'committed') return blocked('effect_committed');
@@ -887,6 +942,12 @@ export async function beginExecutionEffect(
     // A failed CAS can mean another host just started or committed. Read once to report honestly.
     try {
       const latest: unknown = await store.readEffect(operationId);
+      const latestRevisionIntegrity = await effectRevisionIntegrity(latest, operationId, store);
+      if (latestRevisionIntegrity === 'unavailable') {
+        return { status: 'indeterminate', retryable: false, reason: 'status_unavailable' };
+      }
+      if (latestRevisionIntegrity === 'stale') return blocked('journal_stale');
+      if (latestRevisionIntegrity === 'inconsistent') return blocked('journal_inconsistent');
       if (!effectRecordMatches(latest, permit, operationId)) return blocked('journal_missing');
       if (!effectJournalCoherent(latest, permit, operationId, receiptCapableStore(store))) {
         return blocked('journal_inconsistent');
@@ -1074,6 +1135,9 @@ async function reconcileTerminalReceipt(
   try {
     effect = await store.readEffect(operationId);
   } catch {
+    return 'indeterminate';
+  }
+  if ((await effectRevisionIntegrity(effect, operationId, store)) !== 'current' && revisionCapableStore(store)) {
     return 'indeterminate';
   }
   if (!effectRecordMatches(effect, permit, operationId)) return 'indeterminate';

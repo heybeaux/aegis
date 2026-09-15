@@ -60,6 +60,7 @@ export {
   type ApprovalExecutionPermitStore,
   type ReconciledApprovalExecutionPermitStore,
   type JournaledApprovalExecutionPermitStore,
+  type RevisionedApprovalExecutionPermitStore,
   type ApprovalExecutionEffectRecord,
   type ApprovalExecutionEffectState,
   type ApprovalExecutionEffectResolutionResult,

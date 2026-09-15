@@ -689,6 +689,24 @@ export const SWARMLAB_EVIDENCE_CASES: readonly SwarmLabEvidenceCase[] = [
     ],
   },
 
+
+  {
+    id: 'RT-30',
+    source: 'SwarmLab exp-39 terminal write attestation',
+    finding: 'A positive terminal-store enum is not durable receipt evidence; exact readback must attest terminal certainty.',
+    owners: ['aegis'], change: 'Added exact durable receipt attestation after positive success/failure write results.',
+    runIds: ['twa-mu2biamp', 'twa-mu2bkf8p'], implementationRefs: ['74cde86aec956e9723332aec9aee7015493bc391'], evidenceTier: 'verified', implementationStatus: 'landed',
+    aegisMapping: 'positive terminal writes require exact durable receipt readback before returning terminal certainty',
+    metrics: [
+      { name: 'aegisWrappedFalsePositiveTerminalRate', before: 1, after: 0, threshold: 0, comparator: 'eq' },
+      { name: 'aegisWrappedWrongReceiptAcceptanceRate', before: 1, after: 0, threshold: 0, comparator: 'eq' },
+      { name: 'aegisWrappedUnverifiedPositiveRate', before: 1, after: 0, threshold: 0, comparator: 'eq' },
+      { name: 'aegisWrappedResolutionAccuracy', before: 0.5, after: 1, threshold: 1, comparator: 'eq' },
+      { name: 'aegisWrappedAttestationApiAvailability', before: 1, after: 1, threshold: 1, comparator: 'eq' },
+      { name: 'aegisWrappedUnavailableReadSafety', before: 0, after: 1, threshold: 1, comparator: 'eq' },
+    ],
+  },
+
 ];
 
 export function evaluateSwarmLabEvidence(

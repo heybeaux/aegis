@@ -15,17 +15,18 @@ const success = { permitId: permit.id, approvalId, operationId, receiptDigest: `
 const failure = { ...success, receiptDigest: `sha256:${'b'.repeat(64)}`, failureCode: 'external_rejected' };
 const differentSuccess = { ...success, receiptDigest: `sha256:${'c'.repeat(64)}` };
 const differentFailure = { ...failure, receiptDigest: `sha256:${'d'.repeat(64)}` };
+const reorderedSuccess = { verified: true, operationId, approvalId, receiptDigest: success.receiptDigest, permitId: permit.id };
 
-type Mode = 'exact' | 'different' | 'no-write' | 'nonterminal' | 'read-down' | 'conflict' | 'not-started';
+type Mode = 'exact' | 'reordered-exact' | 'different' | 'no-write' | 'nonterminal' | 'read-down' | 'conflict' | 'not-started';
 function storeFor(kind: 'success' | 'failure', result: 'first' | 'already', mode: Mode) {
   let effect: any = { operationId, permit: permitRecord, state: 'started', claimed: true };
   const write = (receipt: any) => {
     if (mode === 'conflict') return 'conflict';
     if (mode === 'not-started') return 'not_started';
-    if (mode === 'exact' || mode === 'different') {
+    if (mode === 'exact' || mode === 'reordered-exact' || mode === 'different') {
       effect = kind === 'success'
-        ? { ...effect, state: 'committed', successReceipt: mode === 'exact' ? receipt : differentSuccess }
-        : { ...effect, state: 'failed', failureReceipt: mode === 'exact' ? receipt : differentFailure };
+        ? { ...effect, state: 'committed', successReceipt: mode === 'different' ? differentSuccess : mode === 'reordered-exact' ? reorderedSuccess : receipt }
+        : { ...effect, state: 'failed', failureReceipt: mode === 'different' ? differentFailure : receipt };
     }
     return kind === 'success'
       ? (result === 'already' ? 'already_committed' : 'committed')
@@ -54,6 +55,11 @@ describe('terminal write result attestation', () => {
       await expect(completeExecutionEffect(permit, operationId, success, storeFor('success', 'first', mode))).resolves.toEqual({ status: 'indeterminate', reason: 'receipt_unverified' });
       await expect(failExecutionEffect(permit, operationId, failure, storeFor('failure', 'first', mode))).resolves.toEqual({ status: 'indeterminate', reason: 'receipt_unverified' });
     }
+  });
+
+
+  it('matches semantic receipts independent of object key order', async () => {
+    await expect(completeExecutionEffect(permit, operationId, success, storeFor('success', 'already', 'reordered-exact'))).resolves.toEqual({ status: 'executed' });
   });
 
   it('rejects a different retained terminal receipt even after an already result', async () => {

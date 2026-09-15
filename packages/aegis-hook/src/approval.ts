@@ -991,7 +991,7 @@ export interface ReceiptedApprovalExecutionPermitStore extends JournaledApproval
 export type ApprovalExecutionEffectCompletionStatus = 'executed' | 'blocked' | 'indeterminate';
 export interface ApprovalExecutionEffectCompletionResult {
   status: ApprovalExecutionEffectCompletionStatus;
-  reason?: 'invalid_receipt' | 'unverified_receipt' | 'receipt_conflict' |
+  reason?: 'invalid_receipt' | 'unverified_receipt' | 'receipt_unverified' | 'receipt_conflict' |
     'effect_not_started' | 'store_unavailable';
 }
 
@@ -1021,7 +1021,7 @@ export interface FailureReceiptedApprovalExecutionPermitStore extends JournaledA
 export type ApprovalExecutionEffectFailureStatus = 'failed' | 'blocked' | 'indeterminate';
 export interface ApprovalExecutionEffectFailureResult {
   status: ApprovalExecutionEffectFailureStatus;
-  reason?: 'invalid_receipt' | 'unverified_receipt' | 'receipt_conflict' |
+  reason?: 'invalid_receipt' | 'unverified_receipt' | 'receipt_unverified' | 'receipt_conflict' |
     'effect_not_started' | 'store_unavailable';
 }
 
@@ -1122,26 +1122,32 @@ function failureReceiptMatches(
 /**
  * A terminal write may have committed before its transport acknowledgement was lost. Read the
  * retained journal once and accept only the exact receipt supplied by this caller. An opposite or
- * different terminal receipt is a conflict; missing/non-terminal/unavailable truth stays unknown.
+ * different terminal receipt is a conflict; missing/non-terminal truth is unverified; unavailable
+ * readback stays unknown.
  */
+type TerminalReceiptAttestation = 'success' | 'failure' | 'conflict' | 'unverified' | 'unavailable';
+
 async function reconcileTerminalReceipt(
   permit: ApprovalExecutionPermit,
   operationId: string,
   receipt: ApprovalExecutionEffectReceipt | ApprovalExecutionEffectFailureReceipt,
   kind: 'success' | 'failure',
   store: JournaledApprovalExecutionPermitStore,
-): Promise<'success' | 'failure' | 'conflict' | 'indeterminate'> {
+): Promise<TerminalReceiptAttestation> {
   let effect: unknown;
   try {
     effect = await store.readEffect(operationId);
   } catch {
-    return 'indeterminate';
+    return 'unavailable';
   }
+  // RT-29: a causally stale or unverifiable replica revision can never attest terminal truth.
+  // It is reported as unavailable (not merely unverified) so the caller stays honestly
+  // indeterminate/store_unavailable rather than asserting the receipt was durably absent.
   if ((await effectRevisionIntegrity(effect, operationId, store)) !== 'current' && revisionCapableStore(store)) {
-    return 'indeterminate';
+    return 'unavailable';
   }
-  if (!effectRecordMatches(effect, permit, operationId)) return 'indeterminate';
-  if (!effectJournalCoherent(effect, permit, operationId)) return 'indeterminate';
+  if (!effectRecordMatches(effect, permit, operationId)) return 'unverified';
+  if (!effectJournalCoherent(effect, permit, operationId)) return 'unverified';
   if (kind === 'success') {
     if (effect.state === 'committed' && successReceiptMatches(effect.successReceipt, receipt)) {
       return 'success';
@@ -1154,7 +1160,7 @@ async function reconcileTerminalReceipt(
     ) return 'failure';
     if (effect.state === 'committed' || effect.state === 'failed') return 'conflict';
   }
-  return 'indeterminate';
+  return 'unverified';
 }
 
 /**
@@ -1193,7 +1199,13 @@ export async function failExecutionEffect(
     if (reconciled === 'conflict') return { status: 'blocked', reason: 'receipt_conflict' };
     return { status: 'indeterminate', reason: 'store_unavailable' };
   }
-  if (result === 'failed' || result === 'already_failed') return { status: 'failed' };
+  if (result === 'failed' || result === 'already_failed') {
+    const attested = await reconcileTerminalReceipt(permit, operationId, receipt, 'failure', store);
+    if (attested === 'failure') return { status: 'failed' };
+    if (attested === 'conflict') return { status: 'blocked', reason: 'receipt_conflict' };
+    if (attested === 'unavailable') return { status: 'indeterminate', reason: 'store_unavailable' };
+    return { status: 'indeterminate', reason: 'receipt_unverified' };
+  }
   if (result === 'conflict') return { status: 'blocked', reason: 'receipt_conflict' };
   return { status: 'blocked', reason: 'effect_not_started' };
 }
@@ -1233,7 +1245,13 @@ export async function completeExecutionEffect(
     if (reconciled === 'conflict') return { status: 'blocked', reason: 'receipt_conflict' };
     return { status: 'indeterminate', reason: 'store_unavailable' };
   }
-  if (result === 'committed' || result === 'already_committed') return { status: 'executed' };
+  if (result === 'committed' || result === 'already_committed') {
+    const attested = await reconcileTerminalReceipt(permit, operationId, receipt, 'success', store);
+    if (attested === 'success') return { status: 'executed' };
+    if (attested === 'conflict') return { status: 'blocked', reason: 'receipt_conflict' };
+    if (attested === 'unavailable') return { status: 'indeterminate', reason: 'store_unavailable' };
+    return { status: 'indeterminate', reason: 'receipt_unverified' };
+  }
   if (result === 'conflict') return { status: 'blocked', reason: 'receipt_conflict' };
   return { status: 'blocked', reason: 'effect_not_started' };
 }

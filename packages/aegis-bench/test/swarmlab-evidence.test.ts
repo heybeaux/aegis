@@ -10,8 +10,8 @@ describe('SwarmLab evidence gate', () => {
   it('passes when all stack mappings are landed with verified evidence', () => {
     const result = evaluateSwarmLabEvidence();
     expect(result.status).toBe('passed');
-    expect(result.total).toBe(29);
-    expect(result.passed).toBe(29);
+    expect(result.total).toBe(30);
+    expect(result.passed).toBe(30);
     expect(result.failed).toBe(0);
     expect(result.partial).toBe(0);
     expect(result.pendingImplementation).toBe(0);
@@ -213,6 +213,7 @@ describe('SwarmLab evidence gate', () => {
       'RT-27',
       'RT-28',
       'RT-29',
+      'RT-30',
     ]);
 
     const mappings = SWARMLAB_EVIDENCE_CASES.map((c) => c.aegisMapping).join('\n');
@@ -248,7 +249,7 @@ describe('SwarmLab evidence gate', () => {
 
   it('renders a report banner matching the evaluated evidence range', () => {
     const markdown = swarmLabEvidenceToMarkdown(evaluateSwarmLabEvidence());
-    expect(markdown).toContain('REPLAY-VERIFIED SWARMLAB RETESTS (RT-01..RT-29)');
+    expect(markdown).toContain('REPLAY-VERIFIED SWARMLAB RETESTS (RT-01..RT-30)');
     expect(markdown).not.toContain('RT-01..RT-10');
     expect(markdown).toContain('0 provisional evidence tier');
     expect(markdown).toContain('| RT-06 | passed | landed | verified |');
@@ -273,6 +274,7 @@ describe('SwarmLab evidence gate', () => {
     expect(markdown).toContain('| RT-27 | passed | landed | verified |');
     expect(markdown).toContain('| RT-28 | passed | landed | verified |');
     expect(markdown).toContain('| RT-29 | passed | landed | verified |');
+    expect(markdown).toContain('| RT-30 | passed | landed | verified |');
   });
 
   it('fails loudly when a proven metric regresses', () => {

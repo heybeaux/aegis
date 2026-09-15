@@ -689,7 +689,22 @@ export const SWARMLAB_EVIDENCE_CASES: readonly SwarmLabEvidenceCase[] = [
     ],
   },
 
-
+  {
+    id: 'RT-29',
+    source: 'SwarmLab exp-38 monotonic journal revision',
+    finding: 'An internally coherent replica record can still be causally stale; monotonic authoritative revision truth is required before terminal classification or retry authority.',
+    owners: ['aegis'], change: 'Added an optional authoritative effect-journal revision watermark, stale classification, and fail-closed revision validation at every public read boundary.',
+    runIds: ['mjr-mu0vdd5j', 'mjr-mu0vempr'], implementationRefs: ['c474322'], evidenceTier: 'verified', implementationStatus: 'landed',
+    aegisMapping: 'replicated effect journals require monotonic revision validation before certainty or retry authority',
+    metrics: [
+      { name: 'aegisWrappedStaleRetryAuthorityRate', before: 1 / 3, after: 0, threshold: 0, comparator: 'eq' },
+      { name: 'aegisWrappedStaleClassificationErrorRate', before: 1, after: 0, threshold: 0, comparator: 'eq' },
+      { name: 'aegisWrappedRevisionFailureUnsafeRate', before: 1, after: 0, threshold: 0, comparator: 'eq' },
+      { name: 'aegisWrappedResolutionAccuracy', before: 4 / 13, after: 1, threshold: 1, comparator: 'eq' },
+      { name: 'aegisWrappedRevisionApiAvailability', before: 0, after: 1, threshold: 1, comparator: 'eq' },
+      { name: 'aegisWrappedPostCasRollbackSafety', before: 0, after: 1, threshold: 1, comparator: 'eq' },
+    ],
+  },
   {
     id: 'RT-30',
     source: 'SwarmLab exp-39 terminal write attestation',
@@ -706,7 +721,6 @@ export const SWARMLAB_EVIDENCE_CASES: readonly SwarmLabEvidenceCase[] = [
       { name: 'aegisWrappedUnavailableReadSafety', before: 0, after: 1, threshold: 1, comparator: 'eq' },
     ],
   },
-
 ];
 
 export function evaluateSwarmLabEvidence(

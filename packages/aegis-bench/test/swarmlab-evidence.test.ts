@@ -10,8 +10,8 @@ describe('SwarmLab evidence gate', () => {
   it('passes when all stack mappings are landed with verified evidence', () => {
     const result = evaluateSwarmLabEvidence();
     expect(result.status).toBe('passed');
-    expect(result.total).toBe(29);
-    expect(result.passed).toBe(29);
+    expect(result.total).toBe(30);
+    expect(result.passed).toBe(30);
     expect(result.failed).toBe(0);
     expect(result.partial).toBe(0);
     expect(result.pendingImplementation).toBe(0);
@@ -212,6 +212,7 @@ describe('SwarmLab evidence gate', () => {
       'RT-26',
       'RT-27',
       'RT-28',
+      'RT-29',
       'RT-30',
     ]);
 
@@ -243,6 +244,7 @@ describe('SwarmLab evidence gate', () => {
     expect(mappings).toContain('verified effect failure requires exact receipt binding');
     expect(mappings).toContain('lost terminal receipt acknowledgements require exact durable readback');
     expect(mappings).toContain('receipt-envelope integrity');
+    expect(mappings).toContain('monotonic revision validation');
   });
 
   it('renders a report banner matching the evaluated evidence range', () => {
@@ -271,6 +273,7 @@ describe('SwarmLab evidence gate', () => {
     expect(markdown).toContain('| RT-26 | passed | landed | verified |');
     expect(markdown).toContain('| RT-27 | passed | landed | verified |');
     expect(markdown).toContain('| RT-28 | passed | landed | verified |');
+    expect(markdown).toContain('| RT-29 | passed | landed | verified |');
     expect(markdown).toContain('| RT-30 | passed | landed | verified |');
   });
 

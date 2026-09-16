@@ -22,7 +22,7 @@ function storeFor(options: { proof?: unknown; proofThrows?: boolean; revision?: 
     async prepareEffect() { return false; }, async claimPreparedEffect() { return undefined; },
     async beginEffect() { return false; }, async commitEffect() { return false; },
     async readEffect() { return options.effect; }, async burnEffect() { return true; },
-    async readEffectRevision() { return options.revision ?? 3; },
+    async readEffectRevision() { return Object.prototype.hasOwnProperty.call(options, 'revision') ? options.revision : 3; },
     async readEffectTerminalProof() { if (options.proofThrows) throw new Error('down'); return options.proof; },
   };
 }
@@ -45,7 +45,9 @@ describe('terminal receipt compaction proof', () => {
       { ...successProof, operationId: 'op_other' }, { ...successProof, permitId: `permit_${'f'.repeat(24)}` },
       { ...successProof, approvalId: `aegis_${'f'.repeat(16)}` },
       { ...successProof, outcome: 'committed', failureCode: 'impossible' },
+      { ...successProof, failureCode: undefined },
       { ...successProof, receiptDigest: 'sha256:bad' }, { ...successProof, outcome: 'unknown' },
+      { ...successProof, extra: 'smuggled' }, [], null,
     ];
     for (const proof of invalid) {
       await expect(resolveCompactedExecutionEffect(permit, current, operationId, storeFor({ proof }) as any)).resolves.toEqual(inconsistent);
@@ -57,14 +59,23 @@ describe('terminal receipt compaction proof', () => {
     await expect(resolveCompactedExecutionEffect(permit, current, operationId, storeFor({ proof: { ...successProof, revision: 2 } }) as any)).resolves.toEqual(stale);
     await expect(resolveCompactedExecutionEffect(permit, current, operationId, storeFor({ proof: { ...successProof, revision: 4 } }) as any)).resolves.toEqual(inconsistent);
     await expect(resolveCompactedExecutionEffect(permit, current, operationId, storeFor({ proofThrows: true }) as any)).resolves.toEqual({ status: 'indeterminate', retryable: false, reason: 'journal_unavailable' });
+    await expect(resolveCompactedExecutionEffect(permit, current, operationId, storeFor({ proof: successProof, revision: undefined }) as any)).resolves.toEqual(inconsistent);
   });
 
   it('lets current full records win and terminal proof override only stale replica state', async () => {
     const receipt = { permitId: permit.id, approvalId, operationId, receiptDigest: successProof.receiptDigest, verified: true };
     const committed = { operationId, permit: permitRecord, state: 'committed', claimed: true, successReceipt: receipt, revision: 3 };
     await expect(resolveCompactedExecutionEffect(permit, current, operationId, storeFor({ proof: failureProof, effect: committed }) as any)).resolves.toEqual(executed);
+    await expect(beginExecutionEffect(permit, current, operationId, storeFor({ proof: failureProof, effect: committed }) as any)).resolves.toEqual({ status: 'blocked', retryable: false, reason: 'effect_committed' });
+    const failedRecord = { operationId, permit: permitRecord, state: 'failed', claimed: true, failureReceipt: { permitId: permit.id, approvalId, operationId, receiptDigest: failureProof.receiptDigest, failureCode: failureProof.failureCode, verified: true }, revision: 3 };
+    await expect(beginExecutionEffect(permit, current, operationId, storeFor({ proof: successProof, effect: failedRecord }) as any)).resolves.toEqual({ status: 'blocked', retryable: false, reason: 'effect_failed' });
     const staleAuthorized = { operationId, permit: permitRecord, state: 'authorized', claimed: true, revision: 1 };
     await expect(resolveCompactedExecutionEffect(permit, current, operationId, storeFor({ proof: successProof, effect: staleAuthorized }) as any)).resolves.toEqual(executed);
     await expect(beginExecutionEffect(permit, current, operationId, storeFor({ proof: successProof, effect: staleAuthorized }) as any)).resolves.toEqual({ status: 'blocked', retryable: false, reason: 'effect_committed' });
+  });
+
+  it('fails closed on absent arguments rather than throwing', async () => {
+    await expect(resolveCompactedExecutionEffect(null as any, current, operationId, storeFor({ proof: successProof }) as any)).resolves.toEqual({ status: 'not_executed', retryable: false, reason: 'invalid_snapshot' });
+    await expect(resolveCompactedExecutionEffect(permit, null as any, operationId, storeFor({ proof: successProof }) as any)).resolves.toEqual({ status: 'not_executed', retryable: false, reason: 'invalid_snapshot' });
   });
 });

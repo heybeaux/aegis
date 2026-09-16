@@ -784,6 +784,7 @@ export async function finalizeExecutionPermitWithEffectJournal(
     reason: NonNullable<ApprovalExecutionFinalizationResult['reason']>,
     retryable = false,
   ): ApprovalExecutionFinalizationResult => ({ status: 'blocked', retryable, reason });
+  if (!presentObject(permit) || !presentObject(current)) return blocked('invalid_snapshot');
   if (!/^permit_[a-f0-9]{24}$/.test(permit.id)) return blocked('invalid_snapshot');
   if (!/^aegis_[a-f0-9]{16}$/.test(permit.approvalId)) return blocked('invalid_snapshot');
   if (permit.approvalId !== current.approvalId) return blocked('invalid_snapshot');
@@ -883,15 +884,20 @@ async function compactedTerminalTruth(
     return { status: 'unavailable' };
   }
   if (proof === undefined) return { status: 'missing' };
-  if (!presentObject(proof)) return { status: 'inconsistent' };
+  if (!presentObject(proof) || Array.isArray(proof)) return { status: 'inconsistent' };
   const candidate = proof as Partial<ApprovalExecutionTerminalProof>;
+  const allowedKeys = new Set([
+    'operationId', 'permitId', 'approvalId', 'outcome', 'receiptDigest', 'failureCode',
+    'revision', 'verified',
+  ]);
+  if (Object.keys(candidate).some((key) => !allowedKeys.has(key))) return { status: 'inconsistent' };
   if (
     !Number.isSafeInteger(highWater) || highWater! <= 0 ||
     !Number.isSafeInteger(candidate.revision) || candidate.revision! <= 0
   ) return { status: 'inconsistent' };
   if (candidate.revision! < highWater!) return { status: 'stale' };
   if (candidate.revision! > highWater!) return { status: 'inconsistent' };
-  const committed = candidate.outcome === 'committed' && candidate.failureCode === undefined;
+  const committed = candidate.outcome === 'committed' && !('failureCode' in candidate);
   const failed = candidate.outcome === 'failed' &&
     typeof candidate.failureCode === 'string' && validFailureCode(candidate.failureCode);
   if (
@@ -945,6 +951,10 @@ export async function resolveExecutionEffect(
   }
   const revisionIntegrity = await effectRevisionIntegrity(effect, operationId, store);
   if (revisionIntegrity === 'unavailable') return indeterminate('journal_unavailable');
+  if (effect === undefined && compactionProofCapableStore(store)) {
+    const compacted = compactedResolution(await compactedTerminalTruth(permit, operationId, store));
+    if (compacted !== undefined) return compacted;
+  }
   if (revisionIntegrity === 'stale') {
     const compacted = compactedResolution(await compactedTerminalTruth(permit, operationId, store));
     return compacted ?? indeterminate('journal_stale');
@@ -1018,6 +1028,16 @@ export async function beginExecutionEffect(
   if (revisionIntegrity === 'unavailable') {
     return { status: 'indeterminate', retryable: false, reason: 'status_unavailable' };
   }
+  if (effect === undefined && compactionProofCapableStore(store)) {
+    const compacted = await compactedTerminalTruth(permit, operationId, store);
+    if (compacted.status === 'committed') return blocked('effect_committed');
+    if (compacted.status === 'failed') return blocked('effect_failed');
+    if (compacted.status === 'unavailable') {
+      return { status: 'indeterminate', retryable: false, reason: 'status_unavailable' };
+    }
+    if (compacted.status === 'inconsistent') return blocked('journal_inconsistent');
+    if (compacted.status === 'stale') return blocked('journal_stale');
+  }
   if (revisionIntegrity === 'stale') {
     const compacted = await compactedTerminalTruth(permit, operationId, store);
     if (compacted.status === 'committed') return blocked('effect_committed');
@@ -1032,6 +1052,7 @@ export async function beginExecutionEffect(
   if (!effectRecordMatches(effect, permit, operationId)) return blocked('journal_missing');
   if (!effectJournalCoherent(effect, permit, operationId, receiptCapableStore(store))) return blocked('journal_inconsistent');
   if (effect.state === 'committed') return blocked('effect_committed');
+  if (effect.state === 'failed') return blocked('effect_failed');
   if (effect.state === 'started') return blocked('effect_started');
   if (effect.state === 'burned') return blocked('authorization_burned');
   if (effect.state !== 'authorized' || !effect.claimed) return blocked('journal_missing');
@@ -1056,6 +1077,16 @@ export async function beginExecutionEffect(
       const latestRevisionIntegrity = await effectRevisionIntegrity(latest, operationId, store);
       if (latestRevisionIntegrity === 'unavailable') {
         return { status: 'indeterminate', retryable: false, reason: 'status_unavailable' };
+      }
+      if (latest === undefined && compactionProofCapableStore(store)) {
+        const compacted = await compactedTerminalTruth(permit, operationId, store);
+        if (compacted.status === 'committed') return blocked('effect_committed');
+        if (compacted.status === 'failed') return blocked('effect_failed');
+        if (compacted.status === 'unavailable') {
+          return { status: 'indeterminate', retryable: false, reason: 'status_unavailable' };
+        }
+        if (compacted.status === 'inconsistent') return blocked('journal_inconsistent');
+        if (compacted.status === 'stale') return blocked('journal_stale');
       }
       if (latestRevisionIntegrity === 'stale') {
         const compacted = await compactedTerminalTruth(permit, operationId, store);
@@ -1247,6 +1278,27 @@ function failureReceiptMatches(
  */
 type TerminalReceiptAttestation = 'success' | 'failure' | 'conflict' | 'unverified' | 'unavailable';
 
+function attestCompactedTerminalReceipt(
+  truth: CompactedTerminalTruth,
+  receipt: ApprovalExecutionEffectReceipt | ApprovalExecutionEffectFailureReceipt,
+  kind: 'success' | 'failure',
+): TerminalReceiptAttestation {
+  if (truth.status === 'unavailable' || truth.status === 'missing' || truth.status === 'stale') {
+    return 'unavailable';
+  }
+  if (truth.status === 'inconsistent') return 'unverified';
+  if (kind === 'success') {
+    return truth.status === 'committed' && truth.proof.receiptDigest === receipt.receiptDigest
+      ? 'success'
+      : 'conflict';
+  }
+  return truth.status === 'failed' &&
+    truth.proof.receiptDigest === receipt.receiptDigest &&
+    truth.proof.failureCode === (receipt as ApprovalExecutionEffectFailureReceipt).failureCode
+    ? 'failure'
+    : 'conflict';
+}
+
 async function reconcileTerminalReceipt(
   permit: ApprovalExecutionPermit,
   operationId: string,
@@ -1260,11 +1312,20 @@ async function reconcileTerminalReceipt(
   } catch {
     return 'unavailable';
   }
-  // RT-29: a causally stale or unverifiable replica revision can never attest terminal truth.
-  // It is reported as unavailable (not merely unverified) so the caller stays honestly
-  // indeterminate/store_unavailable rather than asserting the receipt was durably absent.
-  if ((await effectRevisionIntegrity(effect, operationId, store)) !== 'current' && revisionCapableStore(store)) {
-    return 'unavailable';
+  const revisionIntegrity = await effectRevisionIntegrity(effect, operationId, store);
+  if (effect === undefined && compactionProofCapableStore(store)) {
+    const compacted = await compactedTerminalTruth(permit, operationId, store);
+    if (compacted.status !== 'missing') return attestCompactedTerminalReceipt(compacted, receipt, kind);
+  }
+  if (revisionCapableStore(store) && revisionIntegrity !== 'current') {
+    if (revisionIntegrity === 'stale' && compactionProofCapableStore(store)) {
+      return attestCompactedTerminalReceipt(
+        await compactedTerminalTruth(permit, operationId, store),
+        receipt,
+        kind,
+      );
+    }
+    return revisionIntegrity === 'inconsistent' ? 'unverified' : 'unavailable';
   }
   if (!effectRecordMatches(effect, permit, operationId)) return 'unverified';
   if (!effectJournalCoherent(effect, permit, operationId)) return 'unverified';

@@ -1,6 +1,6 @@
 import { createHash } from 'node:crypto';
 import { describe, expect, it } from 'vitest';
-import { completeExecutionEffect, failExecutionEffect } from '../src/approval.js';
+import { completeExecutionEffect, failExecutionEffect, type ApprovalExecutionTerminalProof } from '../src/approval.js';
 
 const approvalId = `aegis_${'f'.repeat(16)}`;
 const operationId = 'op_terminal_attestation';
@@ -72,5 +72,21 @@ describe('terminal write result attestation', () => {
     await expect(failExecutionEffect(permit, operationId, failure, storeFor('failure', 'first', 'read-down'))).resolves.toEqual({ status: 'indeterminate', reason: 'store_unavailable' });
     await expect(completeExecutionEffect(permit, operationId, success, storeFor('success', 'first', 'conflict'))).resolves.toEqual({ status: 'blocked', reason: 'receipt_conflict' });
     await expect(failExecutionEffect(permit, operationId, failure, storeFor('failure', 'first', 'not-started'))).resolves.toEqual({ status: 'blocked', reason: 'effect_not_started' });
+  });
+
+  it('attests positive terminal writes after immediate compaction through the exact proof', async () => {
+    const compactedStore = (kind: 'success' | 'failure', proof: ApprovalExecutionTerminalProof) => ({
+      async create() { return true; }, async take() { return permitRecord; },
+      async prepareEffect() { return true; }, async claimPreparedEffect() { return permitRecord; },
+      async beginEffect() { return true; }, async commitEffect() { return false; }, async burnEffect() { return true; },
+      async completeEffect() { return 'committed' as const; }, async failEffect() { return 'failed' as const; },
+      async readEffect() { return undefined; }, async readEffectRevision() { return 3; },
+      async readEffectTerminalProof() { return proof; },
+    });
+    const successProof: ApprovalExecutionTerminalProof = { ...success, outcome: 'committed', revision: 3 };
+    const failureProof: ApprovalExecutionTerminalProof = { ...failure, outcome: 'failed', revision: 3 };
+    await expect(completeExecutionEffect(permit, operationId, success, compactedStore('success', successProof))).resolves.toEqual({ status: 'executed' });
+    await expect(failExecutionEffect(permit, operationId, failure, compactedStore('failure', failureProof))).resolves.toEqual({ status: 'failed' });
+    await expect(completeExecutionEffect(permit, operationId, success, compactedStore('success', { ...successProof, receiptDigest: differentSuccess.receiptDigest }))).resolves.toEqual({ status: 'blocked', reason: 'receipt_conflict' });
   });
 });

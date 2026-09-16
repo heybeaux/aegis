@@ -721,6 +721,24 @@ export const SWARMLAB_EVIDENCE_CASES: readonly SwarmLabEvidenceCase[] = [
       { name: 'aegisWrappedUnavailableReadSafety', before: 0, after: 1, threshold: 1, comparator: 'eq' },
     ],
   },
+  {
+    id: 'RT-31',
+    source: 'SwarmLab exp-40 terminal receipt compaction proof',
+    finding: 'A full terminal record may be deliberately compacted; terminal certainty then requires authenticated, exactly bound proof at the authoritative terminal revision.',
+    owners: ['aegis'], change: 'Added an optional compact terminal-proof contract and strict recovery at effect resolution and start fencing boundaries.',
+    runIds: ['tcp-mu3q8xw5', 'tcp-mu3qbgoq'], implementationRefs: ['8c2cc749d1b413ca22c552dccd23305dcd64b160'], evidenceTier: 'verified', implementationStatus: 'landed',
+    aegisMapping: 'terminal journal compaction requires authenticated exact proof and monotonic revision binding without restoring retry authority',
+    metrics: [
+      { name: 'aegisWrappedTerminalProofRecoveryRate', before: 0, after: 1, threshold: 1, comparator: 'eq' },
+      { name: 'aegisWrappedFalseTerminalProofAcceptanceRate', before: 0, after: 0, threshold: 0, comparator: 'eq' },
+      { name: 'aegisWrappedStaleRetryAuthorityRate', before: 0, after: 0, threshold: 0, comparator: 'eq' },
+      { name: 'aegisWrappedResolutionAccuracy', before: 5 / 17, after: 1, threshold: 1, comparator: 'eq' },
+      { name: 'aegisWrappedCompactionProofApiAvailability', before: 0, after: 1, threshold: 1, comparator: 'eq' },
+      { name: 'aegisWrappedInvalidProofFailClosedSafety', before: 0, after: 1, threshold: 1, comparator: 'eq' },
+      { name: 'aegisWrappedUnavailableProofSafety', before: 0, after: 1, threshold: 1, comparator: 'eq' },
+      { name: 'aegisWrappedTerminalProofOverrideSafety', before: 0, after: 1, threshold: 1, comparator: 'eq' },
+    ],
+  },
 ];
 
 export function evaluateSwarmLabEvidence(

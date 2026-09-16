@@ -125,3 +125,11 @@ import {
   decide,
 } from '@heybeaux/aegis-hook';
 ```
+
+### Durable execution effect journals and compaction
+
+Hosts that finalize one-shot approvals around externally visible effects can implement the additive journal interfaces exported by this package. `JournaledApprovalExecutionPermitStore` retains authorization and terminal receipts for crash reconciliation; `RevisionedApprovalExecutionPermitStore` adds authoritative monotonic revision truth for replicated stores.
+
+When a host deliberately prunes a full terminal record, it may additionally implement `CompactedApprovalExecutionPermitStore`. Its retained `ApprovalExecutionTerminalProof` must be host-authenticated and bind the operation id, permit id, approval id, exact terminal outcome and receipt digest (plus failure code for failure), and the authoritative terminal revision. Use `resolveCompactedExecutionEffect()` to inspect this proof explicitly. The ordinary `resolveExecutionEffect()` and effect-start fence also detect the capability when a visible record has been compacted.
+
+A missing, malformed, unauthenticated, misbound, stale, future, or unavailable proof is never treated as terminal certainty or retry authority. Proof-only terminal records are always non-retryable. The host remains responsible for atomic compaction, durable proof retention, authentication, and authoritative revision watermarks.

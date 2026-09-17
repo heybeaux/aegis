@@ -739,6 +739,22 @@ export const SWARMLAB_EVIDENCE_CASES: readonly SwarmLabEvidenceCase[] = [
       { name: 'aegisWrappedTerminalProofOverrideSafety', before: 0, after: 1, threshold: 1, comparator: 'eq' },
     ],
   },
+  {
+    id: 'RT-32',
+    source: 'SwarmLab exp-41 authority-plane rollback anchor',
+    finding: 'A coherent restore can roll back both the journal and host high-water/proof plane; an independently retained authenticated checkpoint is required to detect that authority rollback.',
+    owners: ['aegis'], change: 'Added an optional independent revision-checkpoint contract and lower-bound validation at resolution and start-fencing boundaries.',
+    runIds: ['ara-mu55rn5j', 'ara-mu55rftq'], implementationRefs: ['f5d7d7e663ec3de931e6689862859d27dd7b0d7b'], evidenceTier: 'verified', implementationStatus: 'landed',
+    aegisMapping: 'effect-journal authority rollback requires an independently retained authenticated monotonic checkpoint before certainty or retry authority',
+    metrics: [
+      { name: 'aegisWrappedAuthorityRollbackDetectionRate', before: 1 / 5, after: 1, threshold: 1, comparator: 'eq' },
+      { name: 'aegisWrappedRollbackRetryAuthorityRate', before: 1 / 5, after: 0, threshold: 0, comparator: 'eq' },
+      { name: 'aegisWrappedResolutionAccuracy', before: 7 / 17, after: 1, threshold: 1, comparator: 'eq' },
+      { name: 'aegisWrappedTransparencyCheckpointApiAvailability', before: 0, after: 1, threshold: 1, comparator: 'eq' },
+      { name: 'aegisWrappedInvalidCheckpointSafety', before: 0, after: 1, threshold: 1, comparator: 'eq' },
+      { name: 'aegisWrappedPostCasRollbackSafety', before: 0, after: 1, threshold: 1, comparator: 'eq' },
+    ],
+  },
 ];
 
 export function evaluateSwarmLabEvidence(

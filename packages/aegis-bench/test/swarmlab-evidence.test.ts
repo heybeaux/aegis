@@ -10,8 +10,8 @@ describe('SwarmLab evidence gate', () => {
   it('passes when all stack mappings are landed with verified evidence', () => {
     const result = evaluateSwarmLabEvidence();
     expect(result.status).toBe('passed');
-    expect(result.total).toBe(31);
-    expect(result.passed).toBe(31);
+    expect(result.total).toBe(32);
+    expect(result.passed).toBe(32);
     expect(result.failed).toBe(0);
     expect(result.partial).toBe(0);
     expect(result.pendingImplementation).toBe(0);
@@ -215,6 +215,7 @@ describe('SwarmLab evidence gate', () => {
       'RT-29',
       'RT-30',
       'RT-31',
+      'RT-32',
     ]);
 
     const mappings = SWARMLAB_EVIDENCE_CASES.map((c) => c.aegisMapping).join('\n');
@@ -247,11 +248,12 @@ describe('SwarmLab evidence gate', () => {
     expect(mappings).toContain('receipt-envelope integrity');
     expect(mappings).toContain('monotonic revision validation');
     expect(mappings).toContain('terminal journal compaction requires authenticated exact proof');
+    expect(mappings).toContain('authority rollback requires an independently retained authenticated monotonic checkpoint');
   });
 
   it('renders a report banner matching the evaluated evidence range', () => {
     const markdown = swarmLabEvidenceToMarkdown(evaluateSwarmLabEvidence());
-    expect(markdown).toContain('REPLAY-VERIFIED SWARMLAB RETESTS (RT-01..RT-31)');
+    expect(markdown).toContain('REPLAY-VERIFIED SWARMLAB RETESTS (RT-01..RT-32)');
     expect(markdown).not.toContain('RT-01..RT-10');
     expect(markdown).toContain('0 provisional evidence tier');
     expect(markdown).toContain('| RT-06 | passed | landed | verified |');
@@ -278,6 +280,7 @@ describe('SwarmLab evidence gate', () => {
     expect(markdown).toContain('| RT-29 | passed | landed | verified |');
     expect(markdown).toContain('| RT-30 | passed | landed | verified |');
     expect(markdown).toContain('| RT-31 | passed | landed | verified |');
+    expect(markdown).toContain('| RT-32 | passed | landed | verified |');
   });
 
   it('fails loudly when a proven metric regresses', () => {

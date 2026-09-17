@@ -760,6 +760,21 @@ export interface CompactedApprovalExecutionPermitStore extends RevisionedApprova
   readEffectTerminalProof(operationId: string): Promise<ApprovalExecutionTerminalProof | undefined>;
 }
 
+/**
+ * Independently authenticated monotonic lower bound for one operation's journal revision.
+ * The host MUST retain this checkpoint outside the journal backup/restore authority domain.
+ */
+export interface ApprovalExecutionRevisionCheckpoint {
+  operationId: string;
+  revision: number;
+  verified: boolean;
+}
+
+/** Optional transparency-anchor extension for detecting rollback of the host authority plane. */
+export interface AnchoredApprovalExecutionPermitStore extends RevisionedApprovalExecutionPermitStore {
+  readEffectRevisionCheckpoint(operationId: string): Promise<ApprovalExecutionRevisionCheckpoint | undefined>;
+}
+
 export type ApprovalExecutionEffectResolutionStatus = 'executed' | 'not_executed' | 'indeterminate';
 
 export interface ApprovalExecutionEffectResolutionResult {
@@ -859,6 +874,44 @@ type CompactedTerminalTruth =
   | { status: 'committed' | 'failed'; proof: ApprovalExecutionTerminalProof }
   | { status: 'missing' | 'stale' | 'inconsistent' | 'unavailable' };
 
+function anchoredStore(
+  store: JournaledApprovalExecutionPermitStore,
+): store is AnchoredApprovalExecutionPermitStore {
+  const candidate = store as Partial<AnchoredApprovalExecutionPermitStore>;
+  return revisionCapableStore(store) && typeof candidate.readEffectRevisionCheckpoint === 'function';
+}
+
+type AuthorityCheckpointIntegrity = 'legacy' | 'current' | 'stale' | 'inconsistent' | 'unavailable';
+
+/** Compare host-owned revision truth with an independently retained authenticated lower bound. */
+async function authorityCheckpointIntegrity(
+  operationId: string,
+  store: JournaledApprovalExecutionPermitStore,
+): Promise<AuthorityCheckpointIntegrity> {
+  if (!anchoredStore(store)) return 'legacy';
+  let highWater: number | undefined;
+  let checkpoint: unknown;
+  try {
+    [highWater, checkpoint] = await Promise.all([
+      store.readEffectRevision(operationId),
+      store.readEffectRevisionCheckpoint(operationId),
+    ]);
+  } catch {
+    return 'unavailable';
+  }
+  if (checkpoint === undefined) return 'unavailable';
+  if (!presentObject(checkpoint) || Array.isArray(checkpoint)) return 'inconsistent';
+  const candidate = checkpoint as Partial<ApprovalExecutionRevisionCheckpoint>;
+  const allowedKeys = new Set(['operationId', 'revision', 'verified']);
+  if (Object.keys(candidate).some((key) => !allowedKeys.has(key))) return 'inconsistent';
+  if (
+    candidate.operationId !== operationId || candidate.verified !== true ||
+    !Number.isSafeInteger(candidate.revision) || candidate.revision! <= 0
+  ) return 'inconsistent';
+  if (!Number.isSafeInteger(highWater) || highWater! <= 0) return 'unavailable';
+  return highWater! < candidate.revision! ? 'stale' : 'current';
+}
+
 function compactionProofCapableStore(
   store: JournaledApprovalExecutionPermitStore,
 ): store is CompactedApprovalExecutionPermitStore {
@@ -950,7 +1003,10 @@ export async function resolveExecutionEffect(
     return indeterminate('journal_unavailable');
   }
   const revisionIntegrity = await effectRevisionIntegrity(effect, operationId, store);
-  if (revisionIntegrity === 'unavailable') return indeterminate('journal_unavailable');
+  const checkpointIntegrity = await authorityCheckpointIntegrity(operationId, store);
+  if (revisionIntegrity === 'unavailable' || checkpointIntegrity === 'unavailable') return indeterminate('journal_unavailable');
+  if (checkpointIntegrity === 'inconsistent') return indeterminate('journal_inconsistent');
+  if (checkpointIntegrity === 'stale') return indeterminate('journal_stale');
   if (effect === undefined && compactionProofCapableStore(store)) {
     const compacted = compactedResolution(await compactedTerminalTruth(permit, operationId, store));
     if (compacted !== undefined) return compacted;
@@ -982,6 +1038,19 @@ export async function resolveExecutionEffect(
     return { status: 'not_executed', retryable: false, reason: 'invalid_snapshot' };
   }
   return { status: 'not_executed', retryable: true, reason: 'not_started' };
+}
+
+/**
+ * Explicit transparency-anchor entry point. The ordinary resolver also detects this optional
+ * capability so callers cannot accidentally bypass authority-plane rollback validation.
+ */
+export async function resolveAnchoredExecutionEffect(
+  permit: ApprovalExecutionPermit,
+  current: ApprovalExecutionSnapshot,
+  operationId: string,
+  store: AnchoredApprovalExecutionPermitStore,
+): Promise<ApprovalExecutionEffectResolutionResult> {
+  return resolveExecutionEffect(permit, current, operationId, store);
 }
 
 /**
@@ -1025,9 +1094,12 @@ export async function beginExecutionEffect(
     return { status: 'indeterminate', retryable: false, reason: 'status_unavailable' };
   }
   const revisionIntegrity = await effectRevisionIntegrity(effect, operationId, store);
-  if (revisionIntegrity === 'unavailable') {
+  const checkpointIntegrity = await authorityCheckpointIntegrity(operationId, store);
+  if (revisionIntegrity === 'unavailable' || checkpointIntegrity === 'unavailable') {
     return { status: 'indeterminate', retryable: false, reason: 'status_unavailable' };
   }
+  if (checkpointIntegrity === 'inconsistent') return blocked('journal_inconsistent');
+  if (checkpointIntegrity === 'stale') return blocked('journal_stale');
   if (effect === undefined && compactionProofCapableStore(store)) {
     const compacted = await compactedTerminalTruth(permit, operationId, store);
     if (compacted.status === 'committed') return blocked('effect_committed');
@@ -1075,9 +1147,12 @@ export async function beginExecutionEffect(
     try {
       const latest: unknown = await store.readEffect(operationId);
       const latestRevisionIntegrity = await effectRevisionIntegrity(latest, operationId, store);
-      if (latestRevisionIntegrity === 'unavailable') {
+      const latestCheckpointIntegrity = await authorityCheckpointIntegrity(operationId, store);
+      if (latestRevisionIntegrity === 'unavailable' || latestCheckpointIntegrity === 'unavailable') {
         return { status: 'indeterminate', retryable: false, reason: 'status_unavailable' };
       }
+      if (latestCheckpointIntegrity === 'inconsistent') return blocked('journal_inconsistent');
+      if (latestCheckpointIntegrity === 'stale') return blocked('journal_stale');
       if (latest === undefined && compactionProofCapableStore(store)) {
         const compacted = await compactedTerminalTruth(permit, operationId, store);
         if (compacted.status === 'committed') return blocked('effect_committed');

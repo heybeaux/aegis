@@ -1142,6 +1142,36 @@ export async function beginExecutionEffect(
   } catch {
     return { status: 'indeterminate', retryable: false, reason: 'status_unavailable' };
   }
+  if (started) {
+    // The successful CAS is not sufficient if the independent authority plane changed while the
+    // host performed it. Re-read both truths and refuse execution on any post-CAS rollback.
+    let latest: unknown;
+    try {
+      latest = await store.readEffect(operationId);
+    } catch {
+      return { status: 'indeterminate', retryable: false, reason: 'status_unavailable' };
+    }
+    const latestRevisionIntegrity = await effectRevisionIntegrity(latest, operationId, store);
+    const latestCheckpointIntegrity = await authorityCheckpointIntegrity(operationId, store);
+    if (latestRevisionIntegrity === 'unavailable' || latestCheckpointIntegrity === 'unavailable') {
+      return { status: 'indeterminate', retryable: false, reason: 'status_unavailable' };
+    }
+    if (latestCheckpointIntegrity === 'inconsistent' || latestRevisionIntegrity === 'inconsistent') {
+      return blocked('journal_inconsistent');
+    }
+    if (latestCheckpointIntegrity === 'stale' || latestRevisionIntegrity === 'stale') {
+      return blocked('journal_stale');
+    }
+    if (!effectRecordMatches(latest, permit, operationId)) return blocked('journal_missing');
+    if (!effectJournalCoherent(latest, permit, operationId, receiptCapableStore(store))) {
+      return blocked('journal_inconsistent');
+    }
+    if (latest.state === 'committed') return blocked('effect_committed');
+    if (latest.state === 'failed') return blocked('effect_failed');
+    if (latest.state === 'burned') return blocked('authorization_burned');
+    if (latest.state !== 'started') return blocked('journal_inconsistent');
+    return { status: 'execute', retryable: false };
+  }
   if (!started) {
     // A failed CAS can mean another host just started or committed. Read once to report honestly.
     try {
@@ -1187,7 +1217,7 @@ export async function beginExecutionEffect(
     }
     return { status: 'indeterminate', retryable: false, reason: 'status_unavailable' };
   }
-  return { status: 'execute', retryable: false };
+  return { status: 'indeterminate', retryable: false, reason: 'status_unavailable' };
 }
 
 export interface ApprovalExecutionEffectReceipt {
@@ -1388,6 +1418,9 @@ async function reconcileTerminalReceipt(
     return 'unavailable';
   }
   const revisionIntegrity = await effectRevisionIntegrity(effect, operationId, store);
+  const checkpointIntegrity = await authorityCheckpointIntegrity(operationId, store);
+  if (checkpointIntegrity === 'stale' || checkpointIntegrity === 'unavailable') return 'unavailable';
+  if (checkpointIntegrity === 'inconsistent') return 'unverified';
   if (effect === undefined && compactionProofCapableStore(store)) {
     const compacted = await compactedTerminalTruth(permit, operationId, store);
     if (compacted.status !== 'missing') return attestCompactedTerminalReceipt(compacted, receipt, kind);

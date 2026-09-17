@@ -12,8 +12,9 @@ const signature = 'authority-checkpoint-signature';
 const approvalId = `aegis_${'b'.repeat(16)}`;
 const permit: ApprovalExecutionPermit = { id: `permit_${createHash('sha256').update(`${approvalId}:${signature}`).digest('hex').slice(0, 24)}`, approvalId };
 const operationId = 'op_authority_checkpoint_test';
-const current = { approvalId: permit.approvalId };
-const permitRecord = { ...permit, signature };
+const links = [{ actorId: 'user:beaux', authorityLevel: 10, verified: true }, { actorId: 'agent:root', authorityLevel: 8, verified: true }];
+const permitRecord = { ...permit, signature, authorizationDigest: 'auth:checkpoint', effectiveConsumerId: 'agent:root', links, declaredScope: 'direct' as const, maxDepth: 1 };
+const current = { approvalId: permit.approvalId, authorizationDigest: permitRecord.authorizationDigest, effectiveConsumerId: permitRecord.effectiveConsumerId, links, revoked: false, revocationChecked: true, structurallyValid: true };
 
 function store(options: {
   highWater?: number;
@@ -84,4 +85,37 @@ describe('independent authority revision checkpoints', () => {
     await expect(beginExecutionEffect(permit, current, operationId, s))
       .resolves.toEqual({ status: 'blocked', retryable: false, reason: 'journal_stale' });
   });
+});
+
+it('fails closed when terminal-write attestation observes authority rollback', async () => {
+  const receipt = {
+    permitId: permit.id,
+    approvalId: permit.approvalId,
+    operationId,
+    receiptDigest: `sha256:${'d'.repeat(64)}`,
+    verified: true,
+  };
+  const s = store({ highWater: 1, checkpoint: { operationId, revision: 3, verified: true } });
+  Object.assign(s, {
+    async completeEffect() { return 'committed' as const; },
+    async readEffect() {
+      return { operationId, permit: permitRecord, state: 'committed', claimed: true, revision: 1, successReceipt: receipt };
+    },
+  });
+  const { completeExecutionEffect } = await import('../src/approval.js');
+  await expect(completeExecutionEffect(permit, operationId, receipt, s))
+    .resolves.toEqual({ status: 'indeterminate', reason: 'store_unavailable' });
+});
+
+it('does not execute when authority rolls back between the final check and a successful begin CAS', async () => {
+  let checkpointReads = 0;
+  const s = store({ highWater: 1, checkpoint: { operationId, revision: 1, verified: true } });
+  s.readEffectRevisionCheckpoint = async () => {
+    checkpointReads += 1;
+    return checkpointReads === 1
+      ? { operationId, revision: 1, verified: true }
+      : { operationId, revision: 3, verified: true };
+  };
+  await expect(beginExecutionEffect(permit, current, operationId, s))
+    .resolves.toEqual({ status: 'blocked', retryable: false, reason: 'journal_stale' });
 });

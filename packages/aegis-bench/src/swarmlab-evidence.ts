@@ -755,6 +755,23 @@ export const SWARMLAB_EVIDENCE_CASES: readonly SwarmLabEvidenceCase[] = [
       { name: 'aegisWrappedPostCasRollbackSafety', before: 0, after: 1, threshold: 1, comparator: 'eq' },
     ],
   },
+  {
+    id: 'RT-33',
+    source: 'SwarmLab exp-42 checkpoint authority equivocation',
+    finding: 'A single valid-looking checkpoint is insufficient when independent checkpoint authorities present conflicting same-operation histories.',
+    owners: ['aegis'], change: 'Added an optional multi-authority checkpoint contract, exact authority/digest validation, equivocation detection, and an explicit plural-anchor resolver.',
+    runIds: ['cae-mu6lbz2a', 'cae-mu6lbz32'], implementationRefs: ['77883f6e02d4c3e68448cbb71619bef3f511d9e0'], evidenceTier: 'verified', implementationStatus: 'landed',
+    aegisMapping: 'checkpoint authority equivocation requires multi-authority history digest validation before certainty or retry authority',
+    metrics: [
+      { name: 'aegisWrappedCheckpointEquivocationDetectionRate', before: 0, after: 1, threshold: 1, comparator: 'eq' },
+      { name: 'aegisWrappedEquivocationRetryAuthorityRate', before: 0.6, after: 0, threshold: 0, comparator: 'eq' },
+      { name: 'aegisWrappedResolutionAccuracy', before: 0.3125, after: 1, threshold: 1, comparator: 'eq' },
+      { name: 'aegisWrappedMultiAuthorityCheckpointApiAvailability', before: 0, after: 1, threshold: 1, comparator: 'eq' },
+      { name: 'aegisWrappedUnavailableQuorumSafety', before: 0, after: 1, threshold: 1, comparator: 'eq' },
+      { name: 'aegisWrappedInvalidQuorumSafety', before: 0, after: 1, threshold: 1, comparator: 'eq' },
+      { name: 'aegisWrappedPostCasEquivocationSafety', before: 0, after: 1, threshold: 1, comparator: 'eq' },
+    ],
+  },
 ];
 
 export function evaluateSwarmLabEvidence(

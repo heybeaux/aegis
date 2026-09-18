@@ -4,8 +4,10 @@ import {
   beginExecutionEffect,
   resolveAnchoredExecutionEffect,
   resolveExecutionEffect,
+  resolveMultiAuthorityAnchoredExecutionEffect,
   type ApprovalExecutionPermit,
   type ApprovalExecutionRevisionCheckpoint,
+  type ApprovalExecutionRevisionAuthorityCheckpoint,
 } from '../src/approval.js';
 
 const signature = 'authority-checkpoint-signature';
@@ -19,7 +21,9 @@ const current = { approvalId: permit.approvalId, authorizationDigest: permitReco
 function store(options: {
   highWater?: number;
   checkpoint?: ApprovalExecutionRevisionCheckpoint | Record<string, unknown>;
+  checkpoints?: ApprovalExecutionRevisionAuthorityCheckpoint[] | Record<string, unknown>[];
   checkpointError?: boolean;
+  checkpointQuorumError?: boolean;
   postCasRollback?: boolean;
 } = {}) {
   const value = {
@@ -41,6 +45,15 @@ function store(options: {
       return options.checkpoint === undefined
         ? { operationId, revision: 1, verified: true }
         : structuredClone(options.checkpoint);
+    },
+    async readEffectRevisionCheckpoints() {
+      if (options.checkpointQuorumError) throw new Error('checkpoint quorum unavailable');
+      return options.checkpoints === undefined
+        ? [
+            { authorityId: 'witness-a', operationId, revision: 1, verified: true, historyDigest: `sha256:${'a'.repeat(64)}` },
+            { authorityId: 'witness-b', operationId, revision: 1, verified: true, historyDigest: `sha256:${'a'.repeat(64)}` },
+          ]
+        : structuredClone(options.checkpoints);
     },
   };
 }
@@ -80,10 +93,70 @@ describe('independent authority revision checkpoints', () => {
       .resolves.toEqual({ status: 'indeterminate', retryable: false, reason: 'journal_unavailable' });
   });
 
+  it('fails closed when independent checkpoint authorities equivocate on the same revision', async () => {
+    await expect(resolveMultiAuthorityAnchoredExecutionEffect(permit, current, operationId, store({
+      checkpoints: [
+        { authorityId: 'witness-a', operationId, revision: 1, verified: true, historyDigest: `sha256:${'a'.repeat(64)}` },
+        { authorityId: 'witness-b', operationId, revision: 1, verified: true, historyDigest: `sha256:${'b'.repeat(64)}` },
+      ],
+    }))).resolves.toEqual({ status: 'indeterminate', retryable: false, reason: 'journal_inconsistent' });
+  });
+
+  it('preserves lagging multi-authority checkpoints when same revisions do not conflict', async () => {
+    const s = store({
+      highWater: 3,
+      checkpoint: { operationId, revision: 2, verified: true },
+      checkpoints: [
+        { authorityId: 'witness-a', operationId, revision: 2, verified: true, historyDigest: `sha256:${'a'.repeat(64)}` },
+        { authorityId: 'witness-b', operationId, revision: 3, verified: true, historyDigest: `sha256:${'b'.repeat(64)}` },
+      ],
+    });
+    s.readEffect = async () => ({ operationId, permit: permitRecord, state: 'committed', claimed: true, revision: 3,
+      successReceipt: { permitId: permit.id, approvalId: permit.approvalId, operationId, receiptDigest: `sha256:${'c'.repeat(64)}`, verified: true } });
+    await expect(resolveExecutionEffect(permit, current, operationId, s)).resolves.toMatchObject({ status: 'executed', reason: 'effect_committed' });
+  });
+
+  it.each([
+    ['unavailable', undefined, true],
+    ['unverified', [{ authorityId: 'witness-a', operationId, revision: 1, verified: false, historyDigest: `sha256:${'a'.repeat(64)}` }], false],
+    ['duplicate authority', [
+      { authorityId: 'witness-a', operationId, revision: 1, verified: true, historyDigest: `sha256:${'a'.repeat(64)}` },
+      { authorityId: 'witness-a', operationId, revision: 1, verified: true, historyDigest: `sha256:${'a'.repeat(64)}` },
+    ], false],
+    ['misbound operation', [{ authorityId: 'witness-a', operationId: 'op_other', revision: 1, verified: true, historyDigest: `sha256:${'a'.repeat(64)}` }], false],
+    ['malformed digest', [{ authorityId: 'witness-a', operationId, revision: 1, verified: true, historyDigest: 'digest:not-sha256' }], false],
+  ])('fails closed for %s multi-authority checkpoint truth', async (_label, checkpoints, unavailable) => {
+    const s = store({ checkpoints: checkpoints as ApprovalExecutionRevisionAuthorityCheckpoint[] | undefined });
+    if (unavailable) s.readEffectRevisionCheckpoints = async () => undefined as never;
+    const result = await resolveExecutionEffect(permit, current, operationId, s);
+    expect(result.retryable).toBe(false);
+    expect(result.status).toBe('indeterminate');
+    expect(result.reason).toBe(unavailable ? 'journal_unavailable' : 'journal_inconsistent');
+  });
+
   it('rechecks the checkpoint after a losing begin CAS', async () => {
     const s = store({ postCasRollback: true, checkpoint: { operationId, revision: 3, verified: true } });
     await expect(beginExecutionEffect(permit, current, operationId, s))
       .resolves.toEqual({ status: 'blocked', retryable: false, reason: 'journal_stale' });
+  });
+
+  it('does not execute when checkpoint authorities equivocate after a successful begin CAS', async () => {
+    let reads = 0;
+    const s = store();
+    s.readEffectRevisionCheckpoints = async () => {
+      reads += 1;
+      return reads === 1
+        ? [
+            { authorityId: 'witness-a', operationId, revision: 1, verified: true, historyDigest: `sha256:${'a'.repeat(64)}` },
+            { authorityId: 'witness-b', operationId, revision: 1, verified: true, historyDigest: `sha256:${'a'.repeat(64)}` },
+          ]
+        : [
+            { authorityId: 'witness-a', operationId, revision: 2, verified: true, historyDigest: `sha256:${'a'.repeat(64)}` },
+            { authorityId: 'witness-b', operationId, revision: 2, verified: true, historyDigest: `sha256:${'b'.repeat(64)}` },
+          ];
+    };
+    await expect(beginExecutionEffect(permit, current, operationId, s))
+      .resolves.toEqual({ status: 'blocked', retryable: false, reason: 'journal_inconsistent' });
   });
 });
 

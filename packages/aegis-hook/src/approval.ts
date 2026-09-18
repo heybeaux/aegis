@@ -770,9 +770,27 @@ export interface ApprovalExecutionRevisionCheckpoint {
   verified: boolean;
 }
 
+/**
+ * One independently authenticated checkpoint authority's view of an operation history.
+ * `historyDigest` binds the authority's revision to the operation history it witnessed; matching
+ * revisions with different digests are equivocation and must fail closed.
+ */
+export interface ApprovalExecutionRevisionAuthorityCheckpoint {
+  authorityId: string;
+  operationId: string;
+  revision: number;
+  verified: boolean;
+  historyDigest: string;
+}
+
 /** Optional transparency-anchor extension for detecting rollback of the host authority plane. */
 export interface AnchoredApprovalExecutionPermitStore extends RevisionedApprovalExecutionPermitStore {
   readEffectRevisionCheckpoint(operationId: string): Promise<ApprovalExecutionRevisionCheckpoint | undefined>;
+}
+
+/** Optional multi-authority extension for detecting checkpoint equivocation. */
+export interface MultiAuthorityAnchoredApprovalExecutionPermitStore extends AnchoredApprovalExecutionPermitStore {
+  readEffectRevisionCheckpoints(operationId: string): Promise<ApprovalExecutionRevisionAuthorityCheckpoint[] | undefined>;
 }
 
 export type ApprovalExecutionEffectResolutionStatus = 'executed' | 'not_executed' | 'indeterminate';
@@ -881,7 +899,56 @@ function anchoredStore(
   return revisionCapableStore(store) && typeof candidate.readEffectRevisionCheckpoint === 'function';
 }
 
+function multiAuthorityAnchoredStore(
+  store: JournaledApprovalExecutionPermitStore,
+): store is MultiAuthorityAnchoredApprovalExecutionPermitStore {
+  const candidate = store as Partial<MultiAuthorityAnchoredApprovalExecutionPermitStore>;
+  return anchoredStore(store) && typeof candidate.readEffectRevisionCheckpoints === 'function';
+}
+
 type AuthorityCheckpointIntegrity = 'legacy' | 'current' | 'stale' | 'inconsistent' | 'unavailable';
+
+/** Validate that every visible independent checkpoint authority agrees on operation history. */
+async function multiAuthorityCheckpointIntegrity(
+  operationId: string,
+  store: JournaledApprovalExecutionPermitStore,
+): Promise<AuthorityCheckpointIntegrity> {
+  if (!multiAuthorityAnchoredStore(store)) return 'legacy';
+  let checkpoints: unknown;
+  try {
+    checkpoints = await store.readEffectRevisionCheckpoints(operationId);
+  } catch {
+    return 'unavailable';
+  }
+  if (checkpoints === undefined) return 'unavailable';
+  if (!Array.isArray(checkpoints) || checkpoints.length === 0) return 'inconsistent';
+  const seenAuthorityIds = new Set<string>();
+  const historyDigestByRevision = new Map<number, string>();
+  const allowedKeys = new Set(['authorityId', 'operationId', 'revision', 'verified', 'historyDigest']);
+  for (const checkpoint of checkpoints) {
+    if (!presentObject(checkpoint) || Array.isArray(checkpoint)) return 'inconsistent';
+    const candidate = checkpoint as Partial<ApprovalExecutionRevisionAuthorityCheckpoint>;
+    if (Object.keys(candidate).some((key) => !allowedKeys.has(key))) return 'inconsistent';
+    if (
+      typeof candidate.authorityId !== 'string' ||
+      !/^[A-Za-z0-9:_-]{3,80}$/.test(candidate.authorityId) ||
+      seenAuthorityIds.has(candidate.authorityId) ||
+      candidate.operationId !== operationId ||
+      candidate.verified !== true ||
+      !Number.isSafeInteger(candidate.revision) ||
+      candidate.revision! <= 0 ||
+      typeof candidate.historyDigest !== 'string' ||
+      !validReceiptDigest(candidate.historyDigest)
+    ) return 'inconsistent';
+    seenAuthorityIds.add(candidate.authorityId);
+    const existingDigest = historyDigestByRevision.get(candidate.revision!);
+    if (existingDigest !== undefined && existingDigest !== candidate.historyDigest) {
+      return 'inconsistent';
+    }
+    historyDigestByRevision.set(candidate.revision!, candidate.historyDigest);
+  }
+  return 'current';
+}
 
 /** Compare host-owned revision truth with an independently retained authenticated lower bound. */
 async function authorityCheckpointIntegrity(
@@ -889,6 +956,10 @@ async function authorityCheckpointIntegrity(
   store: JournaledApprovalExecutionPermitStore,
 ): Promise<AuthorityCheckpointIntegrity> {
   if (!anchoredStore(store)) return 'legacy';
+  const multiAuthorityIntegrity = await multiAuthorityCheckpointIntegrity(operationId, store);
+  if (multiAuthorityIntegrity === 'unavailable' || multiAuthorityIntegrity === 'inconsistent') {
+    return multiAuthorityIntegrity;
+  }
   let highWater: number | undefined;
   let checkpoint: unknown;
   try {
@@ -1049,6 +1120,20 @@ export async function resolveAnchoredExecutionEffect(
   current: ApprovalExecutionSnapshot,
   operationId: string,
   store: AnchoredApprovalExecutionPermitStore,
+): Promise<ApprovalExecutionEffectResolutionResult> {
+  return resolveExecutionEffect(permit, current, operationId, store);
+}
+
+/**
+ * Explicit multi-authority transparency-anchor entry point. The ordinary resolver also detects the
+ * optional plural capability, so callers cannot bypass checkpoint-equivocation validation by
+ * choosing an older name.
+ */
+export async function resolveMultiAuthorityAnchoredExecutionEffect(
+  permit: ApprovalExecutionPermit,
+  current: ApprovalExecutionSnapshot,
+  operationId: string,
+  store: MultiAuthorityAnchoredApprovalExecutionPermitStore,
 ): Promise<ApprovalExecutionEffectResolutionResult> {
   return resolveExecutionEffect(permit, current, operationId, store);
 }

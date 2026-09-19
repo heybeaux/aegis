@@ -783,6 +783,14 @@ export interface ApprovalExecutionRevisionAuthorityCheckpoint {
   historyDigest: string;
 }
 
+/** Complete required checkpoint-authority membership for one operation. */
+export interface ApprovalExecutionRevisionWitnessSet {
+  operationId: string;
+  requiredAuthorityIds: string[];
+  minimumRequiredAuthorities: number;
+  verified: boolean;
+}
+
 /** Optional transparency-anchor extension for detecting rollback of the host authority plane. */
 export interface AnchoredApprovalExecutionPermitStore extends RevisionedApprovalExecutionPermitStore {
   readEffectRevisionCheckpoint(operationId: string): Promise<ApprovalExecutionRevisionCheckpoint | undefined>;
@@ -791,6 +799,11 @@ export interface AnchoredApprovalExecutionPermitStore extends RevisionedApproval
 /** Optional multi-authority extension for detecting checkpoint equivocation. */
 export interface MultiAuthorityAnchoredApprovalExecutionPermitStore extends AnchoredApprovalExecutionPermitStore {
   readEffectRevisionCheckpoints(operationId: string): Promise<ApprovalExecutionRevisionAuthorityCheckpoint[] | undefined>;
+}
+
+/** Optional witness-set extension for detecting omitted checkpoint authorities. */
+export interface WitnessSetAnchoredApprovalExecutionPermitStore extends MultiAuthorityAnchoredApprovalExecutionPermitStore {
+  readEffectRevisionWitnessSet(operationId: string): Promise<ApprovalExecutionRevisionWitnessSet | undefined>;
 }
 
 export type ApprovalExecutionEffectResolutionStatus = 'executed' | 'not_executed' | 'indeterminate';
@@ -906,6 +919,13 @@ function multiAuthorityAnchoredStore(
   return anchoredStore(store) && typeof candidate.readEffectRevisionCheckpoints === 'function';
 }
 
+function witnessSetAnchoredStore(
+  store: JournaledApprovalExecutionPermitStore,
+): store is WitnessSetAnchoredApprovalExecutionPermitStore {
+  const candidate = store as Partial<WitnessSetAnchoredApprovalExecutionPermitStore>;
+  return multiAuthorityAnchoredStore(store) && typeof candidate.readEffectRevisionWitnessSet === 'function';
+}
+
 type AuthorityCheckpointIntegrity = 'legacy' | 'current' | 'stale' | 'inconsistent' | 'unavailable';
 
 /** Validate that every visible independent checkpoint authority agrees on operation history. */
@@ -946,6 +966,46 @@ async function multiAuthorityCheckpointIntegrity(
       return 'inconsistent';
     }
     historyDigestByRevision.set(candidate.revision!, candidate.historyDigest);
+  }
+  if (witnessSetAnchoredStore(store)) {
+    let witnessSet: unknown;
+    try {
+      witnessSet = await store.readEffectRevisionWitnessSet(operationId);
+    } catch {
+      return 'unavailable';
+    }
+    if (witnessSet === undefined) return 'unavailable';
+    if (!presentObject(witnessSet) || Array.isArray(witnessSet)) return 'inconsistent';
+    const candidate = witnessSet as Partial<ApprovalExecutionRevisionWitnessSet>;
+    const witnessAllowedKeys = new Set([
+      'operationId',
+      'requiredAuthorityIds',
+      'minimumRequiredAuthorities',
+      'verified',
+    ]);
+    if (Object.keys(candidate).some((key) => !witnessAllowedKeys.has(key))) return 'inconsistent';
+    if (
+      candidate.operationId !== operationId ||
+      candidate.verified !== true ||
+      !Array.isArray(candidate.requiredAuthorityIds) ||
+      candidate.requiredAuthorityIds.length === 0 ||
+      !Number.isSafeInteger(candidate.minimumRequiredAuthorities) ||
+      candidate.minimumRequiredAuthorities! <= 0 ||
+      candidate.minimumRequiredAuthorities! > candidate.requiredAuthorityIds.length
+    ) return 'inconsistent';
+    const requiredAuthorityIds = new Set<string>();
+    for (const authorityId of candidate.requiredAuthorityIds) {
+      if (
+        typeof authorityId !== 'string' ||
+        !/^[A-Za-z0-9:_-]{3,80}$/.test(authorityId) ||
+        requiredAuthorityIds.has(authorityId)
+      ) return 'inconsistent';
+      requiredAuthorityIds.add(authorityId);
+    }
+    if (seenAuthorityIds.size < candidate.minimumRequiredAuthorities!) return 'inconsistent';
+    for (const authorityId of requiredAuthorityIds) {
+      if (!seenAuthorityIds.has(authorityId)) return 'inconsistent';
+    }
   }
   return 'current';
 }
@@ -1134,6 +1194,20 @@ export async function resolveMultiAuthorityAnchoredExecutionEffect(
   current: ApprovalExecutionSnapshot,
   operationId: string,
   store: MultiAuthorityAnchoredApprovalExecutionPermitStore,
+): Promise<ApprovalExecutionEffectResolutionResult> {
+  return resolveExecutionEffect(permit, current, operationId, store);
+}
+
+/**
+ * Explicit witness-set transparency-anchor entry point. The ordinary resolver also detects the
+ * optional witness-set capability, so callers cannot bypass authority-completeness validation by
+ * choosing an older name.
+ */
+export async function resolveWitnessSetAnchoredExecutionEffect(
+  permit: ApprovalExecutionPermit,
+  current: ApprovalExecutionSnapshot,
+  operationId: string,
+  store: WitnessSetAnchoredApprovalExecutionPermitStore,
 ): Promise<ApprovalExecutionEffectResolutionResult> {
   return resolveExecutionEffect(permit, current, operationId, store);
 }

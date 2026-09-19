@@ -5,9 +5,11 @@ import {
   resolveAnchoredExecutionEffect,
   resolveExecutionEffect,
   resolveMultiAuthorityAnchoredExecutionEffect,
+  resolveWitnessSetAnchoredExecutionEffect,
   type ApprovalExecutionPermit,
   type ApprovalExecutionRevisionCheckpoint,
   type ApprovalExecutionRevisionAuthorityCheckpoint,
+  type ApprovalExecutionRevisionWitnessSet,
 } from '../src/approval.js';
 
 const signature = 'authority-checkpoint-signature';
@@ -22,8 +24,10 @@ function store(options: {
   highWater?: number;
   checkpoint?: ApprovalExecutionRevisionCheckpoint | Record<string, unknown>;
   checkpoints?: ApprovalExecutionRevisionAuthorityCheckpoint[] | Record<string, unknown>[];
+  witnessSet?: ApprovalExecutionRevisionWitnessSet | Record<string, unknown>;
   checkpointError?: boolean;
   checkpointQuorumError?: boolean;
+  witnessSetError?: boolean;
   postCasRollback?: boolean;
 } = {}) {
   const value = {
@@ -54,6 +58,12 @@ function store(options: {
             { authorityId: 'witness-b', operationId, revision: 1, verified: true, historyDigest: `sha256:${'a'.repeat(64)}` },
           ]
         : structuredClone(options.checkpoints);
+    },
+    async readEffectRevisionWitnessSet() {
+      if (options.witnessSetError) throw new Error('witness set unavailable');
+      return options.witnessSet === undefined
+        ? { operationId, requiredAuthorityIds: ['witness-a', 'witness-b'], minimumRequiredAuthorities: 2, verified: true }
+        : structuredClone(options.witnessSet);
     },
   };
 }
@@ -152,6 +162,84 @@ describe('independent authority revision checkpoints', () => {
           ]
         : [
             { authorityId: 'witness-a', operationId, revision: 2, verified: true, historyDigest: `sha256:${'a'.repeat(64)}` },
+            { authorityId: 'witness-b', operationId, revision: 2, verified: true, historyDigest: `sha256:${'b'.repeat(64)}` },
+          ];
+    };
+    await expect(beginExecutionEffect(permit, current, operationId, s))
+      .resolves.toEqual({ status: 'blocked', retryable: false, reason: 'journal_inconsistent' });
+  });
+
+  it('fails closed when a required checkpoint witness is omitted from the visible authorities', async () => {
+    await expect(resolveWitnessSetAnchoredExecutionEffect(permit, current, operationId, store({
+      checkpoints: [
+        { authorityId: 'witness-a', operationId, revision: 1, verified: true, historyDigest: `sha256:${'a'.repeat(64)}` },
+        { authorityId: 'witness-b', operationId, revision: 1, verified: true, historyDigest: `sha256:${'a'.repeat(64)}` },
+      ],
+      witnessSet: {
+        operationId,
+        requiredAuthorityIds: ['witness-a', 'witness-b', 'witness-c'],
+        minimumRequiredAuthorities: 3,
+        verified: true,
+      },
+    }))).resolves.toEqual({ status: 'indeterminate', retryable: false, reason: 'journal_inconsistent' });
+  });
+
+  it('preserves complete witness sets through the explicit witness-set resolver', async () => {
+    await expect(resolveWitnessSetAnchoredExecutionEffect(permit, current, operationId, store({
+      checkpoints: [
+        { authorityId: 'witness-a', operationId, revision: 1, verified: true, historyDigest: `sha256:${'a'.repeat(64)}` },
+        { authorityId: 'witness-b', operationId, revision: 1, verified: true, historyDigest: `sha256:${'a'.repeat(64)}` },
+        { authorityId: 'witness-c', operationId, revision: 1, verified: true, historyDigest: `sha256:${'a'.repeat(64)}` },
+      ],
+      witnessSet: {
+        operationId,
+        requiredAuthorityIds: ['witness-a', 'witness-b', 'witness-c'],
+        minimumRequiredAuthorities: 3,
+        verified: true,
+      },
+    }))).resolves.toEqual({ status: 'not_executed', retryable: true, reason: 'not_started' });
+  });
+
+  it.each([
+    ['unavailable', undefined, true],
+    ['unverified', { operationId, requiredAuthorityIds: ['witness-a', 'witness-b'], minimumRequiredAuthorities: 2, verified: false }, false],
+    ['duplicate authority id', { operationId, requiredAuthorityIds: ['witness-a', 'witness-a'], minimumRequiredAuthorities: 2, verified: true }, false],
+    ['missing minimum quorum', { operationId, requiredAuthorityIds: ['witness-a', 'witness-b'], minimumRequiredAuthorities: 3, verified: true }, false],
+    ['misbound operation', { operationId: 'op_other', requiredAuthorityIds: ['witness-a', 'witness-b'], minimumRequiredAuthorities: 2, verified: true }, false],
+  ])('fails closed for %s witness-set policy', async (_label, witnessSet, unavailable) => {
+    const s = store({ witnessSet: witnessSet as ApprovalExecutionRevisionWitnessSet | undefined });
+    if (unavailable) s.readEffectRevisionWitnessSet = async () => undefined as never;
+    const result = await resolveExecutionEffect(permit, current, operationId, s);
+    expect(result.retryable).toBe(false);
+    expect(result.status).toBe('indeterminate');
+    expect(result.reason).toBe(unavailable ? 'journal_unavailable' : 'journal_inconsistent');
+  });
+
+  it('does not execute when a required witness disappears after a successful begin CAS', async () => {
+    let reads = 0;
+    const s = store({
+      checkpoints: [
+        { authorityId: 'witness-a', operationId, revision: 1, verified: true, historyDigest: `sha256:${'a'.repeat(64)}` },
+        { authorityId: 'witness-b', operationId, revision: 1, verified: true, historyDigest: `sha256:${'a'.repeat(64)}` },
+        { authorityId: 'witness-c', operationId, revision: 1, verified: true, historyDigest: `sha256:${'a'.repeat(64)}` },
+      ],
+      witnessSet: {
+        operationId,
+        requiredAuthorityIds: ['witness-a', 'witness-b', 'witness-c'],
+        minimumRequiredAuthorities: 3,
+        verified: true,
+      },
+    });
+    s.readEffectRevisionCheckpoints = async () => {
+      reads += 1;
+      return reads === 1
+        ? [
+            { authorityId: 'witness-a', operationId, revision: 1, verified: true, historyDigest: `sha256:${'a'.repeat(64)}` },
+            { authorityId: 'witness-b', operationId, revision: 1, verified: true, historyDigest: `sha256:${'a'.repeat(64)}` },
+            { authorityId: 'witness-c', operationId, revision: 1, verified: true, historyDigest: `sha256:${'a'.repeat(64)}` },
+          ]
+        : [
+            { authorityId: 'witness-a', operationId, revision: 2, verified: true, historyDigest: `sha256:${'b'.repeat(64)}` },
             { authorityId: 'witness-b', operationId, revision: 2, verified: true, historyDigest: `sha256:${'b'.repeat(64)}` },
           ];
     };

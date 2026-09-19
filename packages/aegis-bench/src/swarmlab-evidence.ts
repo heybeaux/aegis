@@ -772,6 +772,24 @@ export const SWARMLAB_EVIDENCE_CASES: readonly SwarmLabEvidenceCase[] = [
       { name: 'aegisWrappedPostCasEquivocationSafety', before: 0, after: 1, threshold: 1, comparator: 'eq' },
     ],
   },
+  {
+    id: 'RT-34',
+    source: 'SwarmLab exp-43 checkpoint witness-set omission',
+    finding: 'Visible checkpoint authorities can be mutually consistent while omitting a required witness that saw a later or conflicting same-operation history.',
+    owners: ['aegis'], change: 'Added an optional checkpoint witness-set contract, required-authority completeness validation, and an explicit witness-set resolver.',
+    runIds: ['cwo-mu80pubb', 'cwo-mu80s96a'], implementationRefs: ['a62c52ea4bcdbb9f5e7c29dc06ade20196f6ecc7'], evidenceTier: 'verified', implementationStatus: 'landed',
+    aegisMapping: 'checkpoint witness-set completeness is required before terminal certainty or retry authority',
+    metrics: [
+      { name: 'aegisWrappedWitnessOmissionDetectionRate', before: 0, after: 1, threshold: 1, comparator: 'eq' },
+      { name: 'aegisWrappedOmissionRetryAuthorityRate', before: 0.6, after: 0, threshold: 0, comparator: 'eq' },
+      { name: 'aegisWrappedResolutionAccuracy', before: 0.2857142857142857, after: 1, threshold: 1, comparator: 'eq' },
+      { name: 'aegisWrappedWitnessSetApiAvailability', before: 0, after: 1, threshold: 1, comparator: 'eq' },
+      { name: 'aegisWrappedUnavailableWitnessSetSafety', before: 0, after: 1, threshold: 1, comparator: 'eq' },
+      { name: 'aegisWrappedAbsentWitnessSetSafety', before: 0, after: 1, threshold: 1, comparator: 'eq' },
+      { name: 'aegisWrappedInvalidWitnessSetSafety', before: 0, after: 1, threshold: 1, comparator: 'eq' },
+      { name: 'aegisWrappedPostCasWitnessOmissionSafety', before: 0, after: 1, threshold: 1, comparator: 'eq' },
+    ],
+  },
 ];
 
 export function evaluateSwarmLabEvidence(

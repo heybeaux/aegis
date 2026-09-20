@@ -10,8 +10,8 @@ describe('SwarmLab evidence gate', () => {
   it('passes when all stack mappings are landed with verified evidence', () => {
     const result = evaluateSwarmLabEvidence();
     expect(result.status).toBe('passed');
-    expect(result.total).toBe(34);
-    expect(result.passed).toBe(34);
+    expect(result.total).toBe(35);
+    expect(result.passed).toBe(35);
     expect(result.failed).toBe(0);
     expect(result.partial).toBe(0);
     expect(result.pendingImplementation).toBe(0);
@@ -224,6 +224,7 @@ describe('SwarmLab evidence gate', () => {
       'RT-32',
       'RT-33',
       'RT-34',
+      'RT-35',
     ]);
 
     const mappings = SWARMLAB_EVIDENCE_CASES.map((c) => c.aegisMapping).join('\n');
@@ -259,11 +260,12 @@ describe('SwarmLab evidence gate', () => {
     expect(mappings).toContain('authority rollback requires an independently retained authenticated monotonic checkpoint');
     expect(mappings).toContain('checkpoint authority equivocation requires multi-authority history digest validation');
     expect(mappings).toContain('checkpoint witness-set completeness');
+    expect(mappings).toContain('checkpoint witness roster epoch freshness');
   });
 
   it('renders a report banner matching the evaluated evidence range', () => {
     const markdown = swarmLabEvidenceToMarkdown(evaluateSwarmLabEvidence());
-    expect(markdown).toContain('REPLAY-VERIFIED SWARMLAB RETESTS (RT-01..RT-34)');
+    expect(markdown).toContain('REPLAY-VERIFIED SWARMLAB RETESTS (RT-01..RT-35)');
     expect(markdown).not.toContain('RT-01..RT-10');
     expect(markdown).toContain('0 provisional evidence tier');
     expect(markdown).toContain('| RT-06 | passed | landed | verified |');
@@ -276,6 +278,7 @@ describe('SwarmLab evidence gate', () => {
     expect(markdown).toContain('| RT-15 | passed | landed | verified |');
     expect(markdown).toContain('| RT-16 | passed | landed | verified |');
     expect(markdown).toContain('| RT-34 | passed | landed | verified |');
+    expect(markdown).toContain('| RT-35 | passed | landed | verified |');
     expect(markdown).toContain('| RT-17 | passed | landed | verified |');
     expect(markdown).toContain('| RT-18 | passed | landed | verified |');
     expect(markdown).toContain('| RT-19 | passed | landed | verified |');

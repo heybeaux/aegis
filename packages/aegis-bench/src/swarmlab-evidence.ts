@@ -790,6 +790,24 @@ export const SWARMLAB_EVIDENCE_CASES: readonly SwarmLabEvidenceCase[] = [
       { name: 'aegisWrappedPostCasWitnessOmissionSafety', before: 0, after: 1, threshold: 1, comparator: 'eq' },
     ],
   },
+  {
+    id: 'RT-35',
+    source: 'SwarmLab exp-44 checkpoint witness roster epoch',
+    finding: 'A complete visible checkpoint witness set can still belong to an obsolete roster epoch; current roster truth needs its own authenticated epoch/digest contract.',
+    owners: ['aegis'], change: 'Added an optional checkpoint witness-roster contract, self-checking roster digest validation, current-roster/visible-witness comparison, and an explicit roster resolver.',
+    runIds: ['wre-mu9gc5je', 'wre-mu9genkw'], implementationRefs: ['be465b0eeae5ed140a7bdaf4f88ca5928c095974'], evidenceTier: 'verified', implementationStatus: 'landed',
+    aegisMapping: 'checkpoint witness roster epoch freshness is required before terminal certainty or retry authority',
+    metrics: [
+      { name: 'aegisWrappedRosterSplitDetectionRate', before: 0, after: 1, threshold: 1, comparator: 'eq' },
+      { name: 'aegisWrappedRosterSplitRetryAuthorityRate', before: 0.7142857142857143, after: 0, threshold: 0, comparator: 'eq' },
+      { name: 'aegisWrappedResolutionAccuracy', before: 0.25, after: 1, threshold: 1, comparator: 'eq' },
+      { name: 'aegisWrappedWitnessRosterApiAvailability', before: 0, after: 1, threshold: 1, comparator: 'eq' },
+      { name: 'aegisWrappedUnavailableRosterSafety', before: 0, after: 1, threshold: 1, comparator: 'eq' },
+      { name: 'aegisWrappedAbsentRosterSafety', before: 0, after: 1, threshold: 1, comparator: 'eq' },
+      { name: 'aegisWrappedInvalidRosterSafety', before: 0, after: 1, threshold: 1, comparator: 'eq' },
+      { name: 'aegisWrappedPostCasRosterSplitSafety', before: 0, after: 1, threshold: 1, comparator: 'eq' },
+    ],
+  },
 ];
 
 export function evaluateSwarmLabEvidence(

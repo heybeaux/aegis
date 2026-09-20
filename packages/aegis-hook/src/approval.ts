@@ -791,6 +791,12 @@ export interface ApprovalExecutionRevisionWitnessSet {
   verified: boolean;
 }
 
+/** Independently retained current witness roster with a self-checking epoch digest. */
+export interface ApprovalExecutionRevisionWitnessRoster extends ApprovalExecutionRevisionWitnessSet {
+  rosterEpoch: number;
+  rosterDigest: string;
+}
+
 /** Optional transparency-anchor extension for detecting rollback of the host authority plane. */
 export interface AnchoredApprovalExecutionPermitStore extends RevisionedApprovalExecutionPermitStore {
   readEffectRevisionCheckpoint(operationId: string): Promise<ApprovalExecutionRevisionCheckpoint | undefined>;
@@ -804,6 +810,11 @@ export interface MultiAuthorityAnchoredApprovalExecutionPermitStore extends Anch
 /** Optional witness-set extension for detecting omitted checkpoint authorities. */
 export interface WitnessSetAnchoredApprovalExecutionPermitStore extends MultiAuthorityAnchoredApprovalExecutionPermitStore {
   readEffectRevisionWitnessSet(operationId: string): Promise<ApprovalExecutionRevisionWitnessSet | undefined>;
+}
+
+/** Optional current-roster extension for detecting stale or split-brain witness-set policy. */
+export interface WitnessRosterAnchoredApprovalExecutionPermitStore extends WitnessSetAnchoredApprovalExecutionPermitStore {
+  readEffectRevisionWitnessRoster(operationId: string): Promise<ApprovalExecutionRevisionWitnessRoster | undefined>;
 }
 
 export type ApprovalExecutionEffectResolutionStatus = 'executed' | 'not_executed' | 'indeterminate';
@@ -926,6 +937,27 @@ function witnessSetAnchoredStore(
   return multiAuthorityAnchoredStore(store) && typeof candidate.readEffectRevisionWitnessSet === 'function';
 }
 
+function witnessRosterAnchoredStore(
+  store: JournaledApprovalExecutionPermitStore,
+): store is WitnessRosterAnchoredApprovalExecutionPermitStore {
+  const candidate = store as Partial<WitnessRosterAnchoredApprovalExecutionPermitStore>;
+  return witnessSetAnchoredStore(store) && typeof candidate.readEffectRevisionWitnessRoster === 'function';
+}
+
+function witnessRosterDigest(
+  operationId: string,
+  requiredAuthorityIds: readonly string[],
+  minimumRequiredAuthorities: number,
+  rosterEpoch: number,
+): string {
+  return `sha256:${createHash('sha256').update(stable({
+    operationId,
+    rosterEpoch,
+    minimumRequiredAuthorities,
+    requiredAuthorityIds: [...requiredAuthorityIds].sort(),
+  })).digest('hex')}`;
+}
+
 type AuthorityCheckpointIntegrity = 'legacy' | 'current' | 'stale' | 'inconsistent' | 'unavailable';
 
 /** Validate that every visible independent checkpoint authority agrees on operation history. */
@@ -1006,6 +1038,76 @@ async function multiAuthorityCheckpointIntegrity(
     for (const authorityId of requiredAuthorityIds) {
       if (!seenAuthorityIds.has(authorityId)) return 'inconsistent';
     }
+  }
+  if (witnessRosterAnchoredStore(store)) {
+    let witnessSet: unknown;
+    let witnessRoster: unknown;
+    try {
+      [witnessSet, witnessRoster] = await Promise.all([
+        store.readEffectRevisionWitnessSet(operationId),
+        store.readEffectRevisionWitnessRoster(operationId),
+      ]);
+    } catch {
+      return 'unavailable';
+    }
+    if (witnessRoster === undefined || witnessSet === undefined) return 'unavailable';
+    if (!presentObject(witnessRoster) || Array.isArray(witnessRoster)) return 'inconsistent';
+    if (!presentObject(witnessSet) || Array.isArray(witnessSet)) return 'inconsistent';
+
+    const roster = witnessRoster as Partial<ApprovalExecutionRevisionWitnessRoster>;
+    const visibleWitnessSet = witnessSet as Partial<ApprovalExecutionRevisionWitnessSet>;
+    const rosterAllowedKeys = new Set([
+      'operationId',
+      'requiredAuthorityIds',
+      'minimumRequiredAuthorities',
+      'rosterEpoch',
+      'rosterDigest',
+      'verified',
+    ]);
+    if (Object.keys(roster).some((key) => !rosterAllowedKeys.has(key))) return 'inconsistent';
+    if (
+      roster.operationId !== operationId ||
+      roster.verified !== true ||
+      !Array.isArray(roster.requiredAuthorityIds) ||
+      roster.requiredAuthorityIds.length === 0 ||
+      !Number.isSafeInteger(roster.minimumRequiredAuthorities) ||
+      roster.minimumRequiredAuthorities! <= 0 ||
+      roster.minimumRequiredAuthorities! > roster.requiredAuthorityIds.length ||
+      !Number.isSafeInteger(roster.rosterEpoch) ||
+      roster.rosterEpoch! <= 0 ||
+      typeof roster.rosterDigest !== 'string' ||
+      !validReceiptDigest(roster.rosterDigest)
+    ) return 'inconsistent';
+
+    const rosterAuthorityIds = new Set<string>();
+    for (const authorityId of roster.requiredAuthorityIds) {
+      if (
+        typeof authorityId !== 'string' ||
+        !/^[A-Za-z0-9:_-]{3,80}$/.test(authorityId) ||
+        rosterAuthorityIds.has(authorityId)
+      ) return 'inconsistent';
+      rosterAuthorityIds.add(authorityId);
+    }
+    if (roster.rosterDigest !== witnessRosterDigest(
+      operationId,
+      roster.requiredAuthorityIds,
+      roster.minimumRequiredAuthorities!,
+      roster.rosterEpoch!,
+    )) return 'inconsistent';
+
+    if (
+      visibleWitnessSet.operationId !== operationId ||
+      visibleWitnessSet.verified !== true ||
+      !Array.isArray(visibleWitnessSet.requiredAuthorityIds) ||
+      visibleWitnessSet.minimumRequiredAuthorities !== roster.minimumRequiredAuthorities
+    ) return 'inconsistent';
+    const visibleRequiredAuthorityIds = new Set(visibleWitnessSet.requiredAuthorityIds);
+    if (visibleRequiredAuthorityIds.size !== rosterAuthorityIds.size) return 'inconsistent';
+    for (const authorityId of rosterAuthorityIds) {
+      if (!visibleRequiredAuthorityIds.has(authorityId)) return 'inconsistent';
+      if (!seenAuthorityIds.has(authorityId)) return 'inconsistent';
+    }
+    if (seenAuthorityIds.size < roster.minimumRequiredAuthorities!) return 'inconsistent';
   }
   return 'current';
 }
@@ -1208,6 +1310,20 @@ export async function resolveWitnessSetAnchoredExecutionEffect(
   current: ApprovalExecutionSnapshot,
   operationId: string,
   store: WitnessSetAnchoredApprovalExecutionPermitStore,
+): Promise<ApprovalExecutionEffectResolutionResult> {
+  return resolveExecutionEffect(permit, current, operationId, store);
+}
+
+/**
+ * Explicit current-roster transparency-anchor entry point. The ordinary resolver also detects the
+ * optional roster capability, so callers cannot bypass witness-policy freshness validation by
+ * choosing an older name.
+ */
+export async function resolveWitnessRosterAnchoredExecutionEffect(
+  permit: ApprovalExecutionPermit,
+  current: ApprovalExecutionSnapshot,
+  operationId: string,
+  store: WitnessRosterAnchoredApprovalExecutionPermitStore,
 ): Promise<ApprovalExecutionEffectResolutionResult> {
   return resolveExecutionEffect(permit, current, operationId, store);
 }

@@ -5,11 +5,13 @@ import {
   resolveAnchoredExecutionEffect,
   resolveExecutionEffect,
   resolveMultiAuthorityAnchoredExecutionEffect,
+  resolveWitnessRosterAnchoredExecutionEffect,
   resolveWitnessSetAnchoredExecutionEffect,
   type ApprovalExecutionPermit,
   type ApprovalExecutionRevisionCheckpoint,
   type ApprovalExecutionRevisionAuthorityCheckpoint,
   type ApprovalExecutionRevisionWitnessSet,
+  type ApprovalExecutionRevisionWitnessRoster,
 } from '../src/approval.js';
 
 const signature = 'authority-checkpoint-signature';
@@ -19,15 +21,32 @@ const operationId = 'op_authority_checkpoint_test';
 const links = [{ actorId: 'user:beaux', authorityLevel: 10, verified: true }, { actorId: 'agent:root', authorityLevel: 8, verified: true }];
 const permitRecord = { ...permit, signature, authorizationDigest: 'auth:checkpoint', effectiveConsumerId: 'agent:root', links, declaredScope: 'direct' as const, maxDepth: 1 };
 const current = { approvalId: permit.approvalId, authorizationDigest: permitRecord.authorizationDigest, effectiveConsumerId: permitRecord.effectiveConsumerId, links, revoked: false, revocationChecked: true, structurallyValid: true };
+const rosterDigest = (authorityIds: string[], minimumRequiredAuthorities: number, rosterEpoch: number) => `sha256:${createHash('sha256').update(JSON.stringify({
+  minimumRequiredAuthorities,
+  operationId,
+  requiredAuthorityIds: [...authorityIds].sort(),
+  rosterEpoch,
+})).digest('hex')}`;
+const currentRoster = (): ApprovalExecutionRevisionWitnessRoster => ({
+  operationId,
+  requiredAuthorityIds: ['witness-a', 'witness-b', 'witness-c'],
+  minimumRequiredAuthorities: 3,
+  rosterEpoch: 2,
+  rosterDigest: rosterDigest(['witness-a', 'witness-b', 'witness-c'], 3, 2),
+  verified: true,
+});
 
 function store(options: {
   highWater?: number;
   checkpoint?: ApprovalExecutionRevisionCheckpoint | Record<string, unknown>;
   checkpoints?: ApprovalExecutionRevisionAuthorityCheckpoint[] | Record<string, unknown>[];
   witnessSet?: ApprovalExecutionRevisionWitnessSet | Record<string, unknown>;
+  witnessRoster?: ApprovalExecutionRevisionWitnessRoster | Record<string, unknown>;
+  rosterCapable?: boolean;
   checkpointError?: boolean;
   checkpointQuorumError?: boolean;
   witnessSetError?: boolean;
+  witnessRosterError?: boolean;
   postCasRollback?: boolean;
 } = {}) {
   const value = {
@@ -65,6 +84,14 @@ function store(options: {
         ? { operationId, requiredAuthorityIds: ['witness-a', 'witness-b'], minimumRequiredAuthorities: 2, verified: true }
         : structuredClone(options.witnessSet);
     },
+    ...((options.rosterCapable || options.witnessRoster !== undefined || options.witnessRosterError) ? {
+      async readEffectRevisionWitnessRoster() {
+        if (options.witnessRosterError) throw new Error('witness roster unavailable');
+        return options.witnessRoster === undefined
+          ? { operationId, requiredAuthorityIds: ['witness-a', 'witness-b'], minimumRequiredAuthorities: 2, rosterEpoch: 1, rosterDigest: rosterDigest(['witness-a', 'witness-b'], 2, 1), verified: true }
+          : structuredClone(options.witnessRoster);
+      },
+    } : {}),
   };
 }
 
@@ -243,6 +270,83 @@ describe('independent authority revision checkpoints', () => {
             { authorityId: 'witness-b', operationId, revision: 2, verified: true, historyDigest: `sha256:${'b'.repeat(64)}` },
           ];
     };
+    await expect(beginExecutionEffect(permit, current, operationId, s))
+      .resolves.toEqual({ status: 'blocked', retryable: false, reason: 'journal_inconsistent' });
+  });
+
+  it('fails closed when a complete visible witness set belongs to an obsolete roster epoch', async () => {
+    await expect(resolveWitnessRosterAnchoredExecutionEffect(permit, current, operationId, store({
+      checkpoints: [
+        { authorityId: 'witness-a', operationId, revision: 1, verified: true, historyDigest: rosterDigest(['witness-a', 'witness-b'], 2, 1) },
+        { authorityId: 'witness-b', operationId, revision: 1, verified: true, historyDigest: rosterDigest(['witness-a', 'witness-b'], 2, 1) },
+      ],
+      witnessSet: { operationId, requiredAuthorityIds: ['witness-a', 'witness-b'], minimumRequiredAuthorities: 2, verified: true },
+      witnessRoster: currentRoster(),
+    }))).resolves.toEqual({ status: 'indeterminate', retryable: false, reason: 'journal_inconsistent' });
+  });
+
+  it('preserves current roster truth through the explicit roster resolver', async () => {
+    await expect(resolveWitnessRosterAnchoredExecutionEffect(permit, current, operationId, store({
+      checkpoints: [
+        { authorityId: 'witness-a', operationId, revision: 1, verified: true, historyDigest: currentRoster().rosterDigest },
+        { authorityId: 'witness-b', operationId, revision: 1, verified: true, historyDigest: currentRoster().rosterDigest },
+        { authorityId: 'witness-c', operationId, revision: 1, verified: true, historyDigest: currentRoster().rosterDigest },
+      ],
+      witnessSet: { operationId, requiredAuthorityIds: ['witness-a', 'witness-b', 'witness-c'], minimumRequiredAuthorities: 3, verified: true },
+      witnessRoster: currentRoster(),
+    }))).resolves.toEqual({ status: 'not_executed', retryable: true, reason: 'not_started' });
+  });
+
+  it.each([
+    ['unavailable', undefined, true],
+    ['unverified', { ...currentRoster(), verified: false }, false],
+    ['duplicate authority id', { ...currentRoster(), requiredAuthorityIds: ['witness-a', 'witness-a', 'witness-c'] }, false],
+    ['missing minimum quorum', { ...currentRoster(), minimumRequiredAuthorities: 4 }, false],
+    ['misbound digest', { ...currentRoster(), rosterDigest: `sha256:${'d'.repeat(64)}` }, false],
+  ])('fails closed for %s witness roster truth', async (_label, witnessRoster, unavailable) => {
+    const result = await resolveExecutionEffect(permit, current, operationId, store({
+      checkpoints: [
+        { authorityId: 'witness-a', operationId, revision: 1, verified: true, historyDigest: currentRoster().rosterDigest },
+        { authorityId: 'witness-b', operationId, revision: 1, verified: true, historyDigest: currentRoster().rosterDigest },
+        { authorityId: 'witness-c', operationId, revision: 1, verified: true, historyDigest: currentRoster().rosterDigest },
+      ],
+      witnessSet: { operationId, requiredAuthorityIds: ['witness-a', 'witness-b', 'witness-c'], minimumRequiredAuthorities: 3, verified: true },
+      witnessRoster: witnessRoster as ApprovalExecutionRevisionWitnessRoster | undefined,
+      rosterCapable: true,
+      witnessRosterError: unavailable,
+    }));
+    expect(result.retryable).toBe(false);
+    expect(result.status).toBe('indeterminate');
+    expect(result.reason).toBe(unavailable ? 'journal_unavailable' : 'journal_inconsistent');
+  });
+
+  it('does not execute when the witness roster splits after a successful begin CAS', async () => {
+    let reads = 0;
+    const s = store({
+      checkpoints: [
+        { authorityId: 'witness-a', operationId, revision: 1, verified: true, historyDigest: currentRoster().rosterDigest },
+        { authorityId: 'witness-b', operationId, revision: 1, verified: true, historyDigest: currentRoster().rosterDigest },
+        { authorityId: 'witness-c', operationId, revision: 1, verified: true, historyDigest: currentRoster().rosterDigest },
+      ],
+      witnessSet: { operationId, requiredAuthorityIds: ['witness-a', 'witness-b', 'witness-c'], minimumRequiredAuthorities: 3, verified: true },
+      witnessRoster: currentRoster(),
+    });
+    s.readEffectRevisionCheckpoints = async () => {
+      reads += 1;
+      return reads === 1
+        ? [
+            { authorityId: 'witness-a', operationId, revision: 1, verified: true, historyDigest: currentRoster().rosterDigest },
+            { authorityId: 'witness-b', operationId, revision: 1, verified: true, historyDigest: currentRoster().rosterDigest },
+            { authorityId: 'witness-c', operationId, revision: 1, verified: true, historyDigest: currentRoster().rosterDigest },
+          ]
+        : [
+            { authorityId: 'witness-a', operationId, revision: 2, verified: true, historyDigest: rosterDigest(['witness-a', 'witness-b'], 2, 1) },
+            { authorityId: 'witness-b', operationId, revision: 2, verified: true, historyDigest: rosterDigest(['witness-a', 'witness-b'], 2, 1) },
+          ];
+    };
+    s.readEffectRevisionWitnessSet = async () => reads <= 1
+      ? { operationId, requiredAuthorityIds: ['witness-a', 'witness-b', 'witness-c'], minimumRequiredAuthorities: 3, verified: true }
+      : { operationId, requiredAuthorityIds: ['witness-a', 'witness-b'], minimumRequiredAuthorities: 2, verified: true };
     await expect(beginExecutionEffect(permit, current, operationId, s))
       .resolves.toEqual({ status: 'blocked', retryable: false, reason: 'journal_inconsistent' });
   });

@@ -1328,6 +1328,72 @@ export async function resolveWitnessRosterAnchoredExecutionEffect(
   return resolveExecutionEffect(permit, current, operationId, store);
 }
 
+export type StrictRosterContinuityContext = object;
+const strictRosterContinuitySelections = new WeakMap<object, Set<string>>();
+
+function strictRosterContinuitySelection(
+  continuity: StrictRosterContinuityContext | undefined,
+): Set<string> | undefined {
+  if (continuity === undefined) return undefined;
+  return strictRosterContinuitySelections.get(continuity);
+}
+
+async function strictRosterIntegrity(
+  operationId: string,
+  store: JournaledApprovalExecutionPermitStore,
+): Promise<Exclude<AuthorityCheckpointIntegrity, 'legacy'>> {
+  if (!witnessRosterAnchoredStore(store)) return 'unavailable';
+  const integrity = await authorityCheckpointIntegrity(operationId, store);
+  // The strict entry point cannot accept an adapter that somehow lost the lower authority
+  // capabilities either. With the full runtime shape present, `legacy` is contradictory.
+  return integrity === 'legacy' ? 'inconsistent' : integrity;
+}
+
+/** Create opaque per-workflow state for carrying strict-roster selection across adapter views. */
+export function createStrictRosterContinuityContext(): StrictRosterContinuityContext {
+  const context = Object.freeze({});
+  strictRosterContinuitySelections.set(context, new Set());
+  return context;
+}
+
+/**
+ * Strict current-roster boundary for retry/resume paths. Unlike the capability-detecting generic
+ * resolver, this entry point treats a missing roster method as evidence loss rather than as a
+ * legacy adapter. Pass one Aegis-created context across adapter views to distinguish first-time
+ * unavailability from capability disappearance after current-roster truth was observed.
+ */
+export async function resolveStrictRosterContinuityExecutionEffect(
+  permit: ApprovalExecutionPermit,
+  current: ApprovalExecutionSnapshot,
+  operationId: string,
+  store: JournaledApprovalExecutionPermitStore,
+  continuity?: StrictRosterContinuityContext,
+): Promise<ApprovalExecutionEffectResolutionResult> {
+  if (!presentObject(permit) || !presentObject(current)) {
+    return { status: 'not_executed', retryable: false, reason: 'invalid_snapshot' };
+  }
+  if (
+    !/^permit_[a-f0-9]{24}$/.test(permit.id) ||
+    !/^aegis_[a-f0-9]{16}$/.test(permit.approvalId) ||
+    permit.approvalId !== current.approvalId ||
+    !validExecutionOperationId(operationId)
+  ) return { status: 'not_executed', retryable: false, reason: 'invalid_snapshot' };
+
+  const selections = strictRosterContinuitySelection(continuity);
+  if (!witnessRosterAnchoredStore(store)) {
+    return {
+      status: 'indeterminate',
+      retryable: false,
+      reason: selections?.has(operationId) ? 'journal_inconsistent' : 'journal_unavailable',
+    };
+  }
+  const result = await resolveExecutionEffect(permit, current, operationId, store);
+  if (result.reason !== 'journal_unavailable' && result.reason !== 'journal_inconsistent' && result.reason !== 'journal_stale') {
+    selections?.add(operationId);
+  }
+  return result;
+}
+
 /**
  * Explicit compaction-aware entry point. The ordinary resolver also detects this optional store
  * capability, so callers cannot accidentally bypass proof validation by choosing the older name.
@@ -1493,6 +1559,45 @@ export async function beginExecutionEffect(
     return { status: 'indeterminate', retryable: false, reason: 'status_unavailable' };
   }
   return { status: 'indeterminate', retryable: false, reason: 'status_unavailable' };
+}
+
+/**
+ * Strict current-roster begin fence. Capability must exist before the CAS and still exist after a
+ * successful CAS; losing it in either window is contradictory to the selected strict boundary.
+ * The generic begin API remains capability-detecting for explicitly legacy stores.
+ */
+export async function beginStrictRosterContinuityExecutionEffect(
+  permit: ApprovalExecutionPermit,
+  current: ApprovalExecutionSnapshot,
+  operationId: string,
+  store: JournaledApprovalExecutionPermitStore,
+  continuity?: StrictRosterContinuityContext,
+): Promise<ApprovalExecutionFinalizationResult> {
+  if (!witnessRosterAnchoredStore(store)) {
+    return { status: 'blocked', retryable: false, reason: 'journal_inconsistent' };
+  }
+  const preIntegrity = await strictRosterIntegrity(operationId, store);
+  if (preIntegrity === 'unavailable' || preIntegrity === 'inconsistent') {
+    // At the pre-effect boundary, any missing strict roster truth is contradictory to granting
+    // execute authority. Resolve calls retain the finer unavailable/inconsistent distinction.
+    return { status: 'blocked', retryable: false, reason: 'journal_inconsistent' };
+  }
+  if (preIntegrity === 'stale') {
+    return { status: 'blocked', retryable: false, reason: 'journal_stale' };
+  }
+
+  const result = await beginExecutionEffect(permit, current, operationId, store);
+  if (result.status !== 'execute') return result;
+
+  const postIntegrity = await strictRosterIntegrity(operationId, store);
+  if (postIntegrity === 'unavailable' || postIntegrity === 'inconsistent') {
+    return { status: 'blocked', retryable: false, reason: 'journal_inconsistent' };
+  }
+  if (postIntegrity === 'stale') {
+    return { status: 'blocked', retryable: false, reason: 'journal_stale' };
+  }
+  strictRosterContinuitySelection(continuity)?.add(operationId);
+  return result;
 }
 
 export interface ApprovalExecutionEffectReceipt {

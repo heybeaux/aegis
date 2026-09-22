@@ -808,6 +808,25 @@ export const SWARMLAB_EVIDENCE_CASES: readonly SwarmLabEvidenceCase[] = [
       { name: 'aegisWrappedPostCasRosterSplitSafety', before: 0, after: 1, threshold: 1, comparator: 'eq' },
     ],
   },
+  {
+    id: 'RT-36',
+    source: 'SwarmLab exp-45 checkpoint roster capability downgrade',
+    finding: 'A strict current-roster boundary can silently downgrade when retry/resume uses an adapter view that loses or strips the roster capability.',
+    owners: ['aegis'], change: 'Added explicit strict roster resolve/begin boundaries plus opaque continuity state across adapter views, while preserving generic legacy behavior.',
+    runIds: ['rcd-mucazy99', 'rcd-mucbcbk3'], implementationRefs: ['4f2760b2c848beea0e5187f4a1d075c177067d33'], evidenceTier: 'verified', implementationStatus: 'landed',
+    aegisMapping: 'strict current-roster requirements must survive retry/resume capability downgrade and successful begin CAS',
+    metrics: [
+      { name: 'aegisWrappedCapabilityDowngradeDetectionRate', before: 0.3333333333333333, after: 1, threshold: 1, comparator: 'eq' },
+      { name: 'aegisWrappedDowngradeAuthorityRestorationRate', before: 0.5555555555555556, after: 0, threshold: 0, comparator: 'eq' },
+      { name: 'aegisWrappedResolutionAccuracy', before: 0.6, after: 1, threshold: 1, comparator: 'eq' },
+      { name: 'aegisWrappedStrictRosterContinuityApiAvailability', before: 0, after: 1, threshold: 1, comparator: 'eq' },
+      { name: 'aegisWrappedUnavailableSafety', before: 0, after: 1, threshold: 1, comparator: 'eq' },
+      { name: 'aegisWrappedAbsentSafety', before: 0, after: 1, threshold: 1, comparator: 'eq' },
+      { name: 'aegisWrappedStrippedAfterPriorReadSafety', before: 0, after: 1, threshold: 1, comparator: 'eq' },
+      { name: 'aegisWrappedPostCasCapabilityLossSafety', before: 0, after: 1, threshold: 1, comparator: 'eq' },
+      { name: 'aegisWrappedRecoverySafety', before: 1, after: 1, threshold: 1, comparator: 'eq' },
+    ],
+  },
 ];
 
 export function evaluateSwarmLabEvidence(

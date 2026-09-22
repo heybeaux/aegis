@@ -1328,8 +1328,26 @@ export async function resolveWitnessRosterAnchoredExecutionEffect(
   return resolveExecutionEffect(permit, current, operationId, store);
 }
 
-type StrictRosterContinuityContext = object;
+export type StrictRosterContinuityContext = object;
 const strictRosterContinuitySelections = new WeakMap<object, Set<string>>();
+
+function strictRosterContinuitySelection(
+  continuity: StrictRosterContinuityContext | undefined,
+): Set<string> | undefined {
+  if (continuity === undefined) return undefined;
+  return strictRosterContinuitySelections.get(continuity);
+}
+
+async function strictRosterIntegrity(
+  operationId: string,
+  store: JournaledApprovalExecutionPermitStore,
+): Promise<Exclude<AuthorityCheckpointIntegrity, 'legacy'>> {
+  if (!witnessRosterAnchoredStore(store)) return 'unavailable';
+  const integrity = await authorityCheckpointIntegrity(operationId, store);
+  // The strict entry point cannot accept an adapter that somehow lost the lower authority
+  // capabilities either. With the full runtime shape present, `legacy` is contradictory.
+  return integrity === 'legacy' ? 'inconsistent' : integrity;
+}
 
 /** Create opaque per-workflow state for carrying strict-roster selection across adapter views. */
 export function createStrictRosterContinuityContext(): StrictRosterContinuityContext {
@@ -1351,7 +1369,17 @@ export async function resolveStrictRosterContinuityExecutionEffect(
   store: JournaledApprovalExecutionPermitStore,
   continuity?: StrictRosterContinuityContext,
 ): Promise<ApprovalExecutionEffectResolutionResult> {
-  const selections = continuity === undefined ? undefined : strictRosterContinuitySelections.get(continuity);
+  if (!presentObject(permit) || !presentObject(current)) {
+    return { status: 'not_executed', retryable: false, reason: 'invalid_snapshot' };
+  }
+  if (
+    !/^permit_[a-f0-9]{24}$/.test(permit.id) ||
+    !/^aegis_[a-f0-9]{16}$/.test(permit.approvalId) ||
+    permit.approvalId !== current.approvalId ||
+    !validExecutionOperationId(operationId)
+  ) return { status: 'not_executed', retryable: false, reason: 'invalid_snapshot' };
+
+  const selections = strictRosterContinuitySelection(continuity);
   if (!witnessRosterAnchoredStore(store)) {
     return {
       status: 'indeterminate',
@@ -1548,26 +1576,27 @@ export async function beginStrictRosterContinuityExecutionEffect(
   if (!witnessRosterAnchoredStore(store)) {
     return { status: 'blocked', retryable: false, reason: 'journal_inconsistent' };
   }
-  const before = await resolveStrictRosterContinuityExecutionEffect(
-    permit, current, operationId, store, continuity,
-  );
-  if (before.reason === 'journal_unavailable' || before.reason === 'journal_inconsistent') {
+  const preIntegrity = await strictRosterIntegrity(operationId, store);
+  if (preIntegrity === 'unavailable' || preIntegrity === 'inconsistent') {
+    // At the pre-effect boundary, any missing strict roster truth is contradictory to granting
+    // execute authority. Resolve calls retain the finer unavailable/inconsistent distinction.
     return { status: 'blocked', retryable: false, reason: 'journal_inconsistent' };
   }
-  if (before.reason === 'journal_stale') {
+  if (preIntegrity === 'stale') {
     return { status: 'blocked', retryable: false, reason: 'journal_stale' };
   }
+
   const result = await beginExecutionEffect(permit, current, operationId, store);
   if (result.status !== 'execute') return result;
-  const after = await resolveStrictRosterContinuityExecutionEffect(
-    permit, current, operationId, store, continuity,
-  );
-  if (after.reason === 'journal_unavailable' || after.reason === 'journal_inconsistent') {
+
+  const postIntegrity = await strictRosterIntegrity(operationId, store);
+  if (postIntegrity === 'unavailable' || postIntegrity === 'inconsistent') {
     return { status: 'blocked', retryable: false, reason: 'journal_inconsistent' };
   }
-  if (after.reason === 'journal_stale') {
+  if (postIntegrity === 'stale') {
     return { status: 'blocked', retryable: false, reason: 'journal_stale' };
   }
+  strictRosterContinuitySelection(continuity)?.add(operationId);
   return result;
 }
 

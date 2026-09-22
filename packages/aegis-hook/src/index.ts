@@ -84,6 +84,7 @@ export {
   type ApprovalExecutionEffectState,
   type ApprovalExecutionEffectResolutionResult,
   type ApprovalExecutionEffectResolutionStatus,
+  type StrictRosterContinuityContext,
   type ApprovalExecutionEffectReceipt,
   type ApprovalExecutionEffectFailureReceipt,
   type ApprovalExecutionEffectFailureCommitStatus,

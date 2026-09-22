@@ -323,7 +323,6 @@ describe('independent authority revision checkpoints', () => {
     expect(result.reason).toBe(unavailable ? 'journal_unavailable' : 'journal_inconsistent');
   });
 
-
   it('strict roster resolver rejects a store whose roster capability was stripped', async () => {
     const capable = store({
       checkpoints: [
@@ -349,6 +348,150 @@ describe('independent authority revision checkpoints', () => {
     // The generic boundary stays backward compatible for explicitly legacy adapter views.
     await expect(resolveExecutionEffect(permit, current, operationId, stripped as any))
       .resolves.toEqual({ status: 'not_executed', retryable: true, reason: 'not_started' });
+  });
+
+  it('strict roster resolver validates arguments before reporting absent capability', async () => {
+    const stripped = store();
+    await expect(resolveStrictRosterContinuityExecutionEffect(
+      { id: 'not-a-permit', approvalId: permit.approvalId }, current, operationId, stripped,
+    )).resolves.toEqual({ status: 'not_executed', retryable: false, reason: 'invalid_snapshot' });
+    await expect(resolveStrictRosterContinuityExecutionEffect(
+      permit, current, 'invalid operation id', stripped,
+    )).resolves.toEqual({ status: 'not_executed', retryable: false, reason: 'invalid_snapshot' });
+  });
+
+  it('strict roster resolver ignores foreign and unregistered continuity objects safely', async () => {
+    const stripped = store();
+    const foreign = {};
+    await expect(resolveStrictRosterContinuityExecutionEffect(
+      permit, current, operationId, stripped, foreign,
+    )).resolves.toEqual({ status: 'indeterminate', retryable: false, reason: 'journal_unavailable' });
+    await expect(resolveStrictRosterContinuityExecutionEffect(
+      permit, current, operationId, stripped,
+    )).resolves.toEqual({ status: 'indeterminate', retryable: false, reason: 'journal_unavailable' });
+  });
+
+  it('strict roster continuity is isolated by context and operation id', async () => {
+    const capable = store({
+      checkpoints: [
+        { authorityId: 'witness-a', operationId, revision: 1, verified: true, historyDigest: currentRoster().rosterDigest },
+        { authorityId: 'witness-b', operationId, revision: 1, verified: true, historyDigest: currentRoster().rosterDigest },
+        { authorityId: 'witness-c', operationId, revision: 1, verified: true, historyDigest: currentRoster().rosterDigest },
+      ],
+      witnessSet: { operationId, requiredAuthorityIds: ['witness-a', 'witness-b', 'witness-c'], minimumRequiredAuthorities: 3, verified: true },
+      witnessRoster: currentRoster(),
+    });
+    const stripped = new Proxy(capable, {
+      get(target, property) {
+        if (property === 'readEffectRevisionWitnessRoster') return undefined;
+        const value = Reflect.get(target, property);
+        return typeof value === 'function' ? value.bind(target) : value;
+      },
+    });
+    const selected = createStrictRosterContinuityContext();
+    const fresh = createStrictRosterContinuityContext();
+    await resolveStrictRosterContinuityExecutionEffect(permit, current, operationId, capable, selected);
+    await expect(resolveStrictRosterContinuityExecutionEffect(permit, current, operationId, stripped as any, fresh))
+      .resolves.toEqual({ status: 'indeterminate', retryable: false, reason: 'journal_unavailable' });
+    await expect(resolveStrictRosterContinuityExecutionEffect(permit, current, operationId, stripped as any, selected))
+      .resolves.toEqual({ status: 'indeterminate', retryable: false, reason: 'journal_inconsistent' });
+  });
+
+  it('strict roster resolver permits recovery after transient roster unavailability', async () => {
+    let unavailable = true;
+    const capable = store({
+      checkpoints: [
+        { authorityId: 'witness-a', operationId, revision: 1, verified: true, historyDigest: currentRoster().rosterDigest },
+        { authorityId: 'witness-b', operationId, revision: 1, verified: true, historyDigest: currentRoster().rosterDigest },
+        { authorityId: 'witness-c', operationId, revision: 1, verified: true, historyDigest: currentRoster().rosterDigest },
+      ],
+      witnessSet: { operationId, requiredAuthorityIds: ['witness-a', 'witness-b', 'witness-c'], minimumRequiredAuthorities: 3, verified: true },
+      witnessRoster: currentRoster(),
+    });
+    const readRoster = capable.readEffectRevisionWitnessRoster;
+    capable.readEffectRevisionWitnessRoster = async () => {
+      if (unavailable) throw new Error('temporary roster outage');
+      return readRoster();
+    };
+    const continuity = createStrictRosterContinuityContext();
+    await expect(resolveStrictRosterContinuityExecutionEffect(permit, current, operationId, capable, continuity))
+      .resolves.toEqual({ status: 'indeterminate', retryable: false, reason: 'journal_unavailable' });
+    unavailable = false;
+    await expect(resolveStrictRosterContinuityExecutionEffect(permit, current, operationId, capable, continuity))
+      .resolves.toEqual({ status: 'not_executed', retryable: true, reason: 'not_started' });
+  });
+
+  it('strict roster begin preserves terminal and invalid-snapshot classifications without mutating the effect', async () => {
+    const capable = store({
+      checkpoints: [
+        { authorityId: 'witness-a', operationId, revision: 1, verified: true, historyDigest: currentRoster().rosterDigest },
+        { authorityId: 'witness-b', operationId, revision: 1, verified: true, historyDigest: currentRoster().rosterDigest },
+        { authorityId: 'witness-c', operationId, revision: 1, verified: true, historyDigest: currentRoster().rosterDigest },
+      ],
+      witnessSet: { operationId, requiredAuthorityIds: ['witness-a', 'witness-b', 'witness-c'], minimumRequiredAuthorities: 3, verified: true },
+      witnessRoster: currentRoster(),
+    });
+    let beginCalls = 0;
+    capable.beginEffect = async () => { beginCalls += 1; return true; };
+    capable.readEffect = async () => ({
+      operationId,
+      permit: permitRecord,
+      state: 'committed' as const,
+      claimed: true,
+      revision: 1,
+      successReceipt: { permitId: permit.id, approvalId: permit.approvalId, operationId, receiptDigest: `sha256:${'d'.repeat(64)}`, verified: true },
+    });
+    await expect(beginStrictRosterContinuityExecutionEffect(permit, current, operationId, capable))
+      .resolves.toEqual({ status: 'blocked', retryable: false, reason: 'effect_committed' });
+    await expect(beginStrictRosterContinuityExecutionEffect(
+      { id: 'not-a-permit', approvalId: permit.approvalId }, current, operationId, capable,
+    )).resolves.toEqual({ status: 'blocked', retryable: false, reason: 'invalid_snapshot' });
+    expect(beginCalls).toBe(0);
+  });
+
+  it('strict roster begin blocks pre-CAS roster outages without invoking begin', async () => {
+    const capable = store({
+      checkpoints: [
+        { authorityId: 'witness-a', operationId, revision: 1, verified: true, historyDigest: currentRoster().rosterDigest },
+        { authorityId: 'witness-b', operationId, revision: 1, verified: true, historyDigest: currentRoster().rosterDigest },
+        { authorityId: 'witness-c', operationId, revision: 1, verified: true, historyDigest: currentRoster().rosterDigest },
+      ],
+      witnessSet: { operationId, requiredAuthorityIds: ['witness-a', 'witness-b', 'witness-c'], minimumRequiredAuthorities: 3, verified: true },
+      witnessRoster: currentRoster(),
+      witnessRosterError: true,
+    });
+    let beginCalls = 0;
+    capable.beginEffect = async () => { beginCalls += 1; return true; };
+    await expect(beginStrictRosterContinuityExecutionEffect(permit, current, operationId, capable))
+      .resolves.toEqual({ status: 'blocked', retryable: false, reason: 'journal_inconsistent' });
+    expect(beginCalls).toBe(0);
+  });
+
+  it('strict roster begin accepts a current authorized record exactly once through the store CAS', async () => {
+    const capable = store({
+      checkpoints: [
+        { authorityId: 'witness-a', operationId, revision: 1, verified: true, historyDigest: currentRoster().rosterDigest },
+        { authorityId: 'witness-b', operationId, revision: 1, verified: true, historyDigest: currentRoster().rosterDigest },
+        { authorityId: 'witness-c', operationId, revision: 1, verified: true, historyDigest: currentRoster().rosterDigest },
+      ],
+      witnessSet: { operationId, requiredAuthorityIds: ['witness-a', 'witness-b', 'witness-c'], minimumRequiredAuthorities: 3, verified: true },
+      witnessRoster: currentRoster(),
+    });
+    let state: 'authorized' | 'started' = 'authorized';
+    let revision = 1;
+    capable.readEffect = async () => ({ operationId, permit: permitRecord, state, claimed: true, revision });
+    capable.readEffectRevision = async () => revision;
+    capable.readEffectRevisionCheckpoint = async () => ({ operationId, revision, verified: true });
+    capable.readEffectRevisionCheckpoints = async () => ['witness-a', 'witness-b', 'witness-c'].map((authorityId) => ({
+      authorityId, operationId, revision, verified: true, historyDigest: currentRoster().rosterDigest,
+    }));
+    capable.beginEffect = async () => {
+      if (state !== 'authorized') return false;
+      state = 'started'; revision = 2; return true;
+    };
+    await expect(beginStrictRosterContinuityExecutionEffect(permit, current, operationId, capable))
+      .resolves.toEqual({ status: 'execute', retryable: false });
+    expect(state).toBe('started');
   });
 
   it('strict roster begin rejects missing capability before and after a successful CAS', async () => {

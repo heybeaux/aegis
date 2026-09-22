@@ -2,9 +2,12 @@ import { createHash } from 'node:crypto';
 import { describe, expect, it } from 'vitest';
 import {
   beginExecutionEffect,
+  beginStrictRosterContinuityExecutionEffect,
+  createStrictRosterContinuityContext,
   resolveAnchoredExecutionEffect,
   resolveExecutionEffect,
   resolveMultiAuthorityAnchoredExecutionEffect,
+  resolveStrictRosterContinuityExecutionEffect,
   resolveWitnessRosterAnchoredExecutionEffect,
   resolveWitnessSetAnchoredExecutionEffect,
   type ApprovalExecutionPermit,
@@ -318,6 +321,73 @@ describe('independent authority revision checkpoints', () => {
     expect(result.retryable).toBe(false);
     expect(result.status).toBe('indeterminate');
     expect(result.reason).toBe(unavailable ? 'journal_unavailable' : 'journal_inconsistent');
+  });
+
+
+  it('strict roster resolver rejects a store whose roster capability was stripped', async () => {
+    const capable = store({
+      checkpoints: [
+        { authorityId: 'witness-a', operationId, revision: 1, verified: true, historyDigest: currentRoster().rosterDigest },
+        { authorityId: 'witness-b', operationId, revision: 1, verified: true, historyDigest: currentRoster().rosterDigest },
+        { authorityId: 'witness-c', operationId, revision: 1, verified: true, historyDigest: currentRoster().rosterDigest },
+      ],
+      witnessSet: { operationId, requiredAuthorityIds: ['witness-a', 'witness-b', 'witness-c'], minimumRequiredAuthorities: 3, verified: true },
+      witnessRoster: currentRoster(),
+    });
+    const stripped = new Proxy(capable, {
+      get(target, property) {
+        if (property === 'readEffectRevisionWitnessRoster') return undefined;
+        const value = Reflect.get(target, property);
+        return typeof value === 'function' ? value.bind(target) : value;
+      },
+    });
+    const continuity = createStrictRosterContinuityContext();
+    await expect(resolveStrictRosterContinuityExecutionEffect(permit, current, operationId, capable, continuity))
+      .resolves.toEqual({ status: 'not_executed', retryable: true, reason: 'not_started' });
+    await expect(resolveStrictRosterContinuityExecutionEffect(permit, current, operationId, stripped as any, continuity))
+      .resolves.toEqual({ status: 'indeterminate', retryable: false, reason: 'journal_inconsistent' });
+    // The generic boundary stays backward compatible for explicitly legacy adapter views.
+    await expect(resolveExecutionEffect(permit, current, operationId, stripped as any))
+      .resolves.toEqual({ status: 'not_executed', retryable: true, reason: 'not_started' });
+  });
+
+  it('strict roster begin rejects missing capability before and after a successful CAS', async () => {
+    const capable = store({
+      checkpoints: [
+        { authorityId: 'witness-a', operationId, revision: 1, verified: true, historyDigest: currentRoster().rosterDigest },
+        { authorityId: 'witness-b', operationId, revision: 1, verified: true, historyDigest: currentRoster().rosterDigest },
+        { authorityId: 'witness-c', operationId, revision: 1, verified: true, historyDigest: currentRoster().rosterDigest },
+      ],
+      witnessSet: { operationId, requiredAuthorityIds: ['witness-a', 'witness-b', 'witness-c'], minimumRequiredAuthorities: 3, verified: true },
+      witnessRoster: currentRoster(),
+    });
+    let started = false;
+    const disappearing = new Proxy(capable, {
+      get(target, property) {
+        if (property === 'readEffectRevisionWitnessRoster' && started) return undefined;
+        if (property === 'beginEffect') {
+          return async (id: string) => {
+            const result = await target.beginEffect(id);
+            started = true;
+            return result;
+          };
+        }
+        const value = Reflect.get(target, property);
+        return typeof value === 'function' ? value.bind(target) : value;
+      },
+    });
+    await expect(beginStrictRosterContinuityExecutionEffect(permit, current, operationId, disappearing as any))
+      .resolves.toEqual({ status: 'blocked', retryable: false, reason: 'journal_inconsistent' });
+
+    const stripped = new Proxy(capable, {
+      get(target, property) {
+        if (property === 'readEffectRevisionWitnessRoster') return undefined;
+        const value = Reflect.get(target, property);
+        return typeof value === 'function' ? value.bind(target) : value;
+      },
+    });
+    await expect(beginStrictRosterContinuityExecutionEffect(permit, current, operationId, stripped as any))
+      .resolves.toEqual({ status: 'blocked', retryable: false, reason: 'journal_inconsistent' });
   });
 
   it('does not execute when the witness roster splits after a successful begin CAS', async () => {

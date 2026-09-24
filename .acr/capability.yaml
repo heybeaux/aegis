@@ -1,7 +1,7 @@
 name: aegis
 type: capability
 version: 1.0.0
-description: "Predictive governance harness: deterministic rule gate, live label collection, AWM prediction, and SwarmLab-derived release gates."
+description: "Governance harness with outcome-learning loop: deterministic rule gate, live label collection, deterministic failure predictor (not yet trained/calibrated), and SwarmLab-derived release gates."
 
 provides:
   - governance-harness
@@ -59,15 +59,17 @@ behavioral:
     1. Separate deterministic rule-floor claims from predictive/AWM claims.
     2. Do not train on unjoined or ambiguous labels; action_failed=null is truth-preserving, not a nuisance.
     3. Prefer exact tool_use_id joins; fuzzy joins are opt-in and must stay conservative.
-    4. Treat SwarmLab retests as evidence-backed release gates; RT-07 is also runtime-wired as a value-echo handoff policy.
+    4. Treat SwarmLab retests as evidence-backed release gates (RT-01..RT-37, 37/37). 40 policy ids across RT-07..RT-16 are additionally runtime-wired as `ask` escalations.
     5. Bind delegated approval consumption to the effective consumer and require an explicit, verified, depth-bounded, attenuating, unrevoked chain; do not trust retained root provenance alone.
-    6. Check branch/WIP before editing; active real-data benchmark work may be uncommitted.
+    6. Check branch/WIP before editing, and `git fetch` first: local checkouts have run >100 commits behind `origin/main`.
+    7. Never describe the predictor as calibrated or trained. It is a hand-weighted deterministic engine; only the rule floor and evidence gate are proven.
   overlays: []
 
 verification:
   checklist:
     - "Checked /Users/beauxwalton/Dev/aegis as canonical local path"
-    - "Kept predictive claims tied to real-data benchmark evidence"
+    - "Kept predictive claims tied to real-data benchmark evidence, and did not call the hand-weighted predictor calibrated or trained"
+    - "Read origin/main rather than a possibly-stale local checkout"
     - "Preserved fail-open hook behaviour"
     - "Did not guess labels when decision/outcome joins are absent or ambiguous"
     - "Rejected approval delegation when effective consumer, chain verification, attenuation, depth, or revocation truth was missing"

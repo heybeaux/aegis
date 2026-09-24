@@ -827,6 +827,24 @@ export const SWARMLAB_EVIDENCE_CASES: readonly SwarmLabEvidenceCase[] = [
       { name: 'aegisWrappedRecoverySafety', before: 1, after: 1, threshold: 1, comparator: 'eq' },
     ],
   },
+  {
+    id: 'RT-37',
+    source: 'SwarmLab exp-46 durable strict-roster policy',
+    finding: 'Process-local strict-roster continuity is lost across process restart or cross-host handoff unless exact policy selection is durably operation/permit-bound.',
+    owners: ['aegis'], change: 'Added a host-owned durable marker contract plus exact selection/readback and strict resolve/begin boundaries with post-CAS revalidation.',
+    runIds: ['dsr-mudqgx1i', 'dsr-muf62rva'], implementationRefs: ['83e802c735c35ac1fd25b102728fb02e09d02c59'], evidenceTier: 'verified', implementationStatus: 'landed',
+    aegisMapping: 'strict current-roster policy must survive process restart and cross-host handoff through durable exact marker truth',
+    metrics: [
+      { name: 'aegisWrappedDurablePolicyFailureDetectionRate', before: 0, after: 1, threshold: 1, comparator: 'eq' },
+      { name: 'aegisWrappedDurablePolicyAuthorityRestorationRate', before: 1, after: 0, threshold: 0, comparator: 'eq' },
+      { name: 'aegisWrappedResolutionAccuracy', before: 0.06666666666666667, after: 1, threshold: 1, comparator: 'eq' },
+      { name: 'aegisWrappedDurableStrictRosterApiAvailability', before: 0, after: 1, threshold: 1, comparator: 'eq' },
+      { name: 'aegisWrappedMarkerMissingSafety', before: 0, after: 1, threshold: 1, comparator: 'eq' },
+      { name: 'aegisWrappedMarkerReadUnavailableSafety', before: 0, after: 1, threshold: 1, comparator: 'eq' },
+      { name: 'aegisWrappedMarkerConflictingSafety', before: 0, after: 1, threshold: 1, comparator: 'eq' },
+      { name: 'aegisWrappedMarkerPostCasLossSafety', before: 0, after: 1, threshold: 1, comparator: 'eq' },
+    ],
+  },
 ];
 
 export function evaluateSwarmLabEvidence(

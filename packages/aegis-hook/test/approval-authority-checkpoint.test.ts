@@ -3,14 +3,19 @@ import { describe, expect, it } from 'vitest';
 import {
   beginExecutionEffect,
   beginStrictRosterContinuityExecutionEffect,
+  beginDurableStrictRosterPolicyExecutionEffect,
   createStrictRosterContinuityContext,
+  readDurableStrictRosterPolicy,
+  resolveDurableStrictRosterPolicyExecutionEffect,
   resolveAnchoredExecutionEffect,
   resolveExecutionEffect,
   resolveMultiAuthorityAnchoredExecutionEffect,
   resolveStrictRosterContinuityExecutionEffect,
   resolveWitnessRosterAnchoredExecutionEffect,
   resolveWitnessSetAnchoredExecutionEffect,
+  selectDurableStrictRosterPolicy,
   type ApprovalExecutionPermit,
+  type DurableStrictRosterPolicyMarker,
   type ApprovalExecutionRevisionCheckpoint,
   type ApprovalExecutionRevisionAuthorityCheckpoint,
   type ApprovalExecutionRevisionWitnessSet,
@@ -530,6 +535,119 @@ describe('independent authority revision checkpoints', () => {
       },
     });
     await expect(beginStrictRosterContinuityExecutionEffect(permit, current, operationId, stripped as any))
+      .resolves.toEqual({ status: 'blocked', retryable: false, reason: 'journal_inconsistent' });
+  });
+
+  it('durably selects exact strict-roster policy and reconciles exact reselection', async () => {
+    const markers = new Map<string, DurableStrictRosterPolicyMarker>();
+    const policyStore = {
+      async bindStrictRosterPolicy(id: string, marker: DurableStrictRosterPolicyMarker) {
+        if (markers.has(id)) return false;
+        markers.set(id, structuredClone(marker));
+        return true;
+      },
+      async readStrictRosterPolicy(id: string) {
+        const marker = markers.get(id);
+        return marker === undefined ? undefined : structuredClone(marker);
+      },
+    };
+    const expected = { operationId, permitId: permit.id, approvalId: permit.approvalId };
+    await expect(selectDurableStrictRosterPolicy(permit, current, operationId, policyStore))
+      .resolves.toEqual(expected);
+    await expect(selectDurableStrictRosterPolicy(permit, current, operationId, policyStore))
+      .resolves.toEqual(expected);
+    await expect(readDurableStrictRosterPolicy(operationId, policyStore)).resolves.toEqual(expected);
+  });
+
+  it('does not overwrite a conflicting durable strict-roster marker', async () => {
+    const conflict = { operationId, permitId: `permit_${'f'.repeat(24)}`, approvalId: permit.approvalId };
+    const policyStore = {
+      async bindStrictRosterPolicy() { return false; },
+      async readStrictRosterPolicy() { return conflict; },
+    };
+    await expect(selectDurableStrictRosterPolicy(permit, current, operationId, policyStore))
+      .resolves.toBeUndefined();
+  });
+
+  it.each([
+    ['missing', undefined, 'journal_inconsistent'],
+    ['misbound operation', { operationId: 'op_other', permitId: permit.id, approvalId: permit.approvalId }, 'journal_inconsistent'],
+    ['misbound permit', { operationId, permitId: `permit_${'f'.repeat(24)}`, approvalId: permit.approvalId }, 'journal_inconsistent'],
+    ['malformed', { operationId, permitId: '', approvalId: '' }, 'journal_inconsistent'],
+  ])('durable strict-roster resolver fails closed for %s marker', async (_label, marker, reason) => {
+    const capable = store({
+      checkpoints: ['witness-a', 'witness-b', 'witness-c'].map((authorityId) => ({
+        authorityId, operationId, revision: 1, verified: true, historyDigest: currentRoster().rosterDigest,
+      })),
+      witnessSet: { operationId, requiredAuthorityIds: ['witness-a', 'witness-b', 'witness-c'], minimumRequiredAuthorities: 3, verified: true },
+      witnessRoster: currentRoster(),
+    });
+    const policyStore = {
+      async bindStrictRosterPolicy() { return false; },
+      async readStrictRosterPolicy() { return marker as DurableStrictRosterPolicyMarker | undefined; },
+    };
+    await expect(resolveDurableStrictRosterPolicyExecutionEffect(permit, current, operationId, capable, policyStore))
+      .resolves.toEqual({ status: 'indeterminate', retryable: false, reason });
+  });
+
+  it('durable strict-roster resolver distinguishes marker-store outage and roster capability loss', async () => {
+    const capable = store({
+      checkpoints: ['witness-a', 'witness-b', 'witness-c'].map((authorityId) => ({
+        authorityId, operationId, revision: 1, verified: true, historyDigest: currentRoster().rosterDigest,
+      })),
+      witnessSet: { operationId, requiredAuthorityIds: ['witness-a', 'witness-b', 'witness-c'], minimumRequiredAuthorities: 3, verified: true },
+      witnessRoster: currentRoster(),
+    });
+    const marker = { operationId, permitId: permit.id, approvalId: permit.approvalId };
+    const unavailable = {
+      async bindStrictRosterPolicy() { return false; },
+      async readStrictRosterPolicy(): Promise<DurableStrictRosterPolicyMarker> { throw new Error('down'); },
+    };
+    await expect(resolveDurableStrictRosterPolicyExecutionEffect(permit, current, operationId, capable, unavailable))
+      .resolves.toEqual({ status: 'indeterminate', retryable: false, reason: 'journal_unavailable' });
+
+    const stripped = new Proxy(capable, {
+      get(target, property) {
+        if (property === 'readEffectRevisionWitnessRoster') return undefined;
+        const value = Reflect.get(target, property);
+        return typeof value === 'function' ? value.bind(target) : value;
+      },
+    });
+    const selected = {
+      async bindStrictRosterPolicy() { return false; },
+      async readStrictRosterPolicy() { return marker; },
+    };
+    await expect(resolveDurableStrictRosterPolicyExecutionEffect(permit, current, operationId, stripped as any, selected))
+      .resolves.toEqual({ status: 'indeterminate', retryable: false, reason: 'journal_inconsistent' });
+  });
+
+  it('durable strict-roster begin rechecks marker and roster after the successful CAS', async () => {
+    const capable = store({
+      checkpoints: ['witness-a', 'witness-b', 'witness-c'].map((authorityId) => ({
+        authorityId, operationId, revision: 1, verified: true, historyDigest: currentRoster().rosterDigest,
+      })),
+      witnessSet: { operationId, requiredAuthorityIds: ['witness-a', 'witness-b', 'witness-c'], minimumRequiredAuthorities: 3, verified: true },
+      witnessRoster: currentRoster(),
+    });
+    let state: 'authorized' | 'started' = 'authorized';
+    let revision = 1;
+    let markerAvailable = true;
+    capable.readEffect = async () => ({ operationId, permit: permitRecord, state, claimed: true, revision });
+    capable.readEffectRevision = async () => revision;
+    capable.readEffectRevisionCheckpoint = async () => ({ operationId, revision, verified: true });
+    capable.readEffectRevisionCheckpoints = async () => ['witness-a', 'witness-b', 'witness-c'].map((authorityId) => ({
+      authorityId, operationId, revision, verified: true, historyDigest: currentRoster().rosterDigest,
+    }));
+    capable.beginEffect = async () => {
+      state = 'started'; revision = 2; markerAvailable = false; return true;
+    };
+    const policyStore = {
+      async bindStrictRosterPolicy() { return false; },
+      async readStrictRosterPolicy() {
+        return markerAvailable ? { operationId, permitId: permit.id, approvalId: permit.approvalId } : undefined;
+      },
+    };
+    await expect(beginDurableStrictRosterPolicyExecutionEffect(permit, current, operationId, capable, policyStore))
       .resolves.toEqual({ status: 'blocked', retryable: false, reason: 'journal_inconsistent' });
   });
 

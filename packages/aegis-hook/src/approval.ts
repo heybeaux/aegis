@@ -817,6 +817,23 @@ export interface WitnessRosterAnchoredApprovalExecutionPermitStore extends Witne
   readEffectRevisionWitnessRoster(operationId: string): Promise<ApprovalExecutionRevisionWitnessRoster | undefined>;
 }
 
+/** Durable record that one exact permit/operation selected current-roster enforcement. */
+export interface DurableStrictRosterPolicyMarker {
+  operationId: string;
+  permitId: string;
+  approvalId: string;
+}
+
+/**
+ * Host-owned durable strict-roster policy store. `bindStrictRosterPolicy` MUST be atomic
+ * create-if-absent: return true when it inserts the marker and false when any marker already
+ * occupies the operation key. Exact duplicate selection is reconciled through readback.
+ */
+export interface DurableStrictRosterPolicyStore {
+  bindStrictRosterPolicy(operationId: string, marker: DurableStrictRosterPolicyMarker): Promise<boolean>;
+  readStrictRosterPolicy(operationId: string): Promise<DurableStrictRosterPolicyMarker | undefined>;
+}
+
 export type ApprovalExecutionEffectResolutionStatus = 'executed' | 'not_executed' | 'indeterminate';
 
 export interface ApprovalExecutionEffectResolutionResult {
@@ -1328,6 +1345,144 @@ export async function resolveWitnessRosterAnchoredExecutionEffect(
   return resolveExecutionEffect(permit, current, operationId, store);
 }
 
+type DurableStrictRosterPolicyIntegrity = 'current' | 'missing' | 'inconsistent' | 'unavailable';
+
+function validDurableStrictRosterPolicyMarker(
+  value: unknown,
+  operationId?: string,
+  permit?: ApprovalExecutionPermit,
+): value is DurableStrictRosterPolicyMarker {
+  if (!presentObject(value) || Array.isArray(value)) return false;
+  const marker = value as Partial<DurableStrictRosterPolicyMarker>;
+  const allowedKeys = new Set(['operationId', 'permitId', 'approvalId']);
+  if (Object.keys(marker).some((key) => !allowedKeys.has(key))) return false;
+  if (
+    typeof marker.operationId !== 'string' ||
+    !validExecutionOperationId(marker.operationId) ||
+    typeof marker.permitId !== 'string' ||
+    !/^permit_[a-f0-9]{24}$/.test(marker.permitId) ||
+    typeof marker.approvalId !== 'string' ||
+    !/^aegis_[a-f0-9]{16}$/.test(marker.approvalId)
+  ) return false;
+  if (operationId !== undefined && marker.operationId !== operationId) return false;
+  if (permit !== undefined && (marker.permitId !== permit.id || marker.approvalId !== permit.approvalId)) return false;
+  return true;
+}
+
+async function durableStrictRosterPolicyIntegrity(
+  permit: ApprovalExecutionPermit,
+  operationId: string,
+  store: DurableStrictRosterPolicyStore,
+): Promise<DurableStrictRosterPolicyIntegrity> {
+  let marker: unknown;
+  try {
+    marker = await store.readStrictRosterPolicy(operationId);
+  } catch {
+    return 'unavailable';
+  }
+  if (marker === undefined) return 'missing';
+  return validDurableStrictRosterPolicyMarker(marker, operationId, permit) ? 'current' : 'inconsistent';
+}
+
+function durableStrictRosterResolutionFailure(
+  integrity: Exclude<DurableStrictRosterPolicyIntegrity, 'current'>,
+): ApprovalExecutionEffectResolutionResult {
+  return {
+    status: 'indeterminate',
+    retryable: false,
+    reason: integrity === 'unavailable' ? 'journal_unavailable' : 'journal_inconsistent',
+  };
+}
+
+function durableStrictRosterBeginFailure(
+  integrity: Exclude<DurableStrictRosterPolicyIntegrity, 'current'>,
+): ApprovalExecutionFinalizationResult {
+  if (integrity === 'unavailable') {
+    return { status: 'indeterminate', retryable: false, reason: 'status_unavailable' };
+  }
+  return { status: 'blocked', retryable: false, reason: 'journal_inconsistent' };
+}
+
+/**
+ * Atomically select durable strict-roster policy for one exact permit/operation. The host owns
+ * durability and create-if-absent atomicity; Aegis attests the resulting marker by readback. Exact
+ * reselection is idempotent, while conflicts, malformed records, and unavailable storage return
+ * no selection and never overwrite the existing marker.
+ */
+export async function selectDurableStrictRosterPolicy(
+  permit: ApprovalExecutionPermit,
+  current: ApprovalExecutionSnapshot,
+  operationId: string,
+  store: DurableStrictRosterPolicyStore,
+): Promise<DurableStrictRosterPolicyMarker | undefined> {
+  if (!presentObject(permit) || !presentObject(current)) return undefined;
+  if (
+    !/^permit_[a-f0-9]{24}$/.test(permit.id) ||
+    !/^aegis_[a-f0-9]{16}$/.test(permit.approvalId) ||
+    permit.approvalId !== current.approvalId ||
+    !validExecutionOperationId(operationId)
+  ) return undefined;
+  const marker: DurableStrictRosterPolicyMarker = {
+    operationId,
+    permitId: permit.id,
+    approvalId: permit.approvalId,
+  };
+  try {
+    await store.bindStrictRosterPolicy(operationId, marker);
+    const retained: unknown = await store.readStrictRosterPolicy(operationId);
+    return validDurableStrictRosterPolicyMarker(retained, operationId, permit) ? marker : undefined;
+  } catch {
+    return undefined;
+  }
+}
+
+/** Read and shape-validate one durable strict-roster selection without inventing missing truth. */
+export async function readDurableStrictRosterPolicy(
+  operationId: string,
+  store: DurableStrictRosterPolicyStore,
+): Promise<DurableStrictRosterPolicyMarker | undefined> {
+  if (!validExecutionOperationId(operationId)) return undefined;
+  try {
+    const marker: unknown = await store.readStrictRosterPolicy(operationId);
+    return validDurableStrictRosterPolicyMarker(marker, operationId) ? marker : undefined;
+  } catch {
+    return undefined;
+  }
+}
+
+/**
+ * Cross-process strict current-roster resolver. A durable exact marker makes missing roster
+ * capability contradictory evidence rather than a backward-compatible legacy adapter.
+ */
+export async function resolveDurableStrictRosterPolicyExecutionEffect(
+  permit: ApprovalExecutionPermit,
+  current: ApprovalExecutionSnapshot,
+  operationId: string,
+  store: JournaledApprovalExecutionPermitStore,
+  policyStore: DurableStrictRosterPolicyStore,
+): Promise<ApprovalExecutionEffectResolutionResult> {
+  if (!presentObject(permit) || !presentObject(current)) {
+    return { status: 'not_executed', retryable: false, reason: 'invalid_snapshot' };
+  }
+  if (
+    !/^permit_[a-f0-9]{24}$/.test(permit.id) ||
+    !/^aegis_[a-f0-9]{16}$/.test(permit.approvalId) ||
+    permit.approvalId !== current.approvalId ||
+    !validExecutionOperationId(operationId)
+  ) return { status: 'not_executed', retryable: false, reason: 'invalid_snapshot' };
+
+  const markerIntegrity = await durableStrictRosterPolicyIntegrity(permit, operationId, policyStore);
+  if (markerIntegrity !== 'current') return durableStrictRosterResolutionFailure(markerIntegrity);
+  const rosterIntegrity = await strictRosterIntegrity(operationId, store);
+  if (rosterIntegrity === 'unavailable' || rosterIntegrity === 'inconsistent') {
+    return { status: 'indeterminate', retryable: false, reason: 'journal_inconsistent' };
+  }
+  if (rosterIntegrity === 'stale') {
+    return { status: 'indeterminate', retryable: false, reason: 'journal_stale' };
+  }
+  return resolveExecutionEffect(permit, current, operationId, store);
+}
+
 export type StrictRosterContinuityContext = object;
 const strictRosterContinuitySelections = new WeakMap<object, Set<string>>();
 
@@ -1597,6 +1752,48 @@ export async function beginStrictRosterContinuityExecutionEffect(
     return { status: 'blocked', retryable: false, reason: 'journal_stale' };
   }
   strictRosterContinuitySelection(continuity)?.add(operationId);
+  return result;
+}
+
+/**
+ * Cross-process strict begin fence. Both the durable policy marker and current-roster truth must
+ * match before and after the journal CAS; their disappearance can never grant execute authority.
+ */
+export async function beginDurableStrictRosterPolicyExecutionEffect(
+  permit: ApprovalExecutionPermit,
+  current: ApprovalExecutionSnapshot,
+  operationId: string,
+  store: JournaledApprovalExecutionPermitStore,
+  policyStore: DurableStrictRosterPolicyStore,
+): Promise<ApprovalExecutionFinalizationResult> {
+  if (!presentObject(permit) || !presentObject(current)) {
+    return { status: 'blocked', retryable: false, reason: 'invalid_snapshot' };
+  }
+  if (
+    !/^permit_[a-f0-9]{24}$/.test(permit.id) ||
+    !/^aegis_[a-f0-9]{16}$/.test(permit.approvalId) ||
+    permit.approvalId !== current.approvalId ||
+    !validExecutionOperationId(operationId)
+  ) return { status: 'blocked', retryable: false, reason: 'invalid_snapshot' };
+
+  const preMarker = await durableStrictRosterPolicyIntegrity(permit, operationId, policyStore);
+  if (preMarker !== 'current') return durableStrictRosterBeginFailure(preMarker);
+  const preRoster = await strictRosterIntegrity(operationId, store);
+  if (preRoster === 'unavailable' || preRoster === 'inconsistent') {
+    return { status: 'blocked', retryable: false, reason: 'journal_inconsistent' };
+  }
+  if (preRoster === 'stale') return { status: 'blocked', retryable: false, reason: 'journal_stale' };
+
+  const result = await beginExecutionEffect(permit, current, operationId, store);
+  if (result.status !== 'execute') return result;
+
+  const postMarker = await durableStrictRosterPolicyIntegrity(permit, operationId, policyStore);
+  if (postMarker !== 'current') return durableStrictRosterBeginFailure(postMarker);
+  const postRoster = await strictRosterIntegrity(operationId, store);
+  if (postRoster === 'unavailable' || postRoster === 'inconsistent') {
+    return { status: 'blocked', retryable: false, reason: 'journal_inconsistent' };
+  }
+  if (postRoster === 'stale') return { status: 'blocked', retryable: false, reason: 'journal_stale' };
   return result;
 }
 

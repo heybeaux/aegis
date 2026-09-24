@@ -1,1 +1,1 @@
-aegis: predictive governance harness — rule gates, live decision/outcome labels, SwarmLab evidence release gates, RT-07 handoff runtime policy, RT-08 verification-tier audit policy
+aegis: governance harness — rule gates at parity, live outcome labels, SwarmLab release gate 37/37 (RT-01..37); predictor deterministic, not yet calibrated

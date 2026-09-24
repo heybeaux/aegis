@@ -1,10 +1,10 @@
 # Aegis
 
-**Purpose:** Predictive governance harness for AI agents. Aegis combines a deterministic rule gate, live decision/outcome collection, real-data labels, AWM-backed prediction, and SwarmLab-derived benchmark/release gates.
+**Purpose:** Governance harness for AI agents with an outcome-learning loop. Aegis combines a deterministic rule gate, live decision/outcome collection, real-data labels, a deterministic failure predictor, and SwarmLab-derived benchmark/release gates.
 **Repo:** https://github.com/heybeaux/aegis
 **Status:** active
-**Phase:** rule floor live; RT-07/RT-08 SwarmLab runtime policies landed; AWM/real-data benchmark scaling in progress
-**Last verified:** 2026-07-08
+**Phase:** rule floor live and at parity (44/44); SwarmLab evidence gate at 37/37 (RT-01..RT-37); 40 runtime policy ids enforced across RT-07..RT-16; trained/calibrated predictor NOT built yet
+**Last verified:** 2026-09-24
 
 ## Runtime
 
@@ -20,6 +20,7 @@
   - `@heybeaux/aegis-collect` — decisions/outcomes JSONL logging and dataset join
   - `@heybeaux/aegis-label` — label pipeline over signed event chains
   - `@heybeaux/aegis-bench` — synthetic, real-data, and SwarmLab evidence benchmark axes
+  - `production-predictor.ts` — deterministic hand-weighted failure predictor (not a trained model)
 
 ## Dependencies
 
@@ -35,30 +36,32 @@
 
 ## Quick gotchas
 
-- The current active branch may not be `main`; check `git status` before edits. As of 2026-07-07 the working branch was `feat/awm-dataset-scale` with WIP real-data benchmark changes.
-- Do not claim the predictive layer is proven unless the real-data axis has calibrated held-out results. The deterministic rule floor is proven; prediction is still being earned.
-- `ask` in the PreToolUse hook now pauses by exiting non-zero, writes a pending one-shot approval record, and resumes only after `aegis-hook approve <approval-id>` followed by retrying the exact same tool call.
-- Live collection writes to `~/.aegis/decisions.jsonl`, `outcomes.jsonl`, and `dataset-live.jsonl` outside the repo.
-- Exact decision/outcome joins depend on `tool_use_id` being recorded on both PreToolUse and PostToolUse payloads. Fuzzy joins are opt-in and must stay truth-conservative.
-- The SwarmLab evidence gate is not a predictor. It is a deterministic release gate over completed retests; RT-07 additionally has runtime enforcement for deep handoffs missing value-echo manifests, and RT-08 asks when high-risk audits try to certify cross-model-only/unsupported verification support.
+- **Local checkouts drift badly.** On 2026-09-24 `~/Dev/aegis` was 107 commits behind `origin/main` (local tip RT-08, real tip RT-37). Always `git fetch` and read `origin/main` before judging maturity. Work lands via dated branches (`nori/YYYY-MM-DD-expNN-aegis`) as numbered PRs.
+- The shipped predictor is **deterministic and hand-weighted** — fixed feature weights, hardcoded cold-start severity base rates, sequential per-bucket posteriors. No trained classifier, no held-out calibration curve. Do not call it "calibrated" or "proven". The rule floor and evidence gate are what's proven.
+- Data is the binding constraint, not modelling: ~4.8k decisions / ~4.1k outcomes / ~2.1k labeled rows, one operator, one machine.
+- `ask` in the PreToolUse hook pauses by exiting non-zero, writes a pending one-shot approval record, and resumes only after `aegis-hook approve <approval-id>` plus retrying the exact same tool call.
+- Live collection writes to `~/.aegis/decisions.jsonl`, `outcomes.jsonl`, `dataset-live.jsonl` — outside the repo.
+- Exact decision/outcome joins need `tool_use_id` on both PreToolUse and PostToolUse. Fuzzy joins are opt-in and must stay truth-conservative.
+- The SwarmLab evidence gate is not a predictor — it's a deterministic release gate over completed retests.
 
 ## Harness axes
 
-1. **Rule floor / parity:** AutoHarness-style regression corpus; catches known dangerous tool calls.
+1. **Rule floor / parity:** AutoHarness-style regression corpus; catches known dangerous tool calls. **44/44 applicable cases (3 excluded as framework-API tests).**
 2. **Synthetic tool-use lift:** seeded synthetic episodes; proves the benchmark machinery and over-time scoring.
-3. **Real-data axis:** frozen `action_failed` rows from live decisions/outcomes; compares regex floor, synthetic AWM stub, and AWM core when enabled.
-4. **SwarmLab evidence gate:** completed retests RT-01..RT-08 turned into deterministic release-gate metrics, with RT-08 also measured through an Aegis-wrapped SwarmLab retest.
+3. **Real-data axis:** frozen `action_failed` rows from live decisions/outcomes; compares the regex floor against the deterministic production predictor. Does not yet report held-out calibration.
+4. **SwarmLab evidence gate:** completed retests RT-01..RT-37 turned into deterministic release-gate metrics. **37/37 passed, 0 partial / failed / pending / provisional** (verified 2026-09-24).
 
-## Current SwarmLab-derived gate classes
+## Runtime-enforced SwarmLab policies
 
-- typed payload contract regression
-- pinned criterion / drift audit regression
-- memory fidelity / anti-entropy regression
-- fact-checked evidence / ground-store regression
-- persistent capability trust transfer regression
-- evidence-capped probation trust policy regression
-- value-echo handoff guard regression — RT-07 now also runtime policy (`swarmlab.rt07.deep-handoff-requires-value-echo`)
-- verification-tier high-risk audit regression — RT-08 now also runtime policy (`swarmlab.rt08.high-risk-audit-requires-grounded-support`), proven in SwarmLab `gsv-mrc3huyf`
+40 policy ids enforced in-hook as `ask` escalations, spanning RT-07..RT-16: value-echo deep handoffs (07), high-risk audit grounded support (08), desired-state receipts + retry idempotency (09), grounded citation / fresh evidence / private cross-scope disclosure (10), structured extraction at untrusted boundaries (11), fact lifecycle refresh (12), merge coordination + semantic review (13), independent checks for panel certification (14), intervention state for resumed actions (15), step integrity for partial-success resumes (16).
+
+## Gate class coverage (RT-01..RT-37)
+
+Earlier: typed payload contract, pinned criterion / drift audit, memory fidelity / anti-entropy, fact-checked evidence / ground-store, capability trust transfer, evidence-capped probation trust, value-echo handoff, verification-tier audit.
+
+Later: post-authorization effect commitments, concurrent start fencing, receipt-bound terminal outcomes, delegated approval authority (19), terminal truth through compaction (31), authority-plane rollback (32), checkpoint authority equivocation (33), witness-set omission (34), witness roster epoch (35), roster continuity (36), durable strict roster (37).
+
+**Scope caveat:** the RT corpus encodes failure modes found by this project's own SwarmLab retests, authored by one maintainer. Real replay-verified coverage — not general-purpose agent-safety certification.
 
 ## Where to learn more
 

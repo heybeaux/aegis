@@ -715,3 +715,47 @@ it('does not execute when authority rolls back between the final check and a suc
   await expect(beginExecutionEffect(permit, current, operationId, s))
     .resolves.toEqual({ status: 'blocked', retryable: false, reason: 'journal_stale' });
 });
+
+describe('RT-38 durable strict-roster retirement lifecycle', () => {
+  it('retires exact terminal truth idempotently and blocks late authority', async () => {
+    const { retireDurableStrictRosterPolicy, readDurableStrictRosterPolicyLifecycle,
+      resolveRetiredDurableStrictRosterPolicyExecutionEffect,
+      beginRetiredDurableStrictRosterPolicyExecutionEffect } = await import('../src/approval.js');
+    const receiptDigest = `sha256:${'e'.repeat(64)}`;
+    let record: any = { operationId, permitId: permit.id, approvalId: permit.approvalId };
+    const lifecycle: any = {
+      async bindStrictRosterPolicy() { return false; },
+      async readStrictRosterPolicy() { return structuredClone(record); },
+      async retireStrictRosterPolicy(_id: string, expected: any, retired: any) {
+        if (JSON.stringify(record) !== JSON.stringify(expected)) return false;
+        record = structuredClone(retired); return true;
+      },
+    };
+    const journal: any = {
+      async readEffect() {
+        return { operationId, permit: permitRecord, state: 'committed', claimed: true, revision: 3,
+          successReceipt: { permitId: permit.id, approvalId: permit.approvalId, operationId, receiptDigest, verified: true } };
+      },
+    };
+    await expect(retireDurableStrictRosterPolicy(permit, operationId, 'committed', receiptDigest, 3, lifecycle, journal))
+      .resolves.toEqual({ status: 'retired', retryable: false, reason: 'policy_retired' });
+    await expect(retireDurableStrictRosterPolicy(permit, operationId, 'committed', receiptDigest, 3, lifecycle, journal))
+      .resolves.toEqual({ status: 'retired', retryable: false, reason: 'policy_retired' });
+    await expect(readDurableStrictRosterPolicyLifecycle(operationId, lifecycle)).resolves.toMatchObject({ status: 'retired', outcome: 'committed' });
+    await expect(resolveRetiredDurableStrictRosterPolicyExecutionEffect(permit, operationId, lifecycle))
+      .resolves.toEqual({ status: 'retired', retryable: false, reason: 'effect_committed' });
+    await expect(beginRetiredDurableStrictRosterPolicyExecutionEffect(permit, operationId, lifecycle))
+      .resolves.toEqual({ status: 'blocked', retryable: false, reason: 'policy_lifecycle_inconsistent' });
+  });
+
+  it('refuses retirement before exact terminal truth and reports lifecycle outage', async () => {
+    const { retireDurableStrictRosterPolicy, resolveRetiredDurableStrictRosterPolicyExecutionEffect } = await import('../src/approval.js');
+    const receiptDigest = `sha256:${'e'.repeat(64)}`;
+    const active = { operationId, permitId: permit.id, approvalId: permit.approvalId };
+    const lifecycle: any = { async bindStrictRosterPolicy() { return false; }, async readStrictRosterPolicy() { return active; }, async retireStrictRosterPolicy() { return true; } };
+    await expect(retireDurableStrictRosterPolicy(permit, operationId, 'committed', receiptDigest, 3, lifecycle, { async readEffect() { return undefined; } } as any))
+      .resolves.toEqual({ status: 'blocked', retryable: false, reason: 'policy_lifecycle_inconsistent' });
+    await expect(resolveRetiredDurableStrictRosterPolicyExecutionEffect(permit, operationId, { async readStrictRosterPolicy() { throw new Error('down'); } } as any))
+      .resolves.toEqual({ status: 'indeterminate', retryable: false, reason: 'policy_unavailable' });
+  });
+});

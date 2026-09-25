@@ -830,8 +830,39 @@ export interface DurableStrictRosterPolicyMarker {
  * occupies the operation key. Exact duplicate selection is reconciled through readback.
  */
 export interface DurableStrictRosterPolicyStore {
-  bindStrictRosterPolicy(operationId: string, marker: DurableStrictRosterPolicyMarker): Promise<boolean>;
-  readStrictRosterPolicy(operationId: string): Promise<DurableStrictRosterPolicyMarker | undefined>;
+  bindStrictRosterPolicy(operationId: string, marker: DurableStrictRosterPolicyLifecycleRecord): Promise<boolean>;
+  readStrictRosterPolicy(operationId: string): Promise<DurableStrictRosterPolicyLifecycleRecord | undefined>;
+}
+
+/** Exact terminal-bound tombstone retained after an active strict-roster marker is retired. */
+export interface DurableStrictRosterPolicyRetirement extends DurableStrictRosterPolicyMarker {
+  status: 'retired';
+  outcome: ApprovalExecutionTerminalProofOutcome;
+  receiptDigest: string;
+  terminalRevision: number;
+}
+
+export type DurableStrictRosterPolicyLifecycleRecord =
+  | DurableStrictRosterPolicyMarker
+  | DurableStrictRosterPolicyRetirement;
+
+/**
+ * Host lifecycle extension. The active-to-retired transition MUST be atomic and compare the exact
+ * active marker; false means conflict or exact prior retirement and is reconciled by readback.
+ */
+export interface RetirableDurableStrictRosterPolicyStore extends DurableStrictRosterPolicyStore {
+  retireStrictRosterPolicy(
+    operationId: string,
+    expectedActive: DurableStrictRosterPolicyMarker,
+    retired: DurableStrictRosterPolicyRetirement,
+  ): Promise<boolean>;
+}
+
+export interface DurableStrictRosterPolicyLifecycleResult {
+  status: 'active' | 'retired' | 'blocked' | 'indeterminate';
+  retryable: boolean;
+  reason: 'policy_active' | 'policy_retired' | 'effect_committed' | 'effect_failed' |
+    'policy_lifecycle_inconsistent' | 'policy_unavailable';
 }
 
 export type ApprovalExecutionEffectResolutionStatus = 'executed' | 'not_executed' | 'indeterminate';
@@ -1481,6 +1512,88 @@ export async function resolveDurableStrictRosterPolicyExecutionEffect(
     return { status: 'indeterminate', retryable: false, reason: 'journal_stale' };
   }
   return resolveExecutionEffect(permit, current, operationId, store);
+}
+
+function validDurableStrictRosterPolicyRetirement(
+  value: unknown,
+  operationId?: string,
+  permit?: ApprovalExecutionPermit,
+): value is DurableStrictRosterPolicyRetirement {
+  if (!presentObject(value) || Array.isArray(value)) return false;
+  const allowedKeys = new Set(['operationId', 'permitId', 'approvalId', 'status', 'outcome', 'receiptDigest', 'terminalRevision']);
+  if (Object.keys(value).some((key) => !allowedKeys.has(key))) return false;
+  const record = value as Partial<DurableStrictRosterPolicyRetirement>;
+  if (
+    record.status !== 'retired' ||
+    !['committed', 'failed'].includes(String(record.outcome)) ||
+    typeof record.receiptDigest !== 'string' ||
+    !validReceiptDigest(record.receiptDigest) ||
+    !Number.isSafeInteger(record.terminalRevision) ||
+    record.terminalRevision! <= 0
+  ) return false;
+  const active = { operationId: record.operationId, permitId: record.permitId, approvalId: record.approvalId };
+  return validDurableStrictRosterPolicyMarker(active, operationId, permit);
+}
+
+/** Read and validate active/retired policy lifecycle truth without converting absence into retirement. */
+export async function readDurableStrictRosterPolicyLifecycle(
+  operationId: string,
+  store: DurableStrictRosterPolicyStore,
+): Promise<DurableStrictRosterPolicyLifecycleRecord | undefined> {
+  if (!validExecutionOperationId(operationId)) return undefined;
+  try {
+    const record: unknown = await store.readStrictRosterPolicy(operationId);
+    if (validDurableStrictRosterPolicyMarker(record, operationId)) return record;
+    if (validDurableStrictRosterPolicyRetirement(record, operationId)) return record;
+  } catch { /* unavailable is represented by undefined at the inspection-only boundary */ }
+  return undefined;
+}
+
+/** Atomically retire an exact active marker only after matching terminal journal truth exists. */
+export async function retireDurableStrictRosterPolicy(
+  permit: ApprovalExecutionPermit,
+  operationId: string,
+  outcome: ApprovalExecutionTerminalProofOutcome,
+  receiptDigest: string,
+  terminalRevision: number,
+  store: RetirableDurableStrictRosterPolicyStore,
+  journal: JournaledApprovalExecutionPermitStore,
+): Promise<DurableStrictRosterPolicyLifecycleResult> {
+  const blocked = (): DurableStrictRosterPolicyLifecycleResult => ({ status: 'blocked', retryable: false, reason: 'policy_lifecycle_inconsistent' });
+  if (!presentObject(permit) || !validExecutionOperationId(operationId) || !['committed', 'failed'].includes(outcome) || !validReceiptDigest(receiptDigest) || !Number.isSafeInteger(terminalRevision) || terminalRevision <= 0) return blocked();
+  let effect: ApprovalExecutionEffectRecord | undefined;
+  try { effect = await journal.readEffect(operationId); } catch { return { status: 'indeterminate', retryable: false, reason: 'policy_unavailable' }; }
+  if (!effectRecordMatches(effect, permit, operationId) || effect.revision !== terminalRevision || effect.state !== outcome) return blocked();
+  if (outcome === 'committed') {
+    if (!validStoredSuccessReceipt(effect.successReceipt, permit, operationId) || effect.successReceipt.receiptDigest !== receiptDigest || effect.failureReceipt !== undefined) return blocked();
+  } else if (!validStoredFailureReceipt(effect.failureReceipt, permit, operationId) || effect.failureReceipt.receiptDigest !== receiptDigest || effect.successReceipt !== undefined) return blocked();
+  const expectedActive: DurableStrictRosterPolicyMarker = { operationId, permitId: permit.id, approvalId: permit.approvalId };
+  const retirement: DurableStrictRosterPolicyRetirement = { ...expectedActive, status: 'retired', outcome, receiptDigest, terminalRevision };
+  try {
+    await store.retireStrictRosterPolicy(operationId, expectedActive, retirement);
+    const retained: unknown = await store.readStrictRosterPolicy(operationId);
+    return validDurableStrictRosterPolicyRetirement(retained, operationId, permit) && retained.outcome === outcome && retained.receiptDigest === receiptDigest && retained.terminalRevision === terminalRevision
+      ? { status: 'retired', retryable: false, reason: 'policy_retired' }
+      : blocked();
+  } catch { return { status: 'indeterminate', retryable: false, reason: 'policy_unavailable' }; }
+}
+
+async function retiredPolicyResult(permit: ApprovalExecutionPermit, operationId: string, store: DurableStrictRosterPolicyStore): Promise<DurableStrictRosterPolicyLifecycleResult> {
+  let record: unknown;
+  try { record = await store.readStrictRosterPolicy(operationId); } catch { return { status: 'indeterminate', retryable: false, reason: 'policy_unavailable' }; }
+  if (validDurableStrictRosterPolicyRetirement(record, operationId, permit)) return { status: 'retired', retryable: false, reason: record.outcome === 'committed' ? 'effect_committed' : 'effect_failed' };
+  return { status: 'blocked', retryable: false, reason: 'policy_lifecycle_inconsistent' };
+}
+
+/** Late reads after retirement preserve terminal classification and never restore retry authority. */
+export async function resolveRetiredDurableStrictRosterPolicyExecutionEffect(permit: ApprovalExecutionPermit, operationId: string, store: DurableStrictRosterPolicyStore): Promise<DurableStrictRosterPolicyLifecycleResult> {
+  return retiredPolicyResult(permit, operationId, store);
+}
+
+/** Late begin/reselection attempts after retirement are always blocked. */
+export async function beginRetiredDurableStrictRosterPolicyExecutionEffect(permit: ApprovalExecutionPermit, operationId: string, store: DurableStrictRosterPolicyStore): Promise<DurableStrictRosterPolicyLifecycleResult> {
+  const result = await retiredPolicyResult(permit, operationId, store);
+  return result.status === 'indeterminate' ? result : { status: 'blocked', retryable: false, reason: 'policy_lifecycle_inconsistent' };
 }
 
 export type StrictRosterContinuityContext = object;

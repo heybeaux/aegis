@@ -845,6 +845,23 @@ export const SWARMLAB_EVIDENCE_CASES: readonly SwarmLabEvidenceCase[] = [
       { name: 'aegisWrappedMarkerPostCasLossSafety', before: 0, after: 1, threshold: 1, comparator: 'eq' },
     ],
   },
+  {
+    id: 'RT-38', source: 'SwarmLab exp-47 durable strict-roster retirement',
+    finding: 'Deleting a live durable marker after terminal completion loses lifecycle truth and can let late retries confuse legitimate retirement with marker loss or recreate authority.',
+    owners: ['aegis'], change: 'Added exact terminal-bound atomic retirement, retained tombstone validation, late terminal classification, and late begin/reselection blocking.',
+    runIds: ['dsrt-muglbjj3', 'dsrt-mugleqyl'], implementationRefs: ['b287816a0734e2590fc1371186f5fcfd647318c9'], evidenceTier: 'verified', implementationStatus: 'landed',
+    aegisMapping: 'strict-roster markers retire only through exact terminal-bound tombstones; late retries never regain authority',
+    metrics: [
+      { name: 'aegisWrappedRetirementFailureDetectionRate', before: 0, after: 1, threshold: 1, comparator: 'eq' },
+      { name: 'aegisWrappedRetiredAuthorityRestorationRate', before: 1, after: 0, threshold: 0, comparator: 'eq' },
+      { name: 'aegisWrappedResolutionAccuracy', before: 0, after: 1, threshold: 1, comparator: 'eq' },
+      { name: 'aegisWrappedDurableRetirementApiAvailability', before: 0, after: 1, threshold: 1, comparator: 'eq' },
+      { name: 'aegisWrappedLateBeginSafety', before: 0, after: 1, threshold: 1, comparator: 'eq' },
+      { name: 'aegisWrappedAbaSafety', before: 0, after: 1, threshold: 1, comparator: 'eq' },
+      { name: 'aegisWrappedTombstoneLossSafety', before: 0, after: 1, threshold: 1, comparator: 'eq' },
+    ],
+  },
+
 ];
 
 export function evaluateSwarmLabEvidence(

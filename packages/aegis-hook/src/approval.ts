@@ -842,9 +842,25 @@ export interface DurableStrictRosterPolicyRetirement extends DurableStrictRoster
   terminalRevision: number;
 }
 
+/**
+ * Host-authenticated compact proof that replaces one exact retirement tombstone. The digest binds
+ * the omitted permit/approval identifiers together with every retained terminal field; `verified`
+ * means the host authenticated the checkpoint outside the lifecycle-record failure domain.
+ */
+export interface DurableStrictRosterPolicyRetirementCheckpoint {
+  operationId: string;
+  status: 'retirement_compacted';
+  outcome: ApprovalExecutionTerminalProofOutcome;
+  receiptDigest: string;
+  terminalRevision: number;
+  checkpointDigest: string;
+  verified: boolean;
+}
+
 export type DurableStrictRosterPolicyLifecycleRecord =
   | DurableStrictRosterPolicyMarker
-  | DurableStrictRosterPolicyRetirement;
+  | DurableStrictRosterPolicyRetirement
+  | DurableStrictRosterPolicyRetirementCheckpoint;
 
 /**
  * Host lifecycle extension. The active-to-retired transition MUST be atomic and compare the exact
@@ -855,6 +871,19 @@ export interface RetirableDurableStrictRosterPolicyStore extends DurableStrictRo
     operationId: string,
     expectedActive: DurableStrictRosterPolicyMarker,
     retired: DurableStrictRosterPolicyRetirement,
+  ): Promise<boolean>;
+}
+
+/**
+ * Host lifecycle-compaction extension. The exact tombstone-to-checkpoint replacement MUST be one
+ * linearizable compare-and-swap. A false result means conflict or an exact prior compaction and is
+ * reconciled only through authenticated checkpoint readback.
+ */
+export interface CompactableDurableStrictRosterPolicyStore extends RetirableDurableStrictRosterPolicyStore {
+  compactStrictRosterPolicyRetirement(
+    operationId: string,
+    expectedRetired: DurableStrictRosterPolicyRetirement,
+    checkpoint: DurableStrictRosterPolicyRetirementCheckpoint,
   ): Promise<boolean>;
 }
 
@@ -1535,7 +1564,67 @@ function validDurableStrictRosterPolicyRetirement(
   return validDurableStrictRosterPolicyMarker(active, operationId, permit);
 }
 
-/** Read and validate active/retired policy lifecycle truth without converting absence into retirement. */
+function durableStrictRosterRetirementCheckpointDigest(
+  operationId: string,
+  permitId: string,
+  approvalId: string,
+  outcome: ApprovalExecutionTerminalProofOutcome,
+  receiptDigest: string,
+  terminalRevision: number,
+): string {
+  return `sha256:${createHash('sha256').update(JSON.stringify({
+    approvalId,
+    operationId,
+    outcome,
+    permitId,
+    receiptDigest,
+    terminalRevision,
+  })).digest('hex')}`;
+}
+
+function validDurableStrictRosterPolicyRetirementCheckpoint(
+  value: unknown,
+  operationId?: string,
+  permit?: ApprovalExecutionPermit,
+): value is DurableStrictRosterPolicyRetirementCheckpoint {
+  if (!presentObject(value) || Array.isArray(value)) return false;
+  const allowedKeys = new Set([
+    'operationId',
+    'status',
+    'outcome',
+    'receiptDigest',
+    'terminalRevision',
+    'checkpointDigest',
+    'verified',
+  ]);
+  if (Object.keys(value).some((key) => !allowedKeys.has(key))) return false;
+  const record = value as Partial<DurableStrictRosterPolicyRetirementCheckpoint>;
+  if (
+    record.status !== 'retirement_compacted' ||
+    !['committed', 'failed'].includes(String(record.outcome)) ||
+    typeof record.operationId !== 'string' ||
+    !validExecutionOperationId(record.operationId) ||
+    typeof record.receiptDigest !== 'string' ||
+    !validReceiptDigest(record.receiptDigest) ||
+    !Number.isSafeInteger(record.terminalRevision) ||
+    record.terminalRevision! <= 0 ||
+    typeof record.checkpointDigest !== 'string' ||
+    !validReceiptDigest(record.checkpointDigest) ||
+    record.verified !== true
+  ) return false;
+  if (operationId !== undefined && record.operationId !== operationId) return false;
+  if (permit === undefined) return true;
+  return record.checkpointDigest === durableStrictRosterRetirementCheckpointDigest(
+    record.operationId,
+    permit.id,
+    permit.approvalId,
+    record.outcome as ApprovalExecutionTerminalProofOutcome,
+    record.receiptDigest,
+    record.terminalRevision!,
+  );
+}
+
+/** Read and validate active/retired/compacted lifecycle truth without converting absence into retirement. */
 export async function readDurableStrictRosterPolicyLifecycle(
   operationId: string,
   store: DurableStrictRosterPolicyStore,
@@ -1545,6 +1634,7 @@ export async function readDurableStrictRosterPolicyLifecycle(
     const record: unknown = await store.readStrictRosterPolicy(operationId);
     if (validDurableStrictRosterPolicyMarker(record, operationId)) return record;
     if (validDurableStrictRosterPolicyRetirement(record, operationId)) return record;
+    if (validDurableStrictRosterPolicyRetirementCheckpoint(record, operationId)) return record;
   } catch { /* unavailable is represented by undefined at the inspection-only boundary */ }
   return undefined;
 }
@@ -1576,6 +1666,111 @@ export async function retireDurableStrictRosterPolicy(
       ? { status: 'retired', retryable: false, reason: 'policy_retired' }
       : blocked();
   } catch { return { status: 'indeterminate', retryable: false, reason: 'policy_unavailable' }; }
+}
+
+/**
+ * Atomically compact one exact full retirement tombstone into authenticated self-binding proof.
+ * Aegis never treats deletion, unverified proof, or malformed proof as successful compaction.
+ */
+export async function compactDurableStrictRosterPolicyRetirement(
+  permit: ApprovalExecutionPermit,
+  operationId: string,
+  outcome: ApprovalExecutionTerminalProofOutcome,
+  receiptDigest: string,
+  terminalRevision: number,
+  store: CompactableDurableStrictRosterPolicyStore,
+): Promise<DurableStrictRosterPolicyLifecycleResult> {
+  const blocked = (): DurableStrictRosterPolicyLifecycleResult => ({
+    status: 'blocked', retryable: false, reason: 'policy_lifecycle_inconsistent',
+  });
+  if (
+    !presentObject(permit) ||
+    !/^permit_[a-f0-9]{24}$/.test(permit.id) ||
+    !/^aegis_[a-f0-9]{16}$/.test(permit.approvalId) ||
+    !validExecutionOperationId(operationId) ||
+    !['committed', 'failed'].includes(outcome) ||
+    !validReceiptDigest(receiptDigest) ||
+    !Number.isSafeInteger(terminalRevision) ||
+    terminalRevision <= 0
+  ) return blocked();
+
+  const expectedRetired: DurableStrictRosterPolicyRetirement = {
+    operationId,
+    permitId: permit.id,
+    approvalId: permit.approvalId,
+    status: 'retired',
+    outcome,
+    receiptDigest,
+    terminalRevision,
+  };
+  const checkpoint: DurableStrictRosterPolicyRetirementCheckpoint = {
+    operationId,
+    status: 'retirement_compacted',
+    outcome,
+    receiptDigest,
+    terminalRevision,
+    checkpointDigest: durableStrictRosterRetirementCheckpointDigest(
+      operationId, permit.id, permit.approvalId, outcome, receiptDigest, terminalRevision,
+    ),
+    verified: true,
+  };
+  try {
+    await store.compactStrictRosterPolicyRetirement(operationId, expectedRetired, checkpoint);
+    const retained: unknown = await store.readStrictRosterPolicy(operationId);
+    return validDurableStrictRosterPolicyRetirementCheckpoint(retained, operationId, permit) &&
+      retained.outcome === outcome &&
+      retained.receiptDigest === receiptDigest &&
+      retained.terminalRevision === terminalRevision
+      ? { status: 'retired', retryable: false, reason: 'policy_retired' }
+      : blocked();
+  } catch {
+    return { status: 'indeterminate', retryable: false, reason: 'policy_unavailable' };
+  }
+}
+
+async function compactedRetiredPolicyResult(
+  permit: ApprovalExecutionPermit,
+  operationId: string,
+  store: DurableStrictRosterPolicyStore,
+): Promise<DurableStrictRosterPolicyLifecycleResult> {
+  if (!presentObject(permit) || !validExecutionOperationId(operationId)) {
+    return { status: 'blocked', retryable: false, reason: 'policy_lifecycle_inconsistent' };
+  }
+  let record: unknown;
+  try {
+    record = await store.readStrictRosterPolicy(operationId);
+  } catch {
+    return { status: 'indeterminate', retryable: false, reason: 'policy_unavailable' };
+  }
+  if (validDurableStrictRosterPolicyRetirementCheckpoint(record, operationId, permit)) {
+    return {
+      status: 'retired',
+      retryable: false,
+      reason: record.outcome === 'committed' ? 'effect_committed' : 'effect_failed',
+    };
+  }
+  return { status: 'blocked', retryable: false, reason: 'policy_lifecycle_inconsistent' };
+}
+
+/** Late reads accept only exact authenticated compact retirement proof. */
+export async function resolveCompactedDurableStrictRosterPolicyExecutionEffect(
+  permit: ApprovalExecutionPermit,
+  operationId: string,
+  store: DurableStrictRosterPolicyStore,
+): Promise<DurableStrictRosterPolicyLifecycleResult> {
+  return compactedRetiredPolicyResult(permit, operationId, store);
+}
+
+/** Compact retirement proof preserves terminal classification but can never grant begin authority. */
+export async function beginCompactedDurableStrictRosterPolicyExecutionEffect(
+  permit: ApprovalExecutionPermit,
+  operationId: string,
+  store: DurableStrictRosterPolicyStore,
+): Promise<DurableStrictRosterPolicyLifecycleResult> {
+  const result = await compactedRetiredPolicyResult(permit, operationId, store);
+  return result.status === 'indeterminate'
+    ? result
+    : { status: 'blocked', retryable: false, reason: 'policy_lifecycle_inconsistent' };
 }
 
 async function retiredPolicyResult(permit: ApprovalExecutionPermit, operationId: string, store: DurableStrictRosterPolicyStore): Promise<DurableStrictRosterPolicyLifecycleResult> {

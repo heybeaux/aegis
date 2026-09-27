@@ -854,6 +854,7 @@ export interface DurableStrictRosterPolicyRetirementCheckpoint {
   receiptDigest: string;
   terminalRevision: number;
   checkpointDigest: string;
+  /** True only after the host has independently authenticated the retained checkpoint. */
   verified: boolean;
 }
 
@@ -1712,7 +1713,8 @@ export async function compactDurableStrictRosterPolicyRetirement(
     checkpointDigest: durableStrictRosterRetirementCheckpointDigest(
       operationId, permit.id, permit.approvalId, outcome, receiptDigest, terminalRevision,
     ),
-    verified: true,
+    // Aegis proposes deterministic proof content; only the host may authenticate retained truth.
+    verified: false,
   };
   try {
     await store.compactStrictRosterPolicyRetirement(operationId, expectedRetired, checkpoint);
@@ -1733,7 +1735,12 @@ async function compactedRetiredPolicyResult(
   operationId: string,
   store: DurableStrictRosterPolicyStore,
 ): Promise<DurableStrictRosterPolicyLifecycleResult> {
-  if (!presentObject(permit) || !validExecutionOperationId(operationId)) {
+  if (
+    !presentObject(permit) ||
+    !/^permit_[a-f0-9]{24}$/.test(permit.id) ||
+    !/^aegis_[a-f0-9]{16}$/.test(permit.approvalId) ||
+    !validExecutionOperationId(operationId)
+  ) {
     return { status: 'blocked', retryable: false, reason: 'policy_lifecycle_inconsistent' };
   }
   let record: unknown;

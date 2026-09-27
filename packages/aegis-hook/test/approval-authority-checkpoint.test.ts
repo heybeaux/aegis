@@ -734,9 +734,10 @@ describe('RT-39 durable strict-roster retirement compaction', () => {
         async readStrictRosterPolicy() { return structuredClone(record); },
         async retireStrictRosterPolicy() { return false; },
         async compactStrictRosterPolicyRetirement(_id: string, expected: any, checkpoint: any) {
-          if (JSON.stringify(record) === JSON.stringify(checkpoint)) return false;
+          const authenticated = { ...checkpoint, verified: true };
+          if (JSON.stringify(record) === JSON.stringify(authenticated)) return false;
           if (JSON.stringify(record) !== JSON.stringify(expected)) return false;
-          record = structuredClone(checkpoint); return true;
+          record = structuredClone(authenticated); return true;
         },
       };
       await expect(compactDurableStrictRosterPolicyRetirement(
@@ -750,6 +751,61 @@ describe('RT-39 durable strict-roster retirement compaction', () => {
       await expect(beginCompactedDurableStrictRosterPolicyExecutionEffect(permit, operationId, store))
         .resolves.toEqual({ status: 'blocked', retryable: false, reason: 'policy_lifecycle_inconsistent' });
     }
+  });
+
+  it('rejects invalid permits before compaction and late compacted reads', async () => {
+    const {
+      compactDurableStrictRosterPolicyRetirement,
+      resolveCompactedDurableStrictRosterPolicyExecutionEffect,
+      beginCompactedDurableStrictRosterPolicyExecutionEffect,
+    } = await import('../src/approval.js');
+    const receiptDigest = `sha256:${'c'.repeat(64)}`;
+    const record: any = {
+      operationId, permitId: permit.id, approvalId: permit.approvalId,
+      status: 'retired', outcome: 'committed', receiptDigest, terminalRevision: 4,
+    };
+    let compactCalls = 0;
+    const compactionStore: any = {
+      async readStrictRosterPolicy() { return structuredClone(record); },
+      async compactStrictRosterPolicyRetirement() { compactCalls += 1; return true; },
+    };
+    const invalidPermits: any[] = [
+      {},
+      { id: 'bad', approvalId: permit.approvalId },
+      { id: permit.id, approvalId: 'bad' },
+    ];
+    for (const invalid of invalidPermits) {
+      await expect(compactDurableStrictRosterPolicyRetirement(
+        invalid, operationId, 'committed', receiptDigest, 4, compactionStore,
+      )).resolves.toEqual({ status: 'blocked', retryable: false, reason: 'policy_lifecycle_inconsistent' });
+      await expect(resolveCompactedDurableStrictRosterPolicyExecutionEffect(invalid, operationId, compactionStore))
+        .resolves.toEqual({ status: 'blocked', retryable: false, reason: 'policy_lifecycle_inconsistent' });
+      await expect(beginCompactedDurableStrictRosterPolicyExecutionEffect(invalid, operationId, compactionStore))
+        .resolves.toEqual({ status: 'blocked', retryable: false, reason: 'policy_lifecycle_inconsistent' });
+    }
+    expect(compactCalls).toBe(0);
+  });
+
+  it('requires host-authenticated checkpoint readback instead of trusting Aegis-authored verified truth', async () => {
+    const { compactDurableStrictRosterPolicyRetirement } = await import('../src/approval.js');
+    const receiptDigest = `sha256:${'c'.repeat(64)}`;
+    let record: any = {
+      operationId, permitId: permit.id, approvalId: permit.approvalId,
+      status: 'retired', outcome: 'committed', receiptDigest, terminalRevision: 4,
+    };
+    let suppliedCheckpoint: any;
+    const store: any = {
+      async readStrictRosterPolicy() { return structuredClone(record); },
+      async compactStrictRosterPolicyRetirement(_id: string, _expected: any, checkpoint: any) {
+        suppliedCheckpoint = structuredClone(checkpoint);
+        record = structuredClone(checkpoint);
+        return true;
+      },
+    };
+    await expect(compactDurableStrictRosterPolicyRetirement(
+      permit, operationId, 'committed', receiptDigest, 4, store,
+    )).resolves.toEqual({ status: 'blocked', retryable: false, reason: 'policy_lifecycle_inconsistent' });
+    expect(suppliedCheckpoint.verified).toBe(false);
   });
 
   it('fails closed for active, conflicting, unverified, malformed, lost and unavailable checkpoints', async () => {

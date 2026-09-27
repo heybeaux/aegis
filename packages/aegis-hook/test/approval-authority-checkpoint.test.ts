@@ -716,6 +716,81 @@ it('does not execute when authority rolls back between the final check and a suc
     .resolves.toEqual({ status: 'blocked', retryable: false, reason: 'journal_stale' });
 });
 
+describe('RT-39 durable strict-roster retirement compaction', () => {
+  it('compacts exact committed and failed tombstones idempotently and classifies late reads', async () => {
+    const {
+      compactDurableStrictRosterPolicyRetirement,
+      resolveCompactedDurableStrictRosterPolicyExecutionEffect,
+      beginCompactedDurableStrictRosterPolicyExecutionEffect,
+    } = await import('../src/approval.js');
+    for (const outcome of ['committed', 'failed'] as const) {
+      const receiptDigest = `sha256:${(outcome === 'committed' ? 'c' : 'f').repeat(64)}`;
+      let record: any = {
+        operationId, permitId: permit.id, approvalId: permit.approvalId,
+        status: 'retired', outcome, receiptDigest, terminalRevision: 4,
+      };
+      const store: any = {
+        async bindStrictRosterPolicy() { return false; },
+        async readStrictRosterPolicy() { return structuredClone(record); },
+        async retireStrictRosterPolicy() { return false; },
+        async compactStrictRosterPolicyRetirement(_id: string, expected: any, checkpoint: any) {
+          if (JSON.stringify(record) === JSON.stringify(checkpoint)) return false;
+          if (JSON.stringify(record) !== JSON.stringify(expected)) return false;
+          record = structuredClone(checkpoint); return true;
+        },
+      };
+      await expect(compactDurableStrictRosterPolicyRetirement(
+        permit, operationId, outcome, receiptDigest, 4, store,
+      )).resolves.toEqual({ status: 'retired', retryable: false, reason: 'policy_retired' });
+      await expect(compactDurableStrictRosterPolicyRetirement(
+        permit, operationId, outcome, receiptDigest, 4, store,
+      )).resolves.toEqual({ status: 'retired', retryable: false, reason: 'policy_retired' });
+      await expect(resolveCompactedDurableStrictRosterPolicyExecutionEffect(permit, operationId, store))
+        .resolves.toEqual({ status: 'retired', retryable: false, reason: `effect_${outcome}` });
+      await expect(beginCompactedDurableStrictRosterPolicyExecutionEffect(permit, operationId, store))
+        .resolves.toEqual({ status: 'blocked', retryable: false, reason: 'policy_lifecycle_inconsistent' });
+    }
+  });
+
+  it('fails closed for active, conflicting, unverified, malformed, lost and unavailable checkpoints', async () => {
+    const {
+      compactDurableStrictRosterPolicyRetirement,
+      resolveCompactedDurableStrictRosterPolicyExecutionEffect,
+    } = await import('../src/approval.js');
+    const receiptDigest = `sha256:${'c'.repeat(64)}`;
+    const retired = {
+      operationId, permitId: permit.id, approvalId: permit.approvalId,
+      status: 'retired', outcome: 'committed', receiptDigest, terminalRevision: 4,
+    };
+    const attempts: any[] = [];
+    const activeStore: any = {
+      async readStrictRosterPolicy() { return { operationId, permitId: permit.id, approvalId: permit.approvalId }; },
+      async compactStrictRosterPolicyRetirement(_id: string, expected: any, checkpoint: any) {
+        attempts.push([expected, checkpoint]); return false;
+      },
+    };
+    await expect(compactDurableStrictRosterPolicyRetirement(
+      permit, operationId, 'committed', receiptDigest, 4, activeStore,
+    )).resolves.toEqual({ status: 'blocked', retryable: false, reason: 'policy_lifecycle_inconsistent' });
+    expect(attempts).toHaveLength(1);
+    expect(attempts[0]![0]).toEqual(retired);
+
+    let proof: any = { ...attempts[0]![1], verified: false };
+    const readStore: any = { async readStrictRosterPolicy() { return structuredClone(proof); } };
+    await expect(resolveCompactedDurableStrictRosterPolicyExecutionEffect(permit, operationId, readStore))
+      .resolves.toEqual({ status: 'blocked', retryable: false, reason: 'policy_lifecycle_inconsistent' });
+    proof = { ...attempts[0]![1], checkpointDigest: `sha256:${'0'.repeat(64)}` };
+    await expect(resolveCompactedDurableStrictRosterPolicyExecutionEffect(permit, operationId, readStore))
+      .resolves.toEqual({ status: 'blocked', retryable: false, reason: 'policy_lifecycle_inconsistent' });
+    proof = undefined;
+    await expect(resolveCompactedDurableStrictRosterPolicyExecutionEffect(permit, operationId, readStore))
+      .resolves.toEqual({ status: 'blocked', retryable: false, reason: 'policy_lifecycle_inconsistent' });
+    await expect(resolveCompactedDurableStrictRosterPolicyExecutionEffect(permit, operationId, {
+      async readStrictRosterPolicy() { throw new Error('down'); },
+    } as any)).resolves.toEqual({ status: 'indeterminate', retryable: false, reason: 'policy_unavailable' });
+  });
+});
+
 describe('RT-38 durable strict-roster retirement lifecycle', () => {
   it('retires exact terminal truth idempotently and blocks late authority', async () => {
     const { retireDurableStrictRosterPolicy, readDurableStrictRosterPolicyLifecycle,

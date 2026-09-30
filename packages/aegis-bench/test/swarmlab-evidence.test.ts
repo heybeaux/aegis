@@ -10,8 +10,8 @@ describe('SwarmLab evidence gate', () => {
   it('passes when all stack mappings are landed with verified evidence', () => {
     const result = evaluateSwarmLabEvidence();
     expect(result.status).toBe('passed');
-    expect(result.total).toBe(39);
-    expect(result.passed).toBe(39);
+    expect(result.total).toBe(40);
+    expect(result.passed).toBe(40);
     expect(result.failed).toBe(0);
     expect(result.partial).toBe(0);
     expect(result.pendingImplementation).toBe(0);
@@ -229,6 +229,7 @@ describe('SwarmLab evidence gate', () => {
       'RT-37',
       'RT-38',
       'RT-39',
+      'RT-40',
     ]);
 
     const mappings = SWARMLAB_EVIDENCE_CASES.map((c) => c.aegisMapping).join('\n');
@@ -269,11 +270,12 @@ describe('SwarmLab evidence gate', () => {
     expect(mappings).toContain('strict current-roster policy must survive process restart and cross-host handoff');
     expect(mappings).toContain('strict-roster markers retire only through exact terminal-bound tombstones');
     expect(mappings).toContain('strict-roster retirement compaction requires authenticated self-binding lifecycle checkpoints');
+    expect(mappings).toContain('compact strict-roster terminal certainty requires plural lifecycle checkpoint authority agreement');
   });
 
   it('renders a report banner matching the evaluated evidence range', () => {
     const markdown = swarmLabEvidenceToMarkdown(evaluateSwarmLabEvidence());
-    expect(markdown).toContain('REPLAY-VERIFIED SWARMLAB RETESTS (RT-01..RT-39)');
+    expect(markdown).toContain('REPLAY-VERIFIED SWARMLAB RETESTS (RT-01..RT-40)');
     expect(markdown).not.toContain('RT-01..RT-10');
     expect(markdown).toContain('0 provisional evidence tier');
     expect(markdown).toContain('| RT-06 | passed | landed | verified |');
@@ -290,6 +292,7 @@ describe('SwarmLab evidence gate', () => {
     expect(markdown).toContain('| RT-37 | passed | landed | verified |');
     expect(markdown).toContain('| RT-38 | passed | landed | verified |');
     expect(markdown).toContain('| RT-39 | passed | landed | verified |');
+    expect(markdown).toContain('| RT-40 | passed | landed | verified |');
     expect(markdown).toContain('| RT-17 | passed | landed | verified |');
     expect(markdown).toContain('| RT-18 | passed | landed | verified |');
     expect(markdown).toContain('| RT-19 | passed | landed | verified |');

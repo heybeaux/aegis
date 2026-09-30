@@ -880,6 +880,23 @@ export const SWARMLAB_EVIDENCE_CASES: readonly SwarmLabEvidenceCase[] = [
       { name: 'aegisWrappedCheckpointLossSafety', before: 0, after: 1, threshold: 1, comparator: 'eq' },
     ],
   },
+  {
+    id: 'RT-40', source: 'SwarmLab exp-49 compact retirement checkpoint equivocation',
+    finding: 'One authenticated compact lifecycle checkpoint can remain a false terminal-certainty restore point when independently authenticated retirement authorities disagree.',
+    owners: ['aegis'], change: 'Added plural compact-lifecycle authority validation with strict identity, binding, verification, self-consistency, duplicate and conflict checks plus explicit resolve/begin boundaries.',
+    runIds: ['crce-munqi4mz', 'crce-munqnsnf'], implementationRefs: ['e04db90ae4dddfe50b34df1de66d03c08adf400e'], evidenceTier: 'verified', implementationStatus: 'landed',
+    aegisMapping: 'compact strict-roster terminal certainty requires plural lifecycle checkpoint authority agreement',
+    metrics: [
+      { name: 'aegisWrappedLifecycleCheckpointEquivocationDetectionRate', before: 0, after: 1, threshold: 1, comparator: 'eq' },
+      { name: 'aegisWrappedEquivocationFalseTerminalCertaintyRate', before: 1, after: 0, threshold: 0, comparator: 'eq' },
+      { name: 'aegisWrappedResolutionAccuracy', before: 0.21052631578947367, after: 1, threshold: 1, comparator: 'eq' },
+      { name: 'aegisWrappedMultiAuthorityLifecycleCheckpointApiAvailability', before: 0, after: 1, threshold: 1, comparator: 'eq' },
+      { name: 'aegisWrappedOutcomeConflictSafety', before: 0, after: 1, threshold: 1, comparator: 'eq' },
+      { name: 'aegisWrappedLocalRollbackConflictSafety', before: 0, after: 1, threshold: 1, comparator: 'eq' },
+      { name: 'aegisWrappedBeginSafety', before: 0, after: 1, threshold: 1, comparator: 'eq' },
+    ],
+  },
+
 
 ];
 

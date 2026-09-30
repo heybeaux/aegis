@@ -13,7 +13,11 @@ terminal and does not require the compact-authority service.
 
 Use `resolveMultiAuthorityCompactedDurableStrictRosterPolicyExecutionEffect()` for late reads and
 `beginMultiAuthorityCompactedDurableStrictRosterPolicyExecutionEffect()` at begin/reselection
-boundaries. The begin function never restores authority from terminal proof.
+boundaries. The ordinary RT-39 compact resolve/begin functions also detect this optional capability,
+so callers cannot bypass plural validation by choosing the older API name. A malformed advertised
+capability fails closed instead of silently downgrading to single-checkpoint behavior. Legacy stores
+that do not advertise the method retain RT-39 behavior. The begin function never restores authority
+from terminal proof.
 
 Aegis validates evidence the host exposes; it cannot discover hidden or colluding authorities.
 Authority independence, authentication, complete enumeration, linearizable reads, retention, and

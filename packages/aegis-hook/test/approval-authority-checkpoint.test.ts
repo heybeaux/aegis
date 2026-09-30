@@ -933,6 +933,72 @@ describe('RT-38 durable strict-roster retirement lifecycle', () => {
     }
   });
 
+  it('auto-detects plural authority capability on ordinary compact resolve and begin entry points', async () => {
+    const {
+      resolveCompactedDurableStrictRosterPolicyExecutionEffect,
+      beginCompactedDurableStrictRosterPolicyExecutionEffect,
+    } = await import('../src/approval.js');
+    const receiptDigest = `sha256:${'f'.repeat(64)}`;
+    const checkpointDigest = `sha256:${createHash('sha256').update(JSON.stringify({
+      approvalId: permit.approvalId,
+      operationId,
+      outcome: 'committed',
+      permitId: permit.id,
+      receiptDigest,
+      terminalRevision: 3,
+    })).digest('hex')}`;
+    const record = { operationId, status: 'retirement_compacted', outcome: 'committed', receiptDigest, terminalRevision: 3, checkpointDigest, verified: true };
+    const authority = (authorityId: string, overrides: Record<string, unknown> = {}) => ({
+      authorityId, operationId, outcome: 'committed', receiptDigest, terminalRevision: 3, checkpointDigest, verified: true, ...overrides,
+    });
+    const store = (authorities: unknown) => ({
+      async readStrictRosterPolicy() { return record; },
+      async readCompactRetirementCheckpointAuthorities() { return authorities; },
+    });
+
+    await expect(resolveCompactedDurableStrictRosterPolicyExecutionEffect(
+      permit,
+      operationId,
+      store([authority('authority-a'), authority('authority-b')]) as any,
+    )).resolves.toEqual({ status: 'retired', retryable: false, reason: 'effect_committed' });
+    await expect(resolveCompactedDurableStrictRosterPolicyExecutionEffect(
+      permit,
+      operationId,
+      store([authority('authority-a'), authority('authority-b', { terminalRevision: 4 })]) as any,
+    )).resolves.toEqual({ status: 'blocked', retryable: false, reason: 'policy_lifecycle_inconsistent' });
+    await expect(beginCompactedDurableStrictRosterPolicyExecutionEffect(
+      permit,
+      operationId,
+      store(undefined) as any,
+    )).resolves.toEqual({ status: 'indeterminate', retryable: false, reason: 'policy_unavailable' });
+  });
+
+  it('preserves legacy compact stores and fails closed for malformed advertised authority capability', async () => {
+    const { resolveCompactedDurableStrictRosterPolicyExecutionEffect } = await import('../src/approval.js');
+    const receiptDigest = `sha256:${'1'.repeat(64)}`;
+    const checkpointDigest = `sha256:${createHash('sha256').update(JSON.stringify({
+      approvalId: permit.approvalId,
+      operationId,
+      outcome: 'failed',
+      permitId: permit.id,
+      receiptDigest,
+      terminalRevision: 5,
+    })).digest('hex')}`;
+    const record = { operationId, status: 'retirement_compacted', outcome: 'failed', receiptDigest, terminalRevision: 5, checkpointDigest, verified: true };
+    const legacy = { async readStrictRosterPolicy() { return record; } };
+    await expect(resolveCompactedDurableStrictRosterPolicyExecutionEffect(permit, operationId, legacy as any))
+      .resolves.toEqual({ status: 'retired', retryable: false, reason: 'effect_failed' });
+    await expect(resolveCompactedDurableStrictRosterPolicyExecutionEffect(permit, operationId, {
+      ...legacy,
+      readCompactRetirementCheckpointAuthorities: null,
+    } as any)).resolves.toEqual({ status: 'blocked', retryable: false, reason: 'policy_lifecycle_inconsistent' });
+    await expect(resolveCompactedDurableStrictRosterPolicyExecutionEffect(permit, operationId, Object.defineProperty(
+      { ...legacy },
+      'readCompactRetirementCheckpointAuthorities',
+      { enumerable: true, get() { throw new Error('capability getter failed'); } },
+    ) as any)).resolves.toEqual({ status: 'blocked', retryable: false, reason: 'policy_lifecycle_inconsistent' });
+  });
+
   it('fails closed when compact authority truth is absent or unavailable and preserves full tombstones', async () => {
     const { resolveMultiAuthorityCompactedDurableStrictRosterPolicyExecutionEffect } = await import('../src/approval.js');
     const receiptDigest = `sha256:${'d'.repeat(64)}`;

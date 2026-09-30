@@ -900,7 +900,7 @@ export interface CompactableDurableStrictRosterPolicyStore extends RetirableDura
 }
 
 /** Optional plural lifecycle authority extension for compact retirement truth. */
-export interface MultiAuthorityCompactableDurableStrictRosterPolicyStore extends CompactableDurableStrictRosterPolicyStore {
+export interface MultiAuthorityCompactableDurableStrictRosterPolicyStore extends DurableStrictRosterPolicyStore {
   readCompactRetirementCheckpointAuthorities(
     operationId: string,
   ): Promise<DurableStrictRosterPolicyRetirementCheckpointAuthority[] | undefined>;
@@ -1761,6 +1761,31 @@ async function compactedRetiredPolicyResult(
   ) {
     return { status: 'blocked', retryable: false, reason: 'policy_lifecycle_inconsistent' };
   }
+
+  const authorityCapability = compactRetirementAuthorityCapability(store);
+  if (authorityCapability.status === 'malformed') {
+    return { status: 'blocked', retryable: false, reason: 'policy_lifecycle_inconsistent' };
+  }
+  if (authorityCapability.status === 'present') {
+    const { integrity, record } = await compactRetirementAuthorityIntegrity(
+      permit,
+      operationId,
+      store,
+      authorityCapability.read,
+    );
+    if (integrity === 'unavailable') {
+      return { status: 'indeterminate', retryable: false, reason: 'policy_unavailable' };
+    }
+    if (integrity !== 'current' || record === undefined) {
+      return { status: 'blocked', retryable: false, reason: 'policy_lifecycle_inconsistent' };
+    }
+    return {
+      status: 'retired',
+      retryable: false,
+      reason: record.outcome === 'committed' ? 'effect_committed' : 'effect_failed',
+    };
+  }
+
   let record: unknown;
   try {
     record = await store.readStrictRosterPolicy(operationId);
@@ -1779,11 +1804,33 @@ async function compactedRetiredPolicyResult(
 
 
 type CompactRetirementAuthorityIntegrity = 'current' | 'inconsistent' | 'unavailable';
+type CompactRetirementAuthorityCapability =
+  | { status: 'legacy' | 'malformed' }
+  | { status: 'present'; read: MultiAuthorityCompactableDurableStrictRosterPolicyStore['readCompactRetirementCheckpointAuthorities'] };
+
+/**
+ * Detect the optional plural authority capability without letting a malformed advertised method
+ * silently downgrade to the legacy single-checkpoint path. Read the property once so a dynamic
+ * getter cannot present a function during detection and disappear before use.
+ */
+function compactRetirementAuthorityCapability(
+  store: DurableStrictRosterPolicyStore,
+): CompactRetirementAuthorityCapability {
+  try {
+    if (!('readCompactRetirementCheckpointAuthorities' in Object(store))) return { status: 'legacy' };
+    const read = (store as Partial<MultiAuthorityCompactableDurableStrictRosterPolicyStore>)
+      .readCompactRetirementCheckpointAuthorities;
+    return typeof read === 'function' ? { status: 'present', read } : { status: 'malformed' };
+  } catch {
+    return { status: 'malformed' };
+  }
+}
 
 async function compactRetirementAuthorityIntegrity(
   permit: ApprovalExecutionPermit,
   operationId: string,
-  store: MultiAuthorityCompactableDurableStrictRosterPolicyStore,
+  store: DurableStrictRosterPolicyStore,
+  readAuthorities: MultiAuthorityCompactableDurableStrictRosterPolicyStore['readCompactRetirementCheckpointAuthorities'],
 ): Promise<{ integrity: CompactRetirementAuthorityIntegrity; record?: DurableStrictRosterPolicyRetirementCheckpoint | DurableStrictRosterPolicyRetirement }> {
   let record: unknown;
   let authorities: unknown;
@@ -1800,7 +1847,7 @@ async function compactRetirementAuthorityIntegrity(
     return { integrity: 'inconsistent' };
   }
   try {
-    authorities = await store.readCompactRetirementCheckpointAuthorities(operationId);
+    authorities = await readAuthorities.call(store, operationId);
   } catch {
     return { integrity: 'unavailable' };
   }
@@ -1859,7 +1906,12 @@ export async function resolveMultiAuthorityCompactedDurableStrictRosterPolicyExe
     !/^aegis_[a-f0-9]{16}$/.test(permit.approvalId) ||
     !validExecutionOperationId(operationId)
   ) return { status: 'blocked', retryable: false, reason: 'policy_lifecycle_inconsistent' };
-  const { integrity, record } = await compactRetirementAuthorityIntegrity(permit, operationId, store);
+  const { integrity, record } = await compactRetirementAuthorityIntegrity(
+    permit,
+    operationId,
+    store,
+    store.readCompactRetirementCheckpointAuthorities,
+  );
   if (integrity === 'unavailable') return { status: 'indeterminate', retryable: false, reason: 'policy_unavailable' };
   if (integrity !== 'current' || record === undefined) return { status: 'blocked', retryable: false, reason: 'policy_lifecycle_inconsistent' };
   return { status: 'retired', retryable: false, reason: record.outcome === 'committed' ? 'effect_committed' : 'effect_failed' };

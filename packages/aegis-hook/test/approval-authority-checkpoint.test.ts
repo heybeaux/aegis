@@ -889,4 +889,73 @@ describe('RT-38 durable strict-roster retirement lifecycle', () => {
     await expect(resolveRetiredDurableStrictRosterPolicyExecutionEffect(permit, operationId, { async readStrictRosterPolicy() { throw new Error('down'); } } as any))
       .resolves.toEqual({ status: 'indeterminate', retryable: false, reason: 'policy_unavailable' });
   });
+
+  it('requires exact agreement from every compact retirement checkpoint authority', async () => {
+    const {
+      resolveMultiAuthorityCompactedDurableStrictRosterPolicyExecutionEffect,
+      beginMultiAuthorityCompactedDurableStrictRosterPolicyExecutionEffect,
+    } = await import('../src/approval.js');
+    const receiptDigest = `sha256:${'b'.repeat(64)}`;
+    const checkpointDigest = `sha256:${createHash('sha256').update(JSON.stringify({
+      approvalId: permit.approvalId,
+      operationId,
+      outcome: 'committed',
+      permitId: permit.id,
+      receiptDigest,
+      terminalRevision: 3,
+    })).digest('hex')}`;
+    const record = { operationId, status: 'retirement_compacted', outcome: 'committed', receiptDigest, terminalRevision: 3, checkpointDigest, verified: true };
+    const authority = (authorityId: string, overrides: Record<string, unknown> = {}) => ({
+      authorityId, operationId, outcome: 'committed', receiptDigest, terminalRevision: 3, checkpointDigest, verified: true, ...overrides,
+    });
+    const store = (authorities: unknown) => ({
+      async bindStrictRosterPolicy() { return false; },
+      async retireStrictRosterPolicy() { return false; },
+      async compactStrictRosterPolicyRetirement() { return false; },
+      async readStrictRosterPolicy() { return record; },
+      async readCompactRetirementCheckpointAuthorities() { return authorities; },
+    });
+    await expect(resolveMultiAuthorityCompactedDurableStrictRosterPolicyExecutionEffect(permit, operationId, store([authority('authority-a'), authority('authority-b')]) as any))
+      .resolves.toEqual({ status: 'retired', retryable: false, reason: 'effect_committed' });
+    await expect(beginMultiAuthorityCompactedDurableStrictRosterPolicyExecutionEffect(permit, operationId, store([authority('authority-a')]) as any))
+      .resolves.toEqual({ status: 'blocked', retryable: false, reason: 'policy_lifecycle_inconsistent' });
+    for (const authorities of [
+      [],
+      [authority('authority-a'), authority('authority-a')],
+      [authority('authority-a'), authority('authority-b', { verified: false })],
+      [authority('authority-a'), authority('authority-b', { operationId: 'op_other' })],
+      [authority('authority-a'), authority('authority-b', { checkpointDigest: `sha256:${'c'.repeat(64)}` })],
+      [authority('authority-a'), authority('authority-b', { terminalRevision: 4 })],
+      [authority('authority-a'), { ...authority('authority-b'), unexpected: true }],
+    ]) {
+      await expect(resolveMultiAuthorityCompactedDurableStrictRosterPolicyExecutionEffect(permit, operationId, store(authorities) as any))
+        .resolves.toEqual({ status: 'blocked', retryable: false, reason: 'policy_lifecycle_inconsistent' });
+    }
+  });
+
+  it('fails closed when compact authority truth is absent or unavailable and preserves full tombstones', async () => {
+    const { resolveMultiAuthorityCompactedDurableStrictRosterPolicyExecutionEffect } = await import('../src/approval.js');
+    const receiptDigest = `sha256:${'d'.repeat(64)}`;
+    const retired = { operationId, permitId: permit.id, approvalId: permit.approvalId, status: 'retired', outcome: 'committed', receiptDigest, terminalRevision: 3 };
+    const base = {
+      async bindStrictRosterPolicy() { return false; },
+      async retireStrictRosterPolicy() { return false; },
+      async compactStrictRosterPolicyRetirement() { return false; },
+    };
+    await expect(resolveMultiAuthorityCompactedDurableStrictRosterPolicyExecutionEffect(permit, operationId, {
+      ...base, async readStrictRosterPolicy() { return retired; }, async readCompactRetirementCheckpointAuthorities() { throw new Error('must not read'); },
+    } as any)).resolves.toEqual({ status: 'retired', retryable: false, reason: 'effect_committed' });
+
+    const checkpointDigest = `sha256:${createHash('sha256').update(JSON.stringify({ approvalId: permit.approvalId, operationId, outcome: 'committed', permitId: permit.id, receiptDigest, terminalRevision: 3 })).digest('hex')}`;
+    const compact = { operationId, status: 'retirement_compacted', outcome: 'committed', receiptDigest, terminalRevision: 3, checkpointDigest, verified: true };
+    for (const readAuthorities of [
+      async () => undefined,
+      async () => { throw new Error('down'); },
+    ]) {
+      await expect(resolveMultiAuthorityCompactedDurableStrictRosterPolicyExecutionEffect(permit, operationId, {
+        ...base, async readStrictRosterPolicy() { return compact; }, readCompactRetirementCheckpointAuthorities: readAuthorities,
+      } as any)).resolves.toEqual({ status: 'indeterminate', retryable: false, reason: 'policy_unavailable' });
+    }
+  });
+
 });

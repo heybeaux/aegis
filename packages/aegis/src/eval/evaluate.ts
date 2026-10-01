@@ -253,6 +253,42 @@ function swarmlabPolicyHits(call: ToolCall): RuleHit[] {
     }
   }
 
+  const sourceFreshness = call.sourceFreshness;
+  if (sourceFreshness !== undefined) {
+    const highRisk = sourceFreshness.risk === 'high';
+    const attemptedFailure =
+      sourceFreshness.checkStatus === 'unavailable' ||
+      sourceFreshness.checkStatus === 'timeout' ||
+      sourceFreshness.checkStatus === 'unknown';
+    let invalidFreshEvidence = false;
+    if (sourceFreshness.checkStatus === 'fresh') {
+      invalidFreshEvidence =
+        sourceFreshness.authenticated !== true ||
+        typeof sourceFreshness.sourceId !== 'string' ||
+        sourceFreshness.sourceId.length === 0 ||
+        sourceFreshness.sourceId !== sourceFreshness.expectedSourceId ||
+        !Number.isSafeInteger(sourceFreshness.cachedSourceVersion) ||
+        sourceFreshness.cachedSourceVersion! <= 0 ||
+        !Number.isSafeInteger(sourceFreshness.observedSourceVersion) ||
+        sourceFreshness.observedSourceVersion !== sourceFreshness.cachedSourceVersion ||
+        !Number.isSafeInteger(sourceFreshness.checkedAtMs) ||
+        !Number.isSafeInteger(sourceFreshness.actionAtMs) ||
+        !Number.isSafeInteger(sourceFreshness.maxAgeMs) ||
+        sourceFreshness.maxAgeMs! < 0 ||
+        sourceFreshness.checkedAtMs! > sourceFreshness.actionAtMs! ||
+        sourceFreshness.actionAtMs! - sourceFreshness.checkedAtMs! > sourceFreshness.maxAgeMs!;
+    }
+    const missingHighRiskCheck = highRisk && sourceFreshness.checkStatus !== 'fresh';
+    if (attemptedFailure || missingHighRiskCheck || invalidFreshEvidence) {
+      hits.push({
+        id: 'swarmlab.rt41.consequential-fact-use-requires-source-freshness',
+        severity: 'medium',
+        category: 'swarmlab',
+        target: 'argv',
+      });
+    }
+  }
+
   const m = call.coordination;
   if (m !== undefined) {
     const missingTextCoordination =

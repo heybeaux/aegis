@@ -896,6 +896,75 @@ describe('evaluate — SwarmLab-derived policy gates', () => {
     expect(paused.reason).toContain('SwarmLab RT-15');
   });
 
+  it('RT-41 requires fresh authenticated source evidence for consequential fact use', () => {
+    const base = {
+      tool: 'ActOnRememberedFact',
+      factLifecycle: {
+        factClass: 'deployment_target' as const,
+        usageKind: 'deploy' as const,
+        basisStatus: 'supported' as const,
+        latestStatus: 'supported' as const,
+        superseded: false,
+      },
+    };
+    const evaluateFreshness = (sourceFreshness: NonNullable<import('../src/types.js').ToolCall['sourceFreshness']>) =>
+      evaluate({ ...base, sourceFreshness }, compiled);
+    const common = {
+      risk: 'high' as const,
+      sourceId: 'authority:deploy',
+      expectedSourceId: 'authority:deploy',
+      cachedSourceVersion: 7,
+      observedSourceVersion: 7,
+      checkedAtMs: 1_000,
+      actionAtMs: 1_010,
+      maxAgeMs: 100,
+      checkStatus: 'fresh' as const,
+      authenticated: true,
+    };
+
+    expect(evaluateFreshness({ ...common, checkStatus: 'not_attempted' }).action).toBe('ask');
+    expect(evaluateFreshness({ ...common, checkStatus: 'unavailable' }).action).toBe('ask');
+    expect(evaluateFreshness({ ...common, checkStatus: 'timeout' }).action).toBe('ask');
+    expect(evaluateFreshness({ ...common, checkStatus: 'unknown' }).action).toBe('ask');
+    expect(evaluateFreshness({ ...common, actionAtMs: 1_101 }).action).toBe('ask');
+    expect(evaluateFreshness({ ...common, observedSourceVersion: 8 }).action).toBe('ask');
+    expect(evaluateFreshness({ ...common, sourceId: 'authority:mirror' }).action).toBe('ask');
+    expect(evaluateFreshness({ ...common, authenticated: false }).action).toBe('ask');
+    expect(evaluateFreshness({ ...common, checkedAtMs: 1_011 }).action).toBe('ask');
+    expect(evaluateFreshness({ ...common, cachedSourceVersion: 0 }).action).toBe('ask');
+    expect(evaluateFreshness({ ...common, maxAgeMs: -1 }).action).toBe('ask');
+    expect(evaluateFreshness({ ...common, actionAtMs: 1_100 }).action).toBe('allow');
+    expect(evaluateFreshness(common).action).toBe('allow');
+
+    const failed = evaluateFreshness({ ...common, checkStatus: 'unavailable' });
+    expect(failed.matches.map((match) => match.id)).toContain(
+      'swarmlab.rt41.consequential-fact-use-requires-source-freshness',
+    );
+  });
+
+  it('RT-41 preserves low-risk cache reads unless a revalidation attempt explicitly failed', () => {
+    const base = {
+      tool: 'ActOnRememberedFact',
+      factLifecycle: {
+        factClass: 'user_preference' as const,
+        usageKind: 'notify' as const,
+        basisStatus: 'supported' as const,
+        latestStatus: 'supported' as const,
+        superseded: false,
+      },
+    };
+    const common = {
+      risk: 'low' as const,
+      sourceId: 'authority:preference',
+      expectedSourceId: 'authority:preference',
+      cachedSourceVersion: 2,
+      actionAtMs: 1_000,
+      maxAgeMs: 100,
+    };
+    expect(evaluate({ ...base, sourceFreshness: { ...common, checkStatus: 'not_attempted' } }, compiled).action).toBe('allow');
+    expect(evaluate({ ...base, sourceFreshness: { ...common, checkStatus: 'unavailable' } }, compiled).action).toBe('ask');
+  });
+
   it('RT-15 allows clean durable resumes, exact approvals, and verified duplicate checks', () => {
     const clean = evaluate(
       {

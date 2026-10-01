@@ -965,6 +965,102 @@ describe('evaluate — SwarmLab-derived policy gates', () => {
     expect(evaluate({ ...base, sourceFreshness: { ...common, checkStatus: 'unavailable' } }, compiled).action).toBe('ask');
   });
 
+  it('RT-41 derives consequential risk from lifecycle use and cannot be bypassed by omission or downgrade', () => {
+    const consequentialLifecycle = {
+      factClass: 'deployment_target' as const,
+      usageKind: 'deploy' as const,
+      basisStatus: 'supported' as const,
+      latestStatus: 'supported' as const,
+      superseded: false,
+    };
+    const common = {
+      risk: 'high' as const,
+      sourceId: 'authority:deploy',
+      expectedSourceId: 'authority:deploy',
+      cachedSourceVersion: 7,
+      observedSourceVersion: 7,
+      checkedAtMs: 1_000,
+      actionAtMs: 1_010,
+      maxAgeMs: 100,
+      checkStatus: 'fresh' as const,
+      authenticated: true,
+    };
+
+    expect(evaluate({ tool: 'ActOnRememberedFact', factLifecycle: consequentialLifecycle }, compiled).action).toBe('ask');
+    expect(
+      evaluate(
+        {
+          tool: 'ActOnRememberedFact',
+          factLifecycle: consequentialLifecycle,
+          sourceFreshness: { ...common, risk: 'low', checkStatus: 'not_attempted' },
+        },
+        compiled,
+      ).action,
+    ).toBe('ask');
+    expect(
+      evaluate(
+        {
+          tool: 'ActOnRememberedFact',
+          factLifecycle: consequentialLifecycle,
+          sourceFreshness: { ...common, risk: 'low' },
+        },
+        compiled,
+      ).action,
+    ).toBe('allow');
+  });
+
+  it('RT-41 fails malformed runtime metadata closed without throwing', () => {
+    const decide = (sourceFreshness: unknown) =>
+      evaluate({ tool: 'ActOnRememberedFact', sourceFreshness } as ToolCall, compiled);
+
+    expect(decide(null).action).toBe('ask');
+    expect(decide([]).action).toBe('ask');
+    expect(decide({ risk: 'medium', checkStatus: 'fresh' }).action).toBe('ask');
+    expect(decide({ risk: 'low', checkStatus: 'bogus' }).action).toBe('ask');
+    expect(decide({ risk: 'high', checkStatus: 'fresh', authenticated: true }).action).toBe('ask');
+  });
+
+  it('RT-41 rejects negative clocks and non-canonical source identities', () => {
+    const common = {
+      risk: 'high' as const,
+      sourceId: 'authority:deploy',
+      expectedSourceId: 'authority:deploy',
+      cachedSourceVersion: 7,
+      observedSourceVersion: 7,
+      checkedAtMs: 1_000,
+      actionAtMs: 1_010,
+      maxAgeMs: 100,
+      checkStatus: 'fresh' as const,
+      authenticated: true,
+    };
+    const decide = (sourceFreshness: ToolCall['sourceFreshness']) =>
+      evaluate({ tool: 'ActOnRememberedFact', sourceFreshness }, compiled);
+
+    expect(decide({ ...common, checkedAtMs: -2, actionAtMs: -1 }).action).toBe('ask');
+    expect(decide({ ...common, sourceId: ' authority:deploy' }).action).toBe('ask');
+    expect(decide({ ...common, sourceId: 'authority:deploy ' }).action).toBe('ask');
+    expect(decide({ ...common, sourceId: 'x'.repeat(257), expectedSourceId: 'x'.repeat(257) }).action).toBe('ask');
+  });
+
+  it('RT-41 allows legacy calls and low-risk informational reads without metadata', () => {
+    expect(evaluate({ tool: 'Read' }, compiled).action).toBe('allow');
+    expect(
+      evaluate(
+        {
+          tool: 'ActOnRememberedFact',
+          factLifecycle: {
+            factClass: 'user_preference',
+            usageKind: 'notify',
+            basisStatus: 'supported',
+            latestStatus: 'supported',
+            superseded: false,
+          },
+        },
+        compiled,
+      ).action,
+    ).toBe('allow');
+  });
+
   it('RT-15 allows clean durable resumes, exact approvals, and verified duplicate checks', () => {
     const clean = evaluate(
       {

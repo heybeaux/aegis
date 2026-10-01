@@ -211,6 +211,26 @@ export interface FactLifecycleMetadata {
   recoveryObserved?: boolean;
 }
 
+export interface SourceFreshnessMetadata {
+  /** Risk of the action that will consume this fact. High-risk use requires a fresh source check. */
+  risk?: 'high' | 'low';
+  /** Authority that produced the observation and the authority configured for this fact. */
+  sourceId?: string;
+  expectedSourceId?: string;
+  /** Version bound to the action basis and the version observed by the latest source check. */
+  cachedSourceVersion?: number;
+  observedSourceVersion?: number;
+  /** Host clock values for the completed check and the action boundary. */
+  checkedAtMs?: number;
+  actionAtMs?: number;
+  /** Source-specific maximum accepted observation age. */
+  maxAgeMs?: number;
+  /** Exact result of the action-time source check. Unknown values fail closed. */
+  checkStatus?: 'not_attempted' | 'fresh' | 'unavailable' | 'timeout' | 'unknown';
+  /** Whether the configured host adapter authenticated this observation. */
+  authenticated?: boolean;
+}
+
 export interface CoordinationMetadata {
   /** What coordination operation the caller is about to perform. */
   operation?: 'merge';
@@ -377,6 +397,8 @@ export interface ToolCall {
   contentBoundary?: ContentBoundaryMetadata;
   /** Optional structured fact-lifecycle metadata from SwarmLab RT-12. */
   factLifecycle?: FactLifecycleMetadata;
+  /** Optional action-time source-freshness evidence for facts that may change without a correction event. */
+  sourceFreshness?: SourceFreshnessMetadata;
   /** Optional structured coordination metadata from SwarmLab RT-13. */
   coordination?: CoordinationMetadata;
   /** Optional structured intervention metadata from SwarmLab RT-15. */

@@ -14,3 +14,12 @@ Aegis now accepts optional `SourceFreshnessMetadata` on `ToolCall`:
 Consequential (`high`) fact use requires a fresh authenticated observation from the configured source, exact version binding, and non-future age within the inclusive freshness boundary. Missing, unavailable, timed-out, unknown, stale, unauthenticated, source-mismatched, version-mismatched, or malformed evidence escalates to `ask`. Low-risk informational cache reads remain allowed when no check was attempted, but an explicit failed check still escalates. Existing RT-12 lifecycle state remains independently enforced.
 
 The host or Engram adapter owns performing and authenticating source checks, assigning monotonic versions, choosing `maxAgeMs`, and truthfully populating the metadata. Aegis evaluates evidence at the action boundary; it does not discover semantic source changes or make a dishonest adapter honest.
+
+## Runtime hardening
+
+The public TypeScript shape is not a runtime trust boundary. Aegis therefore treats malformed or unknown
+freshness objects as unsafe instead of throwing or silently allowing them. Route, deploy, approve, and execute
+lifecycle uses are consequential by operation semantics: they require source-freshness evidence even when the
+metadata is omitted or its caller-supplied risk label says `low`. Fresh evidence must carry canonical bounded
+source identities, positive safe-integer versions, and non-negative safe-integer clocks. Legacy calls and
+low-risk informational/notification cache reads remain compatible when they do not claim a failed check.

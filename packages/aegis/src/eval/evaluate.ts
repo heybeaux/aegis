@@ -77,6 +77,67 @@ function matchesRule(compiled: CompiledRule, call: ToolCall): boolean {
   return false;
 }
 
+function validSourceId(value: unknown): value is string {
+  return typeof value === 'string' && value.length > 0 && value.length <= 256 && value.trim() === value;
+}
+
+function sourceFreshnessRequiresAsk(call: ToolCall): boolean {
+  const consequentialLifecycleUse =
+    call.factLifecycle?.usageKind === 'route' ||
+    call.factLifecycle?.usageKind === 'deploy' ||
+    call.factLifecycle?.usageKind === 'approve' ||
+    call.factLifecycle?.usageKind === 'execute';
+  const freshness = call.sourceFreshness as unknown;
+
+  // The metadata contract is optional for legacy/non-consequential calls. Once a caller declares a
+  // consequential lifecycle use, however, omitting it is itself the unsafe state RT-41 exists to catch.
+  if (freshness === undefined) return consequentialLifecycleUse;
+  if (freshness === null || typeof freshness !== 'object' || Array.isArray(freshness)) return true;
+
+  const evidence = freshness as Record<string, unknown>;
+  const risk = evidence['risk'];
+  const checkStatus = evidence['checkStatus'];
+  if (risk !== 'high' && risk !== 'low') return true;
+  if (
+    checkStatus !== 'not_attempted' &&
+    checkStatus !== 'fresh' &&
+    checkStatus !== 'unavailable' &&
+    checkStatus !== 'timeout' &&
+    checkStatus !== 'unknown'
+  ) return true;
+
+  // A caller cannot downgrade a route/deploy/approve/execute boundary by labelling it low risk.
+  const highRisk = risk === 'high' || consequentialLifecycleUse;
+  if (checkStatus === 'not_attempted') return highRisk;
+  if (checkStatus === 'unavailable' || checkStatus === 'timeout' || checkStatus === 'unknown') {
+    return true;
+  }
+
+  const cachedVersion = evidence['cachedSourceVersion'];
+  const observedVersion = evidence['observedSourceVersion'];
+  const checkedAt = evidence['checkedAtMs'];
+  const actionAt = evidence['actionAtMs'];
+  const maxAge = evidence['maxAgeMs'];
+  return (
+    evidence['authenticated'] !== true ||
+    !validSourceId(evidence['sourceId']) ||
+    !validSourceId(evidence['expectedSourceId']) ||
+    evidence['sourceId'] !== evidence['expectedSourceId'] ||
+    !Number.isSafeInteger(cachedVersion) ||
+    (cachedVersion as number) <= 0 ||
+    !Number.isSafeInteger(observedVersion) ||
+    observedVersion !== cachedVersion ||
+    !Number.isSafeInteger(checkedAt) ||
+    (checkedAt as number) < 0 ||
+    !Number.isSafeInteger(actionAt) ||
+    (actionAt as number) < 0 ||
+    !Number.isSafeInteger(maxAge) ||
+    (maxAge as number) < 0 ||
+    (checkedAt as number) > (actionAt as number) ||
+    (actionAt as number) - (checkedAt as number) > (maxAge as number)
+  );
+}
+
 function swarmlabPolicyHits(call: ToolCall): RuleHit[] {
   const hits: RuleHit[] = [];
   const h = call.handoff;
@@ -253,40 +314,13 @@ function swarmlabPolicyHits(call: ToolCall): RuleHit[] {
     }
   }
 
-  const sourceFreshness = call.sourceFreshness;
-  if (sourceFreshness !== undefined) {
-    const highRisk = sourceFreshness.risk === 'high';
-    const attemptedFailure =
-      sourceFreshness.checkStatus === 'unavailable' ||
-      sourceFreshness.checkStatus === 'timeout' ||
-      sourceFreshness.checkStatus === 'unknown';
-    let invalidFreshEvidence = false;
-    if (sourceFreshness.checkStatus === 'fresh') {
-      invalidFreshEvidence =
-        sourceFreshness.authenticated !== true ||
-        typeof sourceFreshness.sourceId !== 'string' ||
-        sourceFreshness.sourceId.length === 0 ||
-        sourceFreshness.sourceId !== sourceFreshness.expectedSourceId ||
-        !Number.isSafeInteger(sourceFreshness.cachedSourceVersion) ||
-        sourceFreshness.cachedSourceVersion! <= 0 ||
-        !Number.isSafeInteger(sourceFreshness.observedSourceVersion) ||
-        sourceFreshness.observedSourceVersion !== sourceFreshness.cachedSourceVersion ||
-        !Number.isSafeInteger(sourceFreshness.checkedAtMs) ||
-        !Number.isSafeInteger(sourceFreshness.actionAtMs) ||
-        !Number.isSafeInteger(sourceFreshness.maxAgeMs) ||
-        sourceFreshness.maxAgeMs! < 0 ||
-        sourceFreshness.checkedAtMs! > sourceFreshness.actionAtMs! ||
-        sourceFreshness.actionAtMs! - sourceFreshness.checkedAtMs! > sourceFreshness.maxAgeMs!;
-    }
-    const missingHighRiskCheck = highRisk && sourceFreshness.checkStatus !== 'fresh';
-    if (attemptedFailure || missingHighRiskCheck || invalidFreshEvidence) {
-      hits.push({
-        id: 'swarmlab.rt41.consequential-fact-use-requires-source-freshness',
-        severity: 'medium',
-        category: 'swarmlab',
-        target: 'argv',
-      });
-    }
+  if (sourceFreshnessRequiresAsk(call)) {
+    hits.push({
+      id: 'swarmlab.rt41.consequential-fact-use-requires-source-freshness',
+      severity: 'medium',
+      category: 'swarmlab',
+      target: 'argv',
+    });
   }
 
   const m = call.coordination;

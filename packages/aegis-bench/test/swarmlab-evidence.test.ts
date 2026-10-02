@@ -231,6 +231,7 @@ describe('SwarmLab evidence gate', () => {
       'RT-39',
       'RT-40',
       'RT-41',
+      'RT-42',
     ]);
 
     const mappings = SWARMLAB_EVIDENCE_CASES.map((c) => c.aegisMapping).join('\n');
@@ -273,11 +274,12 @@ describe('SwarmLab evidence gate', () => {
     expect(mappings).toContain('strict-roster retirement compaction requires authenticated self-binding lifecycle checkpoints');
     expect(mappings).toContain('compact strict-roster terminal certainty requires plural lifecycle checkpoint authority agreement');
     expect(mappings).toContain('consequential fact use requires authenticated source freshness');
+    expect(mappings).toContain('source freshness requires authenticated current policy identity');
   });
 
   it('renders a report banner matching the evaluated evidence range', () => {
     const markdown = swarmLabEvidenceToMarkdown(evaluateSwarmLabEvidence());
-    expect(markdown).toContain('REPLAY-VERIFIED SWARMLAB RETESTS (RT-01..RT-41)');
+    expect(markdown).toContain('REPLAY-VERIFIED SWARMLAB RETESTS (RT-01..RT-42)');
     expect(markdown).not.toContain('RT-01..RT-10');
     expect(markdown).toContain('0 provisional evidence tier');
     expect(markdown).toContain('| RT-06 | passed | landed | verified |');
@@ -296,6 +298,7 @@ describe('SwarmLab evidence gate', () => {
     expect(markdown).toContain('| RT-39 | passed | landed | verified |');
     expect(markdown).toContain('| RT-40 | passed | landed | verified |');
     expect(markdown).toContain('| RT-41 | passed | landed | verified |');
+    expect(markdown).toContain('| RT-42 | passed | landed | verified |');
     expect(markdown).toContain('| RT-17 | passed | landed | verified |');
     expect(markdown).toContain('| RT-18 | passed | landed | verified |');
     expect(markdown).toContain('| RT-19 | passed | landed | verified |');

@@ -81,7 +81,7 @@ function validSourceId(value: unknown): value is string {
   return typeof value === 'string' && value.length > 0 && value.length <= 256 && value.trim() === value;
 }
 
-function sourceFreshnessRequiresAsk(call: ToolCall): boolean {
+function sourceFreshnessRequiresAsk(call: ToolCall): 'observation' | 'policy' | false {
   const consequentialLifecycleUse =
     call.factLifecycle?.usageKind === 'route' ||
     call.factLifecycle?.usageKind === 'deploy' ||
@@ -91,26 +91,26 @@ function sourceFreshnessRequiresAsk(call: ToolCall): boolean {
 
   // The metadata contract is optional for legacy/non-consequential calls. Once a caller declares a
   // consequential lifecycle use, however, omitting it is itself the unsafe state RT-41 exists to catch.
-  if (freshness === undefined) return consequentialLifecycleUse;
-  if (freshness === null || typeof freshness !== 'object' || Array.isArray(freshness)) return true;
+  if (freshness === undefined) return consequentialLifecycleUse ? 'observation' : false;
+  if (freshness === null || typeof freshness !== 'object' || Array.isArray(freshness)) return 'observation';
 
   const evidence = freshness as Record<string, unknown>;
   const risk = evidence['risk'];
   const checkStatus = evidence['checkStatus'];
-  if (risk !== 'high' && risk !== 'low') return true;
+  if (risk !== 'high' && risk !== 'low') return 'observation';
   if (
     checkStatus !== 'not_attempted' &&
     checkStatus !== 'fresh' &&
     checkStatus !== 'unavailable' &&
     checkStatus !== 'timeout' &&
     checkStatus !== 'unknown'
-  ) return true;
+  ) return 'observation';
 
   // A caller cannot downgrade a route/deploy/approve/execute boundary by labelling it low risk.
   const highRisk = risk === 'high' || consequentialLifecycleUse;
-  if (checkStatus === 'not_attempted') return highRisk;
+  if (checkStatus === 'not_attempted') return highRisk ? 'observation' : false;
   if (checkStatus === 'unavailable' || checkStatus === 'timeout' || checkStatus === 'unknown') {
-    return true;
+    return 'observation';
   }
 
   const cachedVersion = evidence['cachedSourceVersion'];
@@ -118,7 +118,7 @@ function sourceFreshnessRequiresAsk(call: ToolCall): boolean {
   const checkedAt = evidence['checkedAtMs'];
   const actionAt = evidence['actionAtMs'];
   const maxAge = evidence['maxAgeMs'];
-  return (
+  const observationInvalid =
     evidence['authenticated'] !== true ||
     !validSourceId(evidence['sourceId']) ||
     !validSourceId(evidence['expectedSourceId']) ||
@@ -134,8 +134,36 @@ function sourceFreshnessRequiresAsk(call: ToolCall): boolean {
     !Number.isSafeInteger(maxAge) ||
     (maxAge as number) < 0 ||
     (checkedAt as number) > (actionAt as number) ||
-    (actionAt as number) - (checkedAt as number) > (maxAge as number)
-  );
+    (actionAt as number) - (checkedAt as number) > (maxAge as number);
+  if (observationInvalid) return 'observation';
+
+  const policyConfigured =
+    evidence['expectedPolicyId'] !== undefined ||
+    evidence['expectedPolicyVersion'] !== undefined ||
+    evidence['expectedSourceVersionNamespace'] !== undefined ||
+    evidence['expectedMaxAgeMs'] !== undefined;
+  if (!policyConfigured) return false;
+
+  const policyVersion = evidence['policyVersion'];
+  const expectedPolicyVersion = evidence['expectedPolicyVersion'];
+  const expectedMaxAge = evidence['expectedMaxAgeMs'];
+  return evidence['policyAuthenticated'] !== true ||
+    !validSourceId(evidence['policyId']) ||
+    !validSourceId(evidence['expectedPolicyId']) ||
+    evidence['policyId'] !== evidence['expectedPolicyId'] ||
+    !Number.isSafeInteger(policyVersion) ||
+    (policyVersion as number) <= 0 ||
+    !Number.isSafeInteger(expectedPolicyVersion) ||
+    (expectedPolicyVersion as number) <= 0 ||
+    policyVersion !== expectedPolicyVersion ||
+    !validSourceId(evidence['sourceVersionNamespace']) ||
+    !validSourceId(evidence['expectedSourceVersionNamespace']) ||
+    evidence['sourceVersionNamespace'] !== evidence['expectedSourceVersionNamespace'] ||
+    !Number.isSafeInteger(expectedMaxAge) ||
+    (expectedMaxAge as number) < 0 ||
+    maxAge !== expectedMaxAge
+      ? 'policy'
+      : false;
 }
 
 function swarmlabPolicyHits(call: ToolCall): RuleHit[] {
@@ -314,9 +342,12 @@ function swarmlabPolicyHits(call: ToolCall): RuleHit[] {
     }
   }
 
-  if (sourceFreshnessRequiresAsk(call)) {
+  const freshnessFailure = sourceFreshnessRequiresAsk(call);
+  if (freshnessFailure) {
     hits.push({
-      id: 'swarmlab.rt41.consequential-fact-use-requires-source-freshness',
+      id: freshnessFailure === 'policy'
+        ? 'swarmlab.rt42.source-freshness-requires-current-policy-binding'
+        : 'swarmlab.rt41.consequential-fact-use-requires-source-freshness',
       severity: 'medium',
       category: 'swarmlab',
       target: 'argv',

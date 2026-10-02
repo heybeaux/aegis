@@ -229,6 +229,19 @@ export interface SourceFreshnessMetadata {
   checkStatus?: 'not_attempted' | 'fresh' | 'unavailable' | 'timeout' | 'unknown';
   /** Whether the configured host adapter authenticated this observation. */
   authenticated?: boolean;
+  /** Policy envelope that interpreted this observation and the canonical policy expected by the host. */
+  policyId?: string;
+  expectedPolicyId?: string;
+  /** Monotonic policy revision presented by this host and the canonical revision expected at this boundary. */
+  policyVersion?: number;
+  expectedPolicyVersion?: number;
+  /** Namespace in which source versions are comparable and the canonical namespace expected by the host. */
+  sourceVersionNamespace?: string;
+  expectedSourceVersionNamespace?: string;
+  /** Canonical maximum observation age configured by the current policy. */
+  expectedMaxAgeMs?: number;
+  /** Whether the host independently authenticated the presented policy envelope. */
+  policyAuthenticated?: boolean;
 }
 
 export interface CoordinationMetadata {

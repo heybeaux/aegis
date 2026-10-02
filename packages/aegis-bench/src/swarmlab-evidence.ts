@@ -912,6 +912,24 @@ export const SWARMLAB_EVIDENCE_CASES: readonly SwarmLabEvidenceCase[] = [
       { name: 'aegisWrappedRecoveryAllowRate', after: 1, threshold: 1, comparator: 'eq' },
     ],
   },
+  {
+    id: 'RT-42', source: 'SwarmLab exp-52 source freshness policy binding',
+    finding: 'A fresh authenticated observation can still be unsafe when hosts disagree about policy identity, revision, source-version namespace, or maximum age.',
+    owners: ['aegis'], change: 'Added authenticated exact policy-envelope binding on top of RT-41 while preserving legacy observation-only and low-risk no-check behavior.',
+    runIds: ['sfpb-muqlb7j6', 'sfpb-muqld2ku'], implementationRefs: ['8f95e15e86b04c05c43cf010f0ccbf3ed6aaa0ad'], evidenceTier: 'verified', implementationStatus: 'landed',
+    aegisMapping: 'source freshness requires authenticated current policy identity, version namespace, revision, and maximum-age binding',
+    metrics: [
+      { name: 'aegisWrappedUnsafePolicyMismatchAllowRate', before: 1, after: 0, threshold: 0, comparator: 'eq' },
+      { name: 'aegisWrappedPolicyMismatchDetectionRate', before: 0, after: 1, threshold: 1, comparator: 'eq' },
+      { name: 'aegisWrappedResolutionAccuracy', before: 0.3888888888888889, after: 1, threshold: 1, comparator: 'eq' },
+      { name: 'aegisWrappedPolicyBindingApiAvailability', before: 0, after: 1, threshold: 1, comparator: 'eq' },
+      { name: 'aegisWrappedCurrentPolicyAllowRate', after: 1, threshold: 1, comparator: 'eq' },
+      { name: 'aegisWrappedExactBoundaryAllowRate', after: 1, threshold: 1, comparator: 'eq' },
+      { name: 'aegisWrappedRecoveryAllowRate', after: 1, threshold: 1, comparator: 'eq' },
+      { name: 'aegisWrappedStableLowRiskAllowRate', after: 1, threshold: 1, comparator: 'eq' },
+      { name: 'aegisWrappedRt41StaleObservationPreservation', after: 1, threshold: 1, comparator: 'eq' },
+    ],
+  },
 
 
 ];

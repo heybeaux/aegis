@@ -1061,6 +1061,102 @@ describe('evaluate — SwarmLab-derived policy gates', () => {
     ).toBe('allow');
   });
 
+  it('RT-42 binds fresh observations to the current authenticated policy envelope', () => {
+    const base = {
+      tool: 'ActOnRememberedFact',
+      factLifecycle: {
+        factClass: 'deployment_target' as const,
+        usageKind: 'deploy' as const,
+        basisStatus: 'supported' as const,
+        latestStatus: 'supported' as const,
+        superseded: false,
+      },
+    };
+    const current = {
+      risk: 'high' as const,
+      sourceId: 'authority:deploy',
+      expectedSourceId: 'authority:deploy',
+      cachedSourceVersion: 7,
+      observedSourceVersion: 7,
+      checkedAtMs: 1_000,
+      actionAtMs: 1_010,
+      maxAgeMs: 100,
+      checkStatus: 'fresh' as const,
+      authenticated: true,
+      policyId: 'freshness:deploy',
+      expectedPolicyId: 'freshness:deploy',
+      policyVersion: 5,
+      expectedPolicyVersion: 5,
+      sourceVersionNamespace: 'deploy-target:v2',
+      expectedSourceVersionNamespace: 'deploy-target:v2',
+      expectedMaxAgeMs: 100,
+      policyAuthenticated: true,
+    };
+    const decide = (sourceFreshness: ToolCall['sourceFreshness']) =>
+      evaluate({ ...base, sourceFreshness }, compiled);
+
+    expect(decide(current).action).toBe('allow');
+    expect(decide({ ...current, actionAtMs: 1_100 }).action).toBe('allow');
+    expect(decide({ ...current, cachedSourceVersion: 8, observedSourceVersion: 8 }).action).toBe('allow');
+    expect(decide({ ...current, policyVersion: 4 }).action).toBe('ask');
+    expect(decide({ ...current, policyVersion: 6 }).action).toBe('ask');
+    expect(decide({ ...current, policyId: 'freshness:mirror' }).action).toBe('ask');
+    expect(decide({ ...current, sourceVersionNamespace: 'mirror-target:v2' }).action).toBe('ask');
+    expect(decide({ ...current, maxAgeMs: 200 }).action).toBe('ask');
+    expect(decide({ ...current, maxAgeMs: 50 }).action).toBe('ask');
+    expect(decide({ ...current, policyAuthenticated: false }).action).toBe('ask');
+    expect(decide({ ...current, policyVersion: 0 }).action).toBe('ask');
+    expect(decide({ ...current, policyId: ' freshness:deploy' }).action).toBe('ask');
+    expect(decide({ ...current, sourceVersionNamespace: 'deploy-target:v2 ' }).action).toBe('ask');
+
+    const failed = decide({ ...current, policyVersion: 4 });
+    expect(failed.matches.map((match) => match.id)).toContain(
+      'swarmlab.rt42.source-freshness-requires-current-policy-binding',
+    );
+  });
+
+  it('RT-42 requires complete policy binding when an expected policy is configured', () => {
+    const common = {
+      risk: 'high' as const,
+      sourceId: 'authority:deploy',
+      expectedSourceId: 'authority:deploy',
+      cachedSourceVersion: 7,
+      observedSourceVersion: 7,
+      checkedAtMs: 1_000,
+      actionAtMs: 1_010,
+      maxAgeMs: 100,
+      checkStatus: 'fresh' as const,
+      authenticated: true,
+      expectedPolicyId: 'freshness:deploy',
+      expectedPolicyVersion: 5,
+      expectedSourceVersionNamespace: 'deploy-target:v2',
+      expectedMaxAgeMs: 100,
+    };
+    const decide = (sourceFreshness: ToolCall['sourceFreshness']) =>
+      evaluate({ tool: 'ActOnRememberedFact', sourceFreshness }, compiled);
+
+    expect(decide(common).action).toBe('ask');
+    expect(decide({ ...common, policyId: 'freshness:deploy' }).action).toBe('ask');
+    expect(decide({ ...common, policyId: 'freshness:deploy', policyVersion: 5 }).action).toBe('ask');
+    expect(decide({ ...common, policyId: 'freshness:deploy', policyVersion: 5, sourceVersionNamespace: 'deploy-target:v2' }).action).toBe('ask');
+  });
+
+  it('RT-42 preserves RT-41 calls without a configured policy envelope', () => {
+    expect(
+      evaluate(
+        {
+          tool: 'ActOnRememberedFact',
+          sourceFreshness: {
+            risk: 'high', sourceId: 'authority:deploy', expectedSourceId: 'authority:deploy',
+            cachedSourceVersion: 7, observedSourceVersion: 7, checkedAtMs: 1_000,
+            actionAtMs: 1_010, maxAgeMs: 100, checkStatus: 'fresh', authenticated: true,
+          },
+        },
+        compiled,
+      ).action,
+    ).toBe('allow');
+  });
+
   it('RT-15 allows clean durable resumes, exact approvals, and verified duplicate checks', () => {
     const clean = evaluate(
       {

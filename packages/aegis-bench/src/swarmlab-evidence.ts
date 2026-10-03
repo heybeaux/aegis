@@ -931,6 +931,30 @@ export const SWARMLAB_EVIDENCE_CASES: readonly SwarmLabEvidenceCase[] = [
     ],
   },
 
+  {
+    id: 'RT-43', source: 'SwarmLab exp-53 source freshness policy authority consensus',
+    finding: 'Individually authenticated freshness-policy views can equivocate at the same revision and make a fresh-looking consequential action unsafe.',
+    owners: ['aegis'], change: 'Added exact expected-roster validation and unanimous canonical policy-envelope agreement while preserving RT-41/RT-42 legacy behavior.',
+    runIds: ['sfpac-mus0r5kr', 'sfpac-mus0sxzz'], implementationRefs: ['cbdf4aa12425fee2cae44fbe93447d130b57c856'], evidenceTier: 'verified', implementationStatus: 'landed',
+    aegisMapping: 'source freshness requires every expected independently authenticated policy authority to present the exact canonical envelope',
+    metrics: [
+      { name: 'aegisWrappedUnsafeAuthorityDisagreementAllowRate', before: 1, after: 0, threshold: 0, comparator: 'eq' },
+      { name: 'aegisWrappedAuthorityDisagreementDetectionRate', before: 0, after: 1, threshold: 1, comparator: 'eq' },
+      { name: 'aegisWrappedResolutionAccuracy', before: 0.36363636363636365, after: 1, threshold: 1, comparator: 'eq' },
+      { name: 'aegisWrappedPolicyAuthorityConsensusApiAvailability', before: 0, after: 1, threshold: 1, comparator: 'eq' },
+      { name: 'aegisWrappedLegacyRt42Preservation', after: 1, threshold: 1, comparator: 'eq' },
+      { name: 'aegisWrappedTwoAuthorityAgreement', after: 1, threshold: 1, comparator: 'eq' },
+      { name: 'aegisWrappedThreeAuthorityAgreement', after: 1, threshold: 1, comparator: 'eq' },
+      { name: 'aegisWrappedOrderIndependence', after: 1, threshold: 1, comparator: 'eq' },
+      { name: 'aegisWrappedConflictDetection', after: 1, threshold: 1, comparator: 'eq' },
+      { name: 'aegisWrappedRosterSafety', after: 1, threshold: 1, comparator: 'eq' },
+      { name: 'aegisWrappedInvalidAuthoritySafety', after: 1, threshold: 1, comparator: 'eq' },
+      { name: 'aegisWrappedRecoveryAllowRate', after: 1, threshold: 1, comparator: 'eq' },
+      { name: 'aegisWrappedRt41StaleObservationPreservation', after: 1, threshold: 1, comparator: 'eq' },
+      { name: 'aegisWrappedStableLowRiskAllowRate', after: 1, threshold: 1, comparator: 'eq' },
+      { name: 'aegisWrappedExplicitFailurePreservation', after: 1, threshold: 1, comparator: 'eq' },
+    ],
+  },
 
 ];
 

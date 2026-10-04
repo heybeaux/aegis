@@ -211,6 +211,21 @@ export interface FactLifecycleMetadata {
   recoveryObserved?: boolean;
 }
 
+export interface SourceFreshnessPolicyAuthority {
+  /** Canonical identity of the independently authenticated policy authority. */
+  authorityId?: string;
+  /** Whether the host independently authenticated this authority view. */
+  authenticated?: boolean;
+  /** Exact freshness-policy identity asserted by this authority. */
+  policyId?: string;
+  /** Monotonic freshness-policy revision asserted by this authority. */
+  policyVersion?: number;
+  /** Namespace in which observed source versions are comparable. */
+  sourceVersionNamespace?: string;
+  /** Exact maximum observation age asserted by this authority. */
+  maxAgeMs?: number;
+}
+
 export interface SourceFreshnessMetadata {
   /** Risk of the action that will consume this fact. High-risk use requires a fresh source check. */
   risk?: 'high' | 'low';
@@ -242,6 +257,10 @@ export interface SourceFreshnessMetadata {
   expectedMaxAgeMs?: number;
   /** Whether the host independently authenticated the presented policy envelope. */
   policyAuthenticated?: boolean;
+  /** Exact configured roster of policy authorities whose views must all be present and agree. */
+  expectedPolicyAuthorityIds?: string[];
+  /** Independently authenticated policy views supplied by the configured authorities. */
+  policyAuthorities?: SourceFreshnessPolicyAuthority[];
 }
 
 export interface CoordinationMetadata {

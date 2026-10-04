@@ -81,7 +81,7 @@ function validSourceId(value: unknown): value is string {
   return typeof value === 'string' && value.length > 0 && value.length <= 256 && value.trim() === value;
 }
 
-function sourceFreshnessRequiresAsk(call: ToolCall): 'observation' | 'policy' | false {
+function sourceFreshnessRequiresAsk(call: ToolCall): 'observation' | 'policy' | 'authority' | false {
   const consequentialLifecycleUse =
     call.factLifecycle?.usageKind === 'route' ||
     call.factLifecycle?.usageKind === 'deploy' ||
@@ -143,6 +143,47 @@ function sourceFreshnessRequiresAsk(call: ToolCall): 'observation' | 'policy' | 
     evidence['expectedSourceVersionNamespace'] !== undefined ||
     evidence['expectedMaxAgeMs'] !== undefined;
   if (!policyConfigured) return false;
+
+  const authorityConsensusConfigured = evidence['expectedPolicyAuthorityIds'] !== undefined;
+  if (authorityConsensusConfigured) {
+    const expectedAuthorities = evidence['expectedPolicyAuthorityIds'];
+    const authorityViews = evidence['policyAuthorities'];
+    if (
+      !Array.isArray(expectedAuthorities) ||
+      expectedAuthorities.length === 0 ||
+      expectedAuthorities.some((authorityId) => !validSourceId(authorityId)) ||
+      new Set(expectedAuthorities).size !== expectedAuthorities.length ||
+      !Array.isArray(authorityViews) ||
+      authorityViews.length === 0
+    ) return 'authority';
+
+    const actualAuthorities: string[] = [];
+    for (const rawAuthority of authorityViews) {
+      if (rawAuthority === null || typeof rawAuthority !== 'object' || Array.isArray(rawAuthority)) return 'authority';
+      const authority = rawAuthority as Record<string, unknown>;
+      if (
+        !validSourceId(authority['authorityId']) ||
+        authority['authenticated'] !== true ||
+        !validSourceId(authority['policyId']) ||
+        authority['policyId'] !== evidence['expectedPolicyId'] ||
+        !Number.isSafeInteger(authority['policyVersion']) ||
+        (authority['policyVersion'] as number) <= 0 ||
+        authority['policyVersion'] !== evidence['expectedPolicyVersion'] ||
+        !validSourceId(authority['sourceVersionNamespace']) ||
+        authority['sourceVersionNamespace'] !== evidence['expectedSourceVersionNamespace'] ||
+        !Number.isSafeInteger(authority['maxAgeMs']) ||
+        (authority['maxAgeMs'] as number) < 0 ||
+        authority['maxAgeMs'] !== evidence['expectedMaxAgeMs']
+      ) return 'authority';
+      actualAuthorities.push(authority['authorityId']);
+    }
+    if (new Set(actualAuthorities).size !== actualAuthorities.length) return 'authority';
+    const expectedSet = new Set(expectedAuthorities);
+    if (
+      actualAuthorities.length !== expectedAuthorities.length ||
+      actualAuthorities.some((authorityId) => !expectedSet.has(authorityId))
+    ) return 'authority';
+  }
 
   const policyVersion = evidence['policyVersion'];
   const expectedPolicyVersion = evidence['expectedPolicyVersion'];
@@ -345,9 +386,11 @@ function swarmlabPolicyHits(call: ToolCall): RuleHit[] {
   const freshnessFailure = sourceFreshnessRequiresAsk(call);
   if (freshnessFailure) {
     hits.push({
-      id: freshnessFailure === 'policy'
-        ? 'swarmlab.rt42.source-freshness-requires-current-policy-binding'
-        : 'swarmlab.rt41.consequential-fact-use-requires-source-freshness',
+      id: freshnessFailure === 'authority'
+        ? 'swarmlab.rt43.source-freshness-requires-authority-consensus'
+        : freshnessFailure === 'policy'
+          ? 'swarmlab.rt42.source-freshness-requires-current-policy-binding'
+          : 'swarmlab.rt41.consequential-fact-use-requires-source-freshness',
       severity: 'medium',
       category: 'swarmlab',
       target: 'argv',

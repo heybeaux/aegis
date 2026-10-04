@@ -1141,6 +1141,55 @@ describe('evaluate — SwarmLab-derived policy gates', () => {
     expect(decide({ ...common, policyId: 'freshness:deploy', policyVersion: 5, sourceVersionNamespace: 'deploy-target:v2' }).action).toBe('ask');
   });
 
+  it('RT-43 requires the exact authenticated policy-authority roster to agree', () => {
+    const base = {
+      tool: 'ActOnRememberedFact',
+      factLifecycle: { factClass: 'deployment_target' as const, usageKind: 'deploy' as const, basisStatus: 'supported' as const, latestStatus: 'supported' as const, superseded: false },
+    };
+    const authority = (authorityId: string, overrides: Record<string, unknown> = {}) => ({
+      authorityId, authenticated: true, policyId: 'freshness:deploy', policyVersion: 5,
+      sourceVersionNamespace: 'deploy-target:v2', maxAgeMs: 100, ...overrides,
+    });
+    const current = {
+      risk: 'high' as const, sourceId: 'authority:deploy', expectedSourceId: 'authority:deploy',
+      cachedSourceVersion: 7, observedSourceVersion: 7, checkedAtMs: 1_000, actionAtMs: 1_010,
+      maxAgeMs: 100, checkStatus: 'fresh' as const, authenticated: true,
+      policyId: 'freshness:deploy', expectedPolicyId: 'freshness:deploy', policyVersion: 5, expectedPolicyVersion: 5,
+      sourceVersionNamespace: 'deploy-target:v2', expectedSourceVersionNamespace: 'deploy-target:v2', expectedMaxAgeMs: 100,
+      policyAuthenticated: true, expectedPolicyAuthorityIds: ['policy:east', 'policy:west'],
+      policyAuthorities: [authority('policy:east'), authority('policy:west')],
+    };
+    const decide = (sourceFreshness: ToolCall['sourceFreshness']) => evaluate({ ...base, sourceFreshness }, compiled);
+    expect(decide(current).action).toBe('allow');
+    expect(decide({ ...current, expectedPolicyAuthorityIds: [...current.expectedPolicyAuthorityIds].reverse(), policyAuthorities: [...current.policyAuthorities].reverse() }).action).toBe('allow');
+    expect(decide({ ...current, policyAuthorities: [authority('policy:east'), authority('policy:west', { maxAgeMs: 200 })] }).action).toBe('ask');
+    expect(decide({ ...current, policyAuthorities: [authority('policy:east')] }).action).toBe('ask');
+    expect(decide({ ...current, policyAuthorities: [...current.policyAuthorities, authority('policy:rogue')] }).action).toBe('ask');
+    expect(decide({ ...current, policyAuthorities: [authority('policy:east'), authority('policy:east')] }).action).toBe('ask');
+    expect(decide({ ...current, policyAuthorities: [authority('policy:east'), authority('policy:west', { authenticated: false })] }).action).toBe('ask');
+    expect(decide({ ...current, policyAuthorities: [] }).action).toBe('ask');
+    expect(decide({ ...current, policyAuthorities: undefined }).action).toBe('ask');
+    expect(decide({ ...current, expectedPolicyAuthorityIds: [] }).action).toBe('ask');
+    expect(decide({ ...current, expectedPolicyAuthorityIds: ['policy:east', 'policy:east'] }).action).toBe('ask');
+    const failed = decide({ ...current, policyAuthorities: [authority('policy:east'), authority('policy:west', { policyVersion: 4 })] });
+    expect(failed.matches.map((match) => match.id)).toContain('swarmlab.rt43.source-freshness-requires-authority-consensus');
+  });
+
+  it('RT-43 validates malformed authority evidence fail-closed without changing legacy RT-42', () => {
+    const common = {
+      risk: 'high' as const, sourceId: 'authority:deploy', expectedSourceId: 'authority:deploy', cachedSourceVersion: 7,
+      observedSourceVersion: 7, checkedAtMs: 1_000, actionAtMs: 1_010, maxAgeMs: 100, checkStatus: 'fresh' as const,
+      authenticated: true, policyId: 'freshness:deploy', expectedPolicyId: 'freshness:deploy', policyVersion: 5,
+      expectedPolicyVersion: 5, sourceVersionNamespace: 'deploy-target:v2', expectedSourceVersionNamespace: 'deploy-target:v2',
+      expectedMaxAgeMs: 100, policyAuthenticated: true,
+    };
+    const decide = (sourceFreshness: unknown) => evaluate({ tool: 'ActOnRememberedFact', sourceFreshness } as ToolCall, compiled);
+    expect(decide(common).action).toBe('allow');
+    for (const policyAuthorities of [null, {}, 'not-an-array', [{ authorityId: ' policy:east', authenticated: true }]]) {
+      expect(decide({ ...common, expectedPolicyAuthorityIds: ['policy:east'], policyAuthorities }).action).toBe('ask');
+    }
+  });
+
   it('RT-42 preserves RT-41 calls without a configured policy envelope', () => {
     expect(
       evaluate(

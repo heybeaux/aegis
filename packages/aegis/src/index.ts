@@ -12,6 +12,8 @@ export type {
   GateAction,
   RuleCategory,
   FactLifecycleMetadata,
+  SourceFreshnessPolicyAuthority,
+  SourceFreshnessPolicyAuthorityRoster,
   SourceFreshnessMetadata,
   CoordinationMetadata,
   MatchTarget,

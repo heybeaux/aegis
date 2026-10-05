@@ -226,6 +226,19 @@ export interface SourceFreshnessPolicyAuthority {
   maxAgeMs?: number;
 }
 
+export interface SourceFreshnessPolicyAuthorityRoster {
+  /** Canonical identity of the independently authenticated authority roster. */
+  rosterId?: string;
+  /** Positive monotonic revision of the authority roster. */
+  rosterEpoch?: number;
+  /** SHA-256 digest binding roster identity, epoch, and the canonical member set. */
+  rosterDigest?: string;
+  /** Whether the host independently authenticated this roster outside its members' trust domain. */
+  authenticated?: boolean;
+  /** Complete canonical set of policy-authority identities in this roster. */
+  memberIds?: string[];
+}
+
 export interface SourceFreshnessMetadata {
   /** Risk of the action that will consume this fact. High-risk use requires a fresh source check. */
   risk?: 'high' | 'low';
@@ -261,6 +274,14 @@ export interface SourceFreshnessMetadata {
   expectedPolicyAuthorityIds?: string[];
   /** Independently authenticated policy views supplied by the configured authorities. */
   policyAuthorities?: SourceFreshnessPolicyAuthority[];
+  /** Exact identity of the current policy-authority roster expected by the host. */
+  expectedPolicyAuthorityRosterId?: string;
+  /** Exact positive roster epoch expected at this action boundary. */
+  expectedPolicyAuthorityRosterEpoch?: number;
+  /** Canonical SHA-256 membership digest expected for the current roster. */
+  expectedPolicyAuthorityRosterDigest?: string;
+  /** Independently authenticated presented authority roster. */
+  policyAuthorityRoster?: SourceFreshnessPolicyAuthorityRoster;
 }
 
 export interface CoordinationMetadata {

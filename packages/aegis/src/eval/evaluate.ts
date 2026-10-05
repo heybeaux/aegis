@@ -9,6 +9,8 @@
  * See docs/aegis-rulepack-spec-2026-06-14.md §4.
  */
 
+import { createHash } from 'node:crypto';
+
 import type {
   CompiledRule,
   Evaluation,
@@ -81,7 +83,7 @@ function validSourceId(value: unknown): value is string {
   return typeof value === 'string' && value.length > 0 && value.length <= 256 && value.trim() === value;
 }
 
-function sourceFreshnessRequiresAsk(call: ToolCall): 'observation' | 'policy' | 'authority' | false {
+function sourceFreshnessRequiresAsk(call: ToolCall): 'observation' | 'policy' | 'authority' | 'roster' | false {
   const consequentialLifecycleUse =
     call.factLifecycle?.usageKind === 'route' ||
     call.factLifecycle?.usageKind === 'deploy' ||
@@ -142,7 +144,12 @@ function sourceFreshnessRequiresAsk(call: ToolCall): 'observation' | 'policy' | 
     evidence['expectedPolicyVersion'] !== undefined ||
     evidence['expectedSourceVersionNamespace'] !== undefined ||
     evidence['expectedMaxAgeMs'] !== undefined;
-  if (!policyConfigured) return false;
+  const authorityRosterConfigured =
+    evidence['expectedPolicyAuthorityRosterId'] !== undefined ||
+    evidence['expectedPolicyAuthorityRosterEpoch'] !== undefined ||
+    evidence['expectedPolicyAuthorityRosterDigest'] !== undefined ||
+    evidence['policyAuthorityRoster'] !== undefined;
+  if (!policyConfigured) return authorityRosterConfigured ? 'roster' : false;
 
   const authorityConsensusConfigured = evidence['expectedPolicyAuthorityIds'] !== undefined;
   if (authorityConsensusConfigured) {
@@ -183,6 +190,58 @@ function sourceFreshnessRequiresAsk(call: ToolCall): 'observation' | 'policy' | 
       actualAuthorities.length !== expectedAuthorities.length ||
       actualAuthorities.some((authorityId) => !expectedSet.has(authorityId))
     ) return 'authority';
+  }
+
+  if (authorityRosterConfigured) {
+    const expectedRosterId = evidence['expectedPolicyAuthorityRosterId'];
+    const expectedRosterEpoch = evidence['expectedPolicyAuthorityRosterEpoch'];
+    const expectedRosterDigest = evidence['expectedPolicyAuthorityRosterDigest'];
+    const rawRoster = evidence['policyAuthorityRoster'];
+    if (
+      !authorityConsensusConfigured ||
+      !validSourceId(expectedRosterId) ||
+      !Number.isSafeInteger(expectedRosterEpoch) ||
+      (expectedRosterEpoch as number) <= 0 ||
+      typeof expectedRosterDigest !== 'string' ||
+      !/^sha256:[a-f0-9]{64}$/.test(expectedRosterDigest) ||
+      rawRoster === null ||
+      typeof rawRoster !== 'object' ||
+      Array.isArray(rawRoster)
+    ) return 'roster';
+
+    const roster = rawRoster as Record<string, unknown>;
+    const memberIds = roster['memberIds'];
+    if (
+      roster['authenticated'] !== true ||
+      !validSourceId(roster['rosterId']) ||
+      roster['rosterId'] !== expectedRosterId ||
+      !Number.isSafeInteger(roster['rosterEpoch']) ||
+      (roster['rosterEpoch'] as number) <= 0 ||
+      roster['rosterEpoch'] !== expectedRosterEpoch ||
+      typeof roster['rosterDigest'] !== 'string' ||
+      !/^sha256:[a-f0-9]{64}$/.test(roster['rosterDigest']) ||
+      roster['rosterDigest'] !== expectedRosterDigest ||
+      !Array.isArray(memberIds) ||
+      memberIds.length === 0 ||
+      memberIds.some((authorityId) => !validSourceId(authorityId)) ||
+      new Set(memberIds).size !== memberIds.length
+    ) return 'roster';
+
+    const canonicalMemberIds = [...memberIds].sort();
+    const digestPayload = JSON.stringify({
+      memberIds: canonicalMemberIds,
+      rosterEpoch: roster['rosterEpoch'],
+      rosterId: roster['rosterId'],
+    });
+    const computedDigest = `sha256:${createHash('sha256').update(digestPayload).digest('hex')}`;
+    if (computedDigest !== roster['rosterDigest']) return 'roster';
+
+    const expectedAuthorities = evidence['expectedPolicyAuthorityIds'] as string[];
+    const canonicalExpectedAuthorities = [...expectedAuthorities].sort();
+    if (
+      canonicalMemberIds.length !== canonicalExpectedAuthorities.length ||
+      canonicalMemberIds.some((authorityId, index) => authorityId !== canonicalExpectedAuthorities[index])
+    ) return 'roster';
   }
 
   const policyVersion = evidence['policyVersion'];
@@ -386,11 +445,13 @@ function swarmlabPolicyHits(call: ToolCall): RuleHit[] {
   const freshnessFailure = sourceFreshnessRequiresAsk(call);
   if (freshnessFailure) {
     hits.push({
-      id: freshnessFailure === 'authority'
-        ? 'swarmlab.rt43.source-freshness-requires-authority-consensus'
-        : freshnessFailure === 'policy'
-          ? 'swarmlab.rt42.source-freshness-requires-current-policy-binding'
-          : 'swarmlab.rt41.consequential-fact-use-requires-source-freshness',
+      id: freshnessFailure === 'roster'
+        ? 'swarmlab.rt44.source-freshness-requires-authority-roster-binding'
+        : freshnessFailure === 'authority'
+          ? 'swarmlab.rt43.source-freshness-requires-authority-consensus'
+          : freshnessFailure === 'policy'
+            ? 'swarmlab.rt42.source-freshness-requires-current-policy-binding'
+            : 'swarmlab.rt41.consequential-fact-use-requires-source-freshness',
       severity: 'medium',
       category: 'swarmlab',
       target: 'argv',

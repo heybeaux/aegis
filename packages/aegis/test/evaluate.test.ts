@@ -1,9 +1,10 @@
+import { createHash } from 'node:crypto';
 import { describe, it, expect } from 'vitest';
 import { loadPack } from '../src/rules/loader.js';
 import { mergeLayers } from '../src/rules/merge.js';
 import { evaluate } from '../src/eval/evaluate.js';
 import { isSafeCommand } from '../src/eval/safe-command.js';
-import type { Rule, RulePack } from '../src/types.js';
+import type { Rule, RulePack, ToolCall } from '../src/types.js';
 
 const rmRf: Rule = {
   id: 'bash.rm-rf-root',
@@ -1188,6 +1189,106 @@ describe('evaluate — SwarmLab-derived policy gates', () => {
     for (const policyAuthorities of [null, {}, 'not-an-array', [{ authorityId: ' policy:east', authenticated: true }]]) {
       expect(decide({ ...common, expectedPolicyAuthorityIds: ['policy:east'], policyAuthorities }).action).toBe('ask');
     }
+  });
+
+  it('RT-44 binds source policy consensus to an authenticated current authority roster', () => {
+    const base = {
+      tool: 'ActOnRememberedFact',
+      factLifecycle: { factClass: 'deployment_target' as const, usageKind: 'deploy' as const, basisStatus: 'supported' as const, latestStatus: 'supported' as const, superseded: false },
+    };
+    const authority = (authorityId: string, overrides: Record<string, unknown> = {}) => ({
+      authorityId, authenticated: true, policyId: 'freshness:deploy', policyVersion: 5,
+      sourceVersionNamespace: 'deploy-target:v2', maxAgeMs: 100, ...overrides,
+    });
+    const rosterId = 'policy-authority-roster:deploy';
+    const rosterEpoch = 2;
+    const memberIds = ['policy:east', 'policy:west'];
+    const digest = (id: string, epoch: number, members: string[]) => {
+      const payload = JSON.stringify({ memberIds: [...members].sort(), rosterEpoch: epoch, rosterId: id });
+      return `sha256:${createHash('sha256').update(payload).digest('hex')}`;
+    };
+    const rosterDigest = digest(rosterId, rosterEpoch, memberIds);
+    const current = {
+      risk: 'high' as const, sourceId: 'authority:deploy', expectedSourceId: 'authority:deploy',
+      cachedSourceVersion: 7, observedSourceVersion: 7, checkedAtMs: 1_000, actionAtMs: 1_010,
+      maxAgeMs: 100, checkStatus: 'fresh' as const, authenticated: true,
+      policyId: 'freshness:deploy', expectedPolicyId: 'freshness:deploy', policyVersion: 5, expectedPolicyVersion: 5,
+      sourceVersionNamespace: 'deploy-target:v2', expectedSourceVersionNamespace: 'deploy-target:v2', expectedMaxAgeMs: 100,
+      policyAuthenticated: true, expectedPolicyAuthorityIds: memberIds,
+      policyAuthorities: memberIds.map((id) => authority(id)),
+      expectedPolicyAuthorityRosterId: rosterId,
+      expectedPolicyAuthorityRosterEpoch: rosterEpoch,
+      expectedPolicyAuthorityRosterDigest: rosterDigest,
+      policyAuthorityRoster: { rosterId, rosterEpoch, rosterDigest, authenticated: true, memberIds },
+    };
+    const decide = (sourceFreshness: unknown) => evaluate({ ...base, sourceFreshness } as ToolCall, compiled);
+    expect(decide(current).action).toBe('allow');
+    expect(decide({
+      ...current,
+      expectedPolicyAuthorityIds: [...memberIds].reverse(),
+      policyAuthorities: [...current.policyAuthorities].reverse(),
+      policyAuthorityRoster: { ...current.policyAuthorityRoster, memberIds: [...memberIds].reverse() },
+    }).action).toBe('allow');
+
+    const invalidRosters: unknown[] = [
+      undefined,
+      null,
+      memberIds,
+      { ...current.policyAuthorityRoster, authenticated: false },
+      { ...current.policyAuthorityRoster, rosterId: 'policy-authority-roster:foreign' },
+      { ...current.policyAuthorityRoster, rosterEpoch: 1, rosterDigest: digest(rosterId, 1, memberIds) },
+      { ...current.policyAuthorityRoster, rosterEpoch: 3, rosterDigest: digest(rosterId, 3, memberIds) },
+      { ...current.policyAuthorityRoster, rosterDigest: `sha256:${'0'.repeat(64)}` },
+      { ...current.policyAuthorityRoster, memberIds: [] },
+      { ...current.policyAuthorityRoster, memberIds: [memberIds[0], memberIds[0]] },
+      { ...current.policyAuthorityRoster, memberIds: ['policy:east', 'policy:north'], rosterDigest: digest(rosterId, rosterEpoch, ['policy:east', 'policy:north']) },
+    ];
+    for (const policyAuthorityRoster of invalidRosters) {
+      const failed = decide({ ...current, policyAuthorityRoster });
+      expect(failed.action).toBe('ask');
+      expect(failed.matches.map((match) => match.id)).toContain('swarmlab.rt44.source-freshness-requires-authority-roster-binding');
+    }
+
+    expect(decide({ ...current, expectedPolicyAuthorityRosterId: undefined }).action).toBe('ask');
+    expect(decide({ ...current, expectedPolicyAuthorityRosterEpoch: 0, policyAuthorityRoster: { ...current.policyAuthorityRoster, rosterEpoch: 0 } }).action).toBe('ask');
+    expect(decide({ ...current, expectedPolicyAuthorityRosterDigest: 'not-a-digest' }).action).toBe('ask');
+  });
+
+  it('RT-44 preserves earlier freshness failures and legacy RT-43 calls', () => {
+    const authority = (authorityId: string, policyId = 'freshness:deploy') => ({
+      authorityId, authenticated: true, policyId, policyVersion: 5,
+      sourceVersionNamespace: 'deploy-target:v2', maxAgeMs: 100,
+    });
+    const legacy = {
+      risk: 'high' as const, sourceId: 'authority:deploy', expectedSourceId: 'authority:deploy', cachedSourceVersion: 7,
+      observedSourceVersion: 7, checkedAtMs: 1_000, actionAtMs: 1_010, maxAgeMs: 100, checkStatus: 'fresh' as const,
+      authenticated: true, policyId: 'freshness:deploy', expectedPolicyId: 'freshness:deploy', policyVersion: 5,
+      expectedPolicyVersion: 5, sourceVersionNamespace: 'deploy-target:v2', expectedSourceVersionNamespace: 'deploy-target:v2',
+      expectedMaxAgeMs: 100, policyAuthenticated: true, expectedPolicyAuthorityIds: ['policy:east', 'policy:west'],
+      policyAuthorities: [authority('policy:east'), authority('policy:west')],
+    };
+    const decide = (sourceFreshness: unknown) => evaluate({
+      tool: 'ActOnRememberedFact',
+      factLifecycle: { factClass: 'deployment_target', usageKind: 'deploy', basisStatus: 'supported', latestStatus: 'supported', superseded: false },
+      sourceFreshness,
+    } as ToolCall, compiled);
+    expect(decide(legacy).action).toBe('allow');
+
+    const authorityFailure = decide({
+      ...legacy,
+      policyAuthorities: [authority('policy:east'), authority('policy:west', 'freshness:foreign')],
+      expectedPolicyAuthorityRosterId: 'roster:deploy',
+    });
+    expect(authorityFailure.matches.map((match) => match.id)).toContain('swarmlab.rt43.source-freshness-requires-authority-consensus');
+    expect(authorityFailure.matches.map((match) => match.id)).not.toContain('swarmlab.rt44.source-freshness-requires-authority-roster-binding');
+
+    const observationFailure = decide({
+      ...legacy,
+      actionAtMs: 1_101,
+      expectedPolicyAuthorityRosterId: 'roster:deploy',
+    });
+    expect(observationFailure.matches.map((match) => match.id)).toContain('swarmlab.rt41.consequential-fact-use-requires-source-freshness');
+    expect(observationFailure.matches.map((match) => match.id)).not.toContain('swarmlab.rt44.source-freshness-requires-authority-roster-binding');
   });
 
   it('RT-42 preserves RT-41 calls without a configured policy envelope', () => {

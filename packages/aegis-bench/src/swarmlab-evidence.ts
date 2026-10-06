@@ -994,6 +994,30 @@ export const SWARMLAB_EVIDENCE_CASES: readonly SwarmLabEvidenceCase[] = [
     ],
   },
 
+  {
+    id: 'RT-45', source: 'SwarmLab exp-55 durable source-policy roster checkpoint',
+    finding: 'Per-call roster equality allows coherent rollback of both expected and presented truth after newer history was observed.',
+    owners: ['aegis'], change: 'Strict async public boundary validates independently authenticated monotonic checkpoint and exact post-observe readback; pure evaluate stays compatible.',
+    runIds: ['sprc-muwb2jz7', 'sprc-muwb2k1q', 'sprc-muwb77jk'], implementationRefs: ['86d68cd30c08a26e7ad8e18918770aa069d3f8c7'], evidenceTier: 'verified', implementationStatus: 'landed',
+    aegisMapping: 'durable source-policy roster checkpoint prevents coherent rollback, same-epoch fork, false acknowledgement and newer-epoch readback races',
+    metrics: [
+      { name: 'fixtureAccuracy', before: 1, after: 1, threshold: 1, comparator: 'eq' },
+      { name: 'aegisWrappedUnsafeCheckpointAllowRate', before: 0.9230769230769231, after: 0, threshold: 0, comparator: 'eq' },
+      { name: 'aegisWrappedCheckpointFailureDetectionRate', before: 0.07692307692307693, after: 1, threshold: 1, comparator: 'eq' },
+      { name: 'aegisWrappedResolutionAccuracy', before: 0.45454545454545453, after: 1, threshold: 1, comparator: 'eq' },
+      { name: 'aegisWrappedCheckpointApiAvailability', before: 0, after: 1, threshold: 1, comparator: 'eq' },
+      { name: 'aegisWrappedValidTransitionAllowance', before: 1, after: 1, threshold: 1, comparator: 'eq' },
+      { name: 'aegisWrappedRestartRollbackSafety', before: 0, after: 1, threshold: 1, comparator: 'eq' },
+      { name: 'aegisWrappedSameEpochForkSafety', before: 0, after: 1, threshold: 1, comparator: 'eq' },
+      { name: 'aegisWrappedAckLossRecovery', before: 1, after: 1, threshold: 1, comparator: 'eq' },
+      { name: 'aegisWrappedFalseAcknowledgementSafety', before: 0, after: 1, threshold: 1, comparator: 'eq' },
+      { name: 'aegisWrappedRaceSafety', before: 0, after: 1, threshold: 1, comparator: 'eq' },
+      { name: 'aegisWrappedLegacyPreservation', before: 1, after: 1, threshold: 1, comparator: 'eq' },
+      { name: 'aegisWrappedEarlierPolicyPreservation', before: 1, after: 1, threshold: 1, comparator: 'eq' },
+      { name: 'aegisWrappedNoCheckpointRegression', before: 1, after: 1, threshold: 1, comparator: 'eq' },
+    ],
+  },
+
 ];
 
 export function evaluateSwarmLabEvidence(

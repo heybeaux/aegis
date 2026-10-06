@@ -1,0 +1,11 @@
+# RT-45 — Durable source-policy roster checkpoint
+
+Exp-55 pre-registered at SwarmLab 730e3b3f8fdc98fc11a85889f47cdc47e70bd65f; baseline sprc-muwb2jz7 and repeat sprc-muwb2k1q, real Aegis c8fe1b0, allowed 12/13 checkpoint faults. Candidate runtime 86d68cd30c08a26e7ad8e18918770aa069d3f8c7 / sprc-muwb77jk passes all frozen thresholds.
+
+Use `evaluateWithSourcePolicyRosterCheckpoint(call, compiledRules, store, options?)` from `@heybeaux/lattice-aegis`. It is a strict async boundary, not automatically installed in the CLI hook. Do not perform the action before it returns allow. Existing evaluate remains pure and backwards compatible; it does not claim durable rollback safety.
+
+Host implements `SourcePolicyRosterCheckpointStore.read(rosterId)` and `observe(proposal)`. Read is linearizable and returns null only for genuinely absent truth, otherwise independently authenticated exact rosterId, positive safe epoch, sha256 digest. Observe atomically initializes or advances to a greater epoch, never regress or overwrite same-epoch conflicting digests. Host authenticates persisted readback, never blindly copies the Aegis proposal's authenticated flag (always false). Retain/share state across restart and host handoff, outside roster backup/rollback domain.
+
+Aegis checks prior high-water, rejects invalid/unverified/foreign/older/same-epoch conflict evidence, then reconciles any observe acknowledgement (including an exception) through exact authenticated readback. Missing, unavailable, or raced newer truth asks; earlier rule/predictor decisions stay restrictive. The proposed binding is frozen and isolated from host adapter mutation.
+
+Limitations: a dishonest/rolled-back independent store can lie; complete membership, epoch allocation, authority independence, monotonic persistence and retention are host-owned. There is a final-read-to-action gap; this API does not claim atomic execution under concurrent future roster changes. Experiment is deterministic adapter evidence, not distributed consensus certification or a trained predictor.

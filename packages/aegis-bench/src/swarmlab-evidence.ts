@@ -1018,6 +1018,27 @@ export const SWARMLAB_EVIDENCE_CASES: readonly SwarmLabEvidenceCase[] = [
     ],
   },
 
+  {
+    id: 'RT-46', source: 'SwarmLab exp-56 async gate input integrity',
+    finding: 'Mutable caller-owned ToolCall can diverge from pre-await authorization during valid checkpoint I/O.',
+    owners: ['aegis'], change: 'Private plain-data snapshot and live input comparison after every await; early mutation prevents observe; original/new deny floors preserved.',
+    runIds: ["agii-muxqic7t", "agii-muxqic9t", "agii-muxqm4fw"], implementationRefs: ['21f34fbedcfb8f48bbe3f61522e530de7595d563'], evidenceTier: 'verified', implementationStatus: 'landed',
+    aegisMapping: 'async source-policy boundary refuses observable mutable input before allow',
+    metrics: [
+      { name: 'fixtureAccuracy', before: 1, after: 1, threshold: 1, comparator: 'eq' },
+      { name: 'aegisWrappedUnsafeMutableInputAllowRate', before: 1, after: 0, threshold: 0, comparator: 'eq' },
+      { name: 'aegisWrappedInputMutationDetectionRate', before: 0, after: 1, threshold: 1, comparator: 'eq' },
+      { name: 'aegisWrappedResolutionAccuracy', before: 0.3333333333333333, after: 1, threshold: 1, comparator: 'eq' },
+      { name: 'aegisWrappedUnchangedAllowance', before: 1, after: 1, threshold: 1, comparator: 'eq' },
+      { name: 'aegisWrappedEarlyMutationNoObserve', before: 0, after: 1, threshold: 1, comparator: 'eq' },
+      { name: 'aegisWrappedCriticalDenyPreservation', before: 0, after: 1, threshold: 1, comparator: 'eq' },
+      { name: 'aegisWrappedLegacyPreservation', before: 1, after: 1, threshold: 1, comparator: 'eq' },
+      { name: 'aegisWrappedUnavailableSafety', before: 1, after: 1, threshold: 1, comparator: 'eq' },
+      { name: 'aegisWrappedTransientAbaScopeControl', before: 1, after: 1, threshold: 1, comparator: 'eq' },
+      { name: 'aegisWrappedNoCheckpointRegression', before: 1, after: 1, threshold: 1, comparator: 'eq' },
+    ],
+  },
+
 ];
 
 export function evaluateSwarmLabEvidence(

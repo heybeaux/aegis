@@ -9,3 +9,20 @@ Host implements `SourcePolicyRosterCheckpointStore.read(rosterId)` and `observe(
 Aegis checks prior high-water, rejects invalid/unverified/foreign/older/same-epoch conflict evidence, then reconciles any observe acknowledgement (including an exception) through exact authenticated readback. Missing, unavailable, or raced newer truth asks; earlier rule/predictor decisions stay restrictive. The proposed binding is frozen and isolated from host adapter mutation.
 
 Limitations: a dishonest/rolled-back independent store can lie; complete membership, epoch allocation, authority independence, monotonic persistence and retention are host-owned. There is a final-read-to-action gap; this API does not claim atomic execution under concurrent future roster changes. Experiment is deterministic adapter evidence, not distributed consensus certification or a trained predictor.
+
+## RT-46 — In-flight input integrity
+
+The async gate snapshots plain `ToolCall` data privately before invoking host I/O. After each awaited
+read/observe (including failed operations), it checks that the live caller data still matches that
+snapshot. Observable changes fail closed with
+`swarmlab.rt46.async-source-policy-gate-requires-stable-input`; newly observed critical rule matches
+retain `deny`, not merely `ask`. Changes seen after the first read cause no checkpoint observe.
+Equivalent deep-cloned data is allowed. Unsnapshotable input fails closed. Caller objects are not
+mutated or frozen. Original deny/ask floors and ordinary synchronous evaluate remain compatible.
+
+This is not action atomicity. Hosts must pass plain-data calls and execute exactly the authorized
+call after return, without reusing a concurrently mutable reference. Proxies/getters, transient
+mutate-and-restore (ABA) between observations, mutable rules/options, and mutations after the final
+comparison remain outside this guarantee. The checkpoint host still owns authentication, atomic
+monotonic persistence and independently retained truth. Exp-56 tests mutable input DURING one
+invocation; it does not replace RT-45 history validation or production host integration tests.

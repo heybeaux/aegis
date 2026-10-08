@@ -1,4 +1,5 @@
 import { createHash } from 'node:crypto';
+import { isDeepStrictEqual } from 'node:util';
 import type { CompiledRule, Evaluation, ToolCall } from '../types.js';
 import { evaluate, type EvaluateOptions } from './evaluate.js';
 
@@ -57,6 +58,19 @@ function ask(base: Evaluation): Evaluation {
   };
 }
 
+/** Refuse authorization detached from the caller's currently observable action/evidence. */
+function inputChanged(base: Evaluation, call: ToolCall, rules: CompiledRule[], options: EvaluateOptions): Evaluation {
+  const current = evaluate(call, rules, options);
+  const floor = base.action === 'deny' ? base : current.action === 'deny' ? current : base;
+  return {
+    ...floor,
+    action: floor.action === 'deny' ? 'deny' : 'ask',
+    decidedBy: floor.action === 'deny' ? floor.decidedBy : 'severity',
+    reason: floor.action === 'deny' ? floor.reason : 'SwarmLab RT-46: async source-policy gate input changed during evaluation',
+    matches: [...floor.matches, { id: 'swarmlab.rt46.async-source-policy-gate-requires-stable-input', severity: 'medium', category: 'swarmlab', target: 'argv' }],
+  };
+}
+
 /**
  * Strict source-policy boundary. Pure evaluate remains backward compatible, but cannot promise
  * cross-call rollback safety. Never invoke the action before this async gate returns allow.
@@ -68,19 +82,27 @@ export async function evaluateWithSourcePolicyRosterCheckpoint(
   store: SourcePolicyRosterCheckpointStore,
   options: EvaluateOptions = {},
 ): Promise<Evaluation> {
-  const base = evaluate(call, rules, options);
+  // Snapshot plain ToolCall data before any host callback. Do not freeze or alter caller-owned data.
+  // The live caller input is compared after every await; equivalent deep copies remain valid.
+  let snapshot: ToolCall;
+  try { snapshot = structuredClone(call); } catch { return inputChanged(evaluate(call, rules, options), call, rules, options); }
+  const base = evaluate(snapshot, rules, options);
   if (base.action !== 'allow') return base;
-  const proposal = requestedCheckpoint(call);
+  const stable = () => isDeepStrictEqual(call, snapshot);
+  const proposal = requestedCheckpoint(snapshot);
   if (!proposal) return ask(base);
   try {
     const prior: unknown = await store.read(proposal.rosterId);
+    if (!stable()) return inputChanged(base, call, rules, options);
     if (prior !== null) {
       if (!validCheckpoint(prior, proposal.rosterId) || prior.rosterEpoch > proposal.rosterEpoch ||
         prior.rosterEpoch === proposal.rosterEpoch && prior.rosterDigest !== proposal.rosterDigest) return ask(base);
     }
     try { await store.observe(Object.freeze({ ...proposal })); } catch { /* possibly committed; attest through readback */ }
+    if (!stable()) return inputChanged(base, call, rules, options);
     const retained: unknown = await store.read(proposal.rosterId);
+    if (!stable()) return inputChanged(base, call, rules, options);
     if (!validCheckpoint(retained, proposal.rosterId) || retained.rosterEpoch !== proposal.rosterEpoch || retained.rosterDigest !== proposal.rosterDigest) return ask(base);
     return base;
-  } catch { return ask(base); }
+  } catch { return stable() ? ask(base) : inputChanged(base, call, rules, options); }
 }

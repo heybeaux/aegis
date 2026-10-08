@@ -26,3 +26,23 @@ mutate-and-restore (ABA) between observations, mutable rules/options, and mutati
 comparison remain outside this guarantee. The checkpoint host still owns authentication, atomic
 monotonic persistence and independently retained truth. Exp-56 tests mutable input DURING one
 invocation; it does not replace RT-45 history validation or production host integration tests.
+
+## RT-47 — account for source observation lifetime during async I/O
+
+`evaluateWithSourcePolicyRosterCheckpoint` accepts additive
+`SourcePolicyRosterCheckpointOptions.monotonicNowMs?: () => number` (trusted monotonic
+milliseconds; default `performance.now()`). Its source observation budget is
+`maxAgeMs - (actionAtMs - checkedAtMs)`. The gate captures a private entry sample and
+checks elapsed time after every awaited read/observe, including exceptions. The boundary
+is inclusive: elapsed equal to the remaining budget is valid; greater is `ask`.
+Nonfinite, negative, regressing or throwing clocks fail closed. An initial `deny` is
+preserved; currently observable new deny remains stricter than expiry. An early expiry
+prevents observe, and expiry after observe prevents another read even on acknowledgement
+loss. RT-47 cannot be disabled by a permissive severity table. Caller data and configuration
+are not frozen or modified; the clock function is captured for this invocation.
+
+This is **elapsed lifetime**, not source re-observation or a transactional action fence.
+The host still owns truthful initial age, trusted units/clock, observation authenticity,
+latency before invocation and immediate exact execution after allow. Concurrent
+rules/options mutation, colluding clocks, getter/proxy side effects, ABA between samples
+and post-return races remain unproven. Pure `evaluate()` is unchanged.

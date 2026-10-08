@@ -1,5 +1,6 @@
 import { createHash } from 'node:crypto';
 import { isDeepStrictEqual } from 'node:util';
+import { performance } from 'node:perf_hooks';
 import type { CompiledRule, Evaluation, ToolCall } from '../types.js';
 import { evaluate, type EvaluateOptions } from './evaluate.js';
 
@@ -21,6 +22,12 @@ export interface SourcePolicyRosterCheckpoint {
 export interface SourcePolicyRosterCheckpointStore {
   read(rosterId: string): Promise<SourcePolicyRosterCheckpoint | null>;
   observe(proposal: SourcePolicyRosterCheckpoint): Promise<void>;
+}
+
+/** Additional timing contract for the strict async boundary only; pure evaluate is unchanged. */
+export interface SourcePolicyRosterCheckpointOptions extends EvaluateOptions {
+  /** Trusted monotonic milliseconds. Defaults to performance.now; capture once per invocation. */
+  monotonicNowMs?: () => number;
 }
 
 const HIT = 'swarmlab.rt45.source-policy-roster-requires-monotonic-checkpoint';
@@ -71,6 +78,18 @@ function inputChanged(base: Evaluation, call: ToolCall, rules: CompiledRule[], o
   };
 }
 
+function observationExpired(base: Evaluation, call: ToolCall, rules: CompiledRule[], options: EvaluateOptions): Evaluation {
+  const current = evaluate(call, rules, options);
+  const floor = base.action === 'deny' ? base : current.action === 'deny' ? current : base;
+  return {
+    ...floor,
+    action: floor.action === 'deny' ? 'deny' : 'ask',
+    decidedBy: floor.action === 'deny' ? floor.decidedBy : 'severity',
+    reason: floor.action === 'deny' ? floor.reason : 'SwarmLab RT-47: source observation expired during async checkpoint I/O or monotonic clock is invalid',
+    matches: [...floor.matches, { id: 'swarmlab.rt47.async-source-policy-gate-requires-unexpired-observation', severity: 'medium', category: 'swarmlab', target: 'argv' }],
+  };
+}
+
 /**
  * Strict source-policy boundary. Pure evaluate remains backward compatible, but cannot promise
  * cross-call rollback safety. Never invoke the action before this async gate returns allow.
@@ -80,8 +99,13 @@ export async function evaluateWithSourcePolicyRosterCheckpoint(
   call: ToolCall,
   rules: CompiledRule[],
   store: SourcePolicyRosterCheckpointStore,
-  options: EvaluateOptions = {},
+  options: SourcePolicyRosterCheckpointOptions = {},
 ): Promise<Evaluation> {
+  // Capture the clock function and entry sample before synchronous work. A broken clock must
+  // not weaken an initial deny/ask; classify its validity only once initial evaluation allows.
+  const now = options.monotonicNowMs ?? (() => performance.now());
+  let started: number = NaN;
+  try { started = now(); } catch { /* fail closed below, while preserving the initial floor */ }
   // Snapshot plain ToolCall data before any host callback. Do not freeze or alter caller-owned data.
   // The live caller input is compared after every await; equivalent deep copies remain valid.
   let snapshot: ToolCall;
@@ -91,18 +115,41 @@ export async function evaluateWithSourcePolicyRosterCheckpoint(
   const stable = () => isDeepStrictEqual(call, snapshot);
   const proposal = requestedCheckpoint(snapshot);
   if (!proposal) return ask(base);
+  const freshness = snapshot.sourceFreshness!;
+  const age = freshness.actionAtMs! - freshness.checkedAtMs!;
+  const remaining = freshness.maxAgeMs! - age;
+  // Use subtraction rather than adding large timestamps (which can overflow safe precision).
+  if (!Number.isFinite(started) || started < 0 ||
+    !Number.isSafeInteger(freshness.actionAtMs) || !Number.isSafeInteger(freshness.checkedAtMs) ||
+    !Number.isSafeInteger(freshness.maxAgeMs) || freshness.checkedAtMs! < 0 ||
+    freshness.maxAgeMs! < 0 || age < 0 || remaining < 0) return observationExpired(base, call, rules, options);
+  let last = started;
+  const unexpired = () => {
+    try {
+      const current = now();
+      if (!Number.isFinite(current) || current < last || current < started) return false;
+      last = current;
+      return current - started <= remaining;
+    } catch { return false; }
+  };
   try {
     const prior: unknown = await store.read(proposal.rosterId);
     if (!stable()) return inputChanged(base, call, rules, options);
+    if (!unexpired()) return observationExpired(base, call, rules, options);
     if (prior !== null) {
       if (!validCheckpoint(prior, proposal.rosterId) || prior.rosterEpoch > proposal.rosterEpoch ||
         prior.rosterEpoch === proposal.rosterEpoch && prior.rosterDigest !== proposal.rosterDigest) return ask(base);
     }
     try { await store.observe(Object.freeze({ ...proposal })); } catch { /* possibly committed; attest through readback */ }
     if (!stable()) return inputChanged(base, call, rules, options);
+    if (!unexpired()) return observationExpired(base, call, rules, options);
     const retained: unknown = await store.read(proposal.rosterId);
     if (!stable()) return inputChanged(base, call, rules, options);
+    if (!unexpired()) return observationExpired(base, call, rules, options);
     if (!validCheckpoint(retained, proposal.rosterId) || retained.rosterEpoch !== proposal.rosterEpoch || retained.rosterDigest !== proposal.rosterDigest) return ask(base);
     return base;
-  } catch { return stable() ? ask(base) : inputChanged(base, call, rules, options); }
+  } catch {
+    if (!stable()) return inputChanged(base, call, rules, options);
+    return unexpired() ? ask(base) : observationExpired(base, call, rules, options);
+  }
 }

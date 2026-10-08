@@ -263,6 +263,7 @@ describe('SwarmLab evidence gate', () => {
       'RT-44',
       'RT-45',
       'RT-46',
+      'RT-47',
       'RT-49',
     ]);
 

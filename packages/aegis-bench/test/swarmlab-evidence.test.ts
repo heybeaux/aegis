@@ -7,7 +7,7 @@ import {
 } from '../src/swarmlab-evidence.js';
 
 describe('SwarmLab evidence gate', () => {
-  it('pins RT-49 receipt ownership red-green without claiming missing RT47/48',()=>{
+  it('pins RT-49 receipt ownership red-green',()=>{
     const c=SWARMLAB_EVIDENCE_CASES.find(c=>c.id==='RT-49');
     expect(c?.runIds).toEqual(['ero-mv20uicz','ero-mv20uig5','ero-mv20w6b7']);
     expect(c?.implementationRefs).toContain('7b4c5b08ab09201d6371a06de343eb435f0b26ed');
@@ -16,7 +16,14 @@ describe('SwarmLab evidence gate', () => {
       expect.objectContaining({name:'aegisCrossCallContaminationRate',before:1,after:0,threshold:0}),
       expect.objectContaining({name:'aegisEntryActionAccuracy',before:1,after:1,threshold:1}),
     ]));
-    expect(SWARMLAB_EVIDENCE_CASES.some(c=>c.id==='RT-47'||c.id==='RT-48')).toBe(false);
+    expect(SWARMLAB_EVIDENCE_CASES.some(c=>c.id==='RT-47'||c.id==='RT-48')).toBe(false);  });
+  it('pins RT-47 immutable-observation expiry and exact real-package receipts', () => {
+    const c = SWARMLAB_EVIDENCE_CASES.find(c => c.id === 'RT-47');
+    expect(c?.runIds).toEqual(['ase-muz5zo5h','ase-muz5zoav','ase-muz63pn3']);
+    expect(c?.metrics).toEqual(expect.arrayContaining([
+      expect.objectContaining({name:'aegisWrappedUnsafeExpiredAllowRate',before:1,after:0,threshold:0,comparator:'eq'}),
+      expect.objectContaining({name:'aegisWrappedResolutionAccuracy',before:0.4,after:1,threshold:1,comparator:'eq'}),
+    ]));
   });
   it('pins RT-46 observable input integrity and its real-package receipts', () => {
     const c = SWARMLAB_EVIDENCE_CASES.find(c => c.id === 'RT-46');
@@ -30,8 +37,8 @@ describe('SwarmLab evidence gate', () => {
   it('passes when all stack mappings are landed with verified evidence', () => {
     const result = evaluateSwarmLabEvidence();
     expect(result.status).toBe('passed');
-    expect(result.total).toBe(47);
-    expect(result.passed).toBe(47);
+    expect(result.total).toBe(48);
+    expect(result.passed).toBe(48);
     expect(result.failed).toBe(0);
     expect(result.partial).toBe(0);
     expect(result.pendingImplementation).toBe(0);

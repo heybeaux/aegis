@@ -95,3 +95,44 @@ describe('RT-45 durable source policy roster checkpoint', () => {
     expect((await evaluateWithSourcePolicyRosterCheckpoint(call(1), rules, new Store(cp(2)), { severityTable: { critical: 'deny', high: 'ask', medium: 'allow', low: 'allow' } })).action).toBe('ask');
   });
 });
+
+describe('RT-48 async evaluator configuration integrity', () => {
+  const critical = () => loadPack({packId:'config',version:'1',rules:[{id:'config-critical',description:'critical',severity:'critical',category:'bash',appliesTo:['*'],enabled:false,match:{target:'command',kind:'substring',pattern:'danger'}}]});
+  it.each(['first','observe','last'] as const)('detects nested rule tightening after %s, preserving current deny and early I/O discipline', async phase => {
+    const input = {...call(),command:'danger'}; const mutable = critical(); const store = new Store(cp()); let reads = 0;
+    store.read = async () => {reads++; if(phase === (reads===1?'first':'last'))mutable[0]!.rule.enabled=true; return {...cp()};};
+    store.observe = async () => {store.writes++;if(phase==='observe')mutable[0]!.rule.enabled=true;};
+    const result=await evaluateWithSourcePolicyRosterCheckpoint(input,mutable,store);
+    expect(result.action).toBe('deny');expect(result.matches.map(m=>m.id)).toContain('swarmlab.rt48.async-source-policy-gate-requires-stable-configuration');
+    if(phase==='first')expect(store.writes).toBe(0);if(phase==='observe')expect(reads).toBe(1);
+  });
+  it('preserves captured critical deny when live policy and input are weakened together',async()=>{
+    const mutable=critical();mutable[0]!.rule.enabled=true;const input={...call(),command:'safe'};const store=new Store(cp());
+    store.read=async()=>{mutable[0]!.rule.enabled=false;input.command='danger';return cp();};
+    expect((await evaluateWithSourcePolicyRosterCheckpoint(input,mutable,store)).action).toBe('deny');expect(store.writes).toBe(0);
+  });
+  it.each(['severity','prediction','thresholds','versions','preprocess'] as const)('fails closed on option %s drift without freezing the owner',async mode=>{
+    const input={...call(),command:'danger'};const mutable=critical();const options={severityTable:{critical:'deny' as const,high:'ask' as const,medium:'ask' as const,low:'allow' as const},prediction:{pFailure:.1},predictionThresholds:{denyAtOrAbove:.8,askAtOrAbove:.4},ruleVersions:['v1'],preprocess:false};const store=new Store(cp());
+    store.read=async()=>{switch(mode){case 'severity':options.severityTable.medium='ask';options.severityTable.low='deny' as 'allow';break;case 'prediction':options.prediction.pFailure=.9;break;case 'thresholds':options.predictionThresholds.denyAtOrAbove=.05;break;case 'versions':options.ruleVersions.push('v2');break;case 'preprocess':options.preprocess=true;break;}return cp();};
+    const result=await evaluateWithSourcePolicyRosterCheckpoint(input,mutable,store,options);
+    expect(result.action).toBe(mode==='prediction'||mode==='thresholds'?'deny':'ask');expect(store.writes).toBe(0);
+    expect(()=>options.ruleVersions.push('still-owned')).not.toThrow();expect(()=>mutable[0]!.rule.enabled=true).not.toThrow();
+  });
+  it('detects regex source/flag drift, ignores incidental stateless lastIndex, and permits equivalent config',async()=>{
+    const mutable=loadPack({packId:'regex',version:'1',rules:[{id:'regex-critical',description:'critical',severity:'critical',category:'bash',appliesTo:['*'],match:{target:'command',kind:'regex',pattern:'danger',flags:'i'}}]});const input={...call(),command:'safe'};
+    const store=new Store(cp());store.read=async()=>{mutable[0]!.regex=/safe/i;return cp();};
+    expect((await evaluateWithSourcePolicyRosterCheckpoint(input,mutable,store)).action).toBe('deny');
+    const unchanged=critical();const ok=new Store(cp());ok.read=async()=>{unchanged[0]!.rule=structuredClone(unchanged[0]!.rule);return cp();};expect((await evaluateWithSourcePolicyRosterCheckpoint(input,unchanged,ok)).action).toBe('allow');
+    const stateless=loadPack({packId:'regex',version:'1',rules:[{id:'regex-critical',description:'critical',severity:'critical',category:'bash',appliesTo:['*'],match:{target:'command',kind:'regex',pattern:'danger',flags:'i'}}]});const lastIndex=new Store(cp());lastIndex.read=async()=>{stateless[0]!.regex!.lastIndex=7;return cp();};expect((await evaluateWithSourcePolicyRosterCheckpoint(input,stateless,lastIndex)).action).toBe('allow');
+  });
+  it('detects mutation on rejected I/O, and cannot lower ask through permissive severity',async()=>{
+    const mutable=critical();const store=new Store(cp());store.read=async()=>{mutable[0]!.rule.description='changed';throw new Error('offline');};
+    const result=await evaluateWithSourcePolicyRosterCheckpoint(call(),mutable,store,{severityTable:{critical:'allow',high:'allow',medium:'allow',low:'allow'}});
+    expect(result.action).toBe('ask');expect(result.matches.map(m=>m.id)).toContain('swarmlab.rt48.async-source-policy-gate-requires-stable-configuration');expect(store.writes).toBe(0);
+  });
+  it('fails closed on unsnapshotable options; initial deny remains deny',async()=>{
+    const options={ruleVersions:['v1'],unexpectedFunction:()=>true};const mutable=critical();mutable[0]!.rule.enabled=true;
+    const store=new Store(cp());expect((await evaluateWithSourcePolicyRosterCheckpoint({...call(),command:'safe'},mutable,store,options)).action).toBe('ask');
+    expect((await evaluateWithSourcePolicyRosterCheckpoint({...call(),command:'danger'},mutable,store,options)).action).toBe('deny');expect(store.writes).toBe(0);
+  });
+});

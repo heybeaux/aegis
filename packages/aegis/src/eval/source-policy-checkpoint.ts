@@ -2,7 +2,7 @@ import { createHash } from 'node:crypto';
 import { isDeepStrictEqual } from 'node:util';
 import { performance } from 'node:perf_hooks';
 import type { CompiledRule, Evaluation, ToolCall } from '../types.js';
-import { evaluate, type EvaluateOptions } from './evaluate.js';
+import { evaluate, DEFAULT_SEVERITY_TABLE, DEFAULT_PREDICTION_THRESHOLDS, type EvaluateOptions } from './evaluate.js';
 
 /** Independently authenticated durable high-water for one source-policy roster. */
 export interface SourcePolicyRosterCheckpoint {
@@ -88,6 +88,33 @@ function observationExpired(base: Evaluation, call: ToolCall, rules: CompiledRul
     reason: floor.action === 'deny' ? floor.reason : 'SwarmLab RT-47: source observation expired during async checkpoint I/O or monotonic clock is invalid',
     matches: [...floor.matches, { id: 'swarmlab.rt47.async-source-policy-gate-requires-unexpired-observation', severity: 'medium', category: 'swarmlab', target: 'argv' }],
   };
+/** Effective entry/current policy including mutable exported evaluator defaults. */
+function effectiveOptions(options: EvaluateOptions): EvaluateOptions {
+  const { monotonicNowMs: _clock, ...evaluatorOptions } = options as SourcePolicyRosterCheckpointOptions;
+  return { ...evaluatorOptions, severityTable: options.severityTable ?? DEFAULT_SEVERITY_TABLE,
+    predictionThresholds: options.predictionThresholds ?? DEFAULT_PREDICTION_THRESHOLDS };
+}
+function snapshotRules(rules: CompiledRule[]): CompiledRule[] {
+  const copy = structuredClone(rules);
+  // Allowed compiled flags are stateless; lastIndex is incidental state, not policy identity.
+  for (const entry of copy) if (entry.regex) entry.regex.lastIndex = 0;
+  return copy;
+}
+/** Configuration failure is an explicit ask floor, preserving old AND current deny policies. */
+function configurationChanged(base: Evaluation, call: ToolCall, rules: CompiledRule[], options: EvaluateOptions,
+  capturedRules?: CompiledRule[], capturedOptions?: EvaluateOptions): Evaluation {
+  let floor = base;
+  for (const r of [capturedRules, rules]) {
+    for (const o of [capturedOptions, effectiveOptions(options)]) {
+      if (!r || !o) continue;
+      try { const result = evaluate(call, r, o); if (result.action === 'deny') floor = result; }
+      catch { /* Malformed current policy must not turn refusal into an exception/allow. */ }
+    }
+  }
+  return { ...floor, action: floor.action === 'deny' ? 'deny' : 'ask',
+    decidedBy: floor.action === 'deny' ? floor.decidedBy : 'severity',
+    reason: floor.action === 'deny' ? floor.reason : 'SwarmLab RT-48: async evaluator configuration changed or cannot be snapshotted',
+    matches: [...floor.matches, { id: 'swarmlab.rt48.async-source-policy-gate-requires-stable-configuration', severity: 'medium', category: 'swarmlab', target: 'argv' }] };
 }
 
 /**
@@ -108,11 +135,28 @@ export async function evaluateWithSourcePolicyRosterCheckpoint(
   try { started = now(); } catch { /* fail closed below, while preserving the initial floor */ }
   // Snapshot plain ToolCall data before any host callback. Do not freeze or alter caller-owned data.
   // The live caller input is compared after every await; equivalent deep copies remain valid.
+  let capturedRules: CompiledRule[];
+  let capturedOptions: EvaluateOptions;
+  try {
+    capturedRules = snapshotRules(rules);
+    capturedOptions = structuredClone(effectiveOptions(options));
+  } catch {
+    return configurationChanged(evaluate(call, rules, options), call, rules, options);
+  }
   let snapshot: ToolCall;
-  try { snapshot = structuredClone(call); } catch { return inputChanged(evaluate(call, rules, options), call, rules, options); }
-  const base = evaluate(snapshot, rules, options);
+  try { snapshot = structuredClone(call); } catch { return inputChanged(evaluate(call, capturedRules, capturedOptions), call, capturedRules, capturedOptions); }
+  const base = evaluate(snapshot, capturedRules, capturedOptions);
   if (base.action !== 'allow') return base;
   const stable = () => isDeepStrictEqual(call, snapshot);
+  const configStable = () => {
+    try { return isDeepStrictEqual(snapshotRules(rules), capturedRules) &&
+      isDeepStrictEqual(effectiveOptions(options), capturedOptions); }
+    catch { return false; }
+  };
+  const integrityFailure = (): Evaluation | null => {
+    if (!configStable()) return configurationChanged(base, call, rules, options, capturedRules, capturedOptions);
+    return stable() ? null : inputChanged(base, call, capturedRules, capturedOptions);
+  };
   const proposal = requestedCheckpoint(snapshot);
   if (!proposal) return ask(base);
   const freshness = snapshot.sourceFreshness!;
@@ -122,7 +166,7 @@ export async function evaluateWithSourcePolicyRosterCheckpoint(
   if (!Number.isFinite(started) || started < 0 ||
     !Number.isSafeInteger(freshness.actionAtMs) || !Number.isSafeInteger(freshness.checkedAtMs) ||
     !Number.isSafeInteger(freshness.maxAgeMs) || freshness.checkedAtMs! < 0 ||
-    freshness.maxAgeMs! < 0 || age < 0 || remaining < 0) return observationExpired(base, call, rules, options);
+    freshness.maxAgeMs! < 0 || age < 0 || remaining < 0) return integrityFailure() ?? observationExpired(base, call, capturedRules, capturedOptions);
   let last = started;
   const unexpired = () => {
     try {
@@ -134,22 +178,42 @@ export async function evaluateWithSourcePolicyRosterCheckpoint(
   };
   try {
     const prior: unknown = await store.read(proposal.rosterId);
-    if (!stable()) return inputChanged(base, call, rules, options);
-    if (!unexpired()) return observationExpired(base, call, rules, options);
+<<<<<<< HEAD
+    const changed = integrityFailure();
+    if (changed) return changed;
+    if (!unexpired()) return observationExpired(base, call, capturedRules, capturedOptions);
+=======
+    const changed = integrityFailure();
+    if (changed) return changed;
+>>>>>>> 2dfc492 (fix(aegis): bind async gate to entry evaluator configuration and preserve deny floors)
     if (prior !== null) {
       if (!validCheckpoint(prior, proposal.rosterId) || prior.rosterEpoch > proposal.rosterEpoch ||
         prior.rosterEpoch === proposal.rosterEpoch && prior.rosterDigest !== proposal.rosterDigest) return ask(base);
     }
     try { await store.observe(Object.freeze({ ...proposal })); } catch { /* possibly committed; attest through readback */ }
-    if (!stable()) return inputChanged(base, call, rules, options);
-    if (!unexpired()) return observationExpired(base, call, rules, options);
+<<<<<<< HEAD
+    const observeChanged = integrityFailure();
+    if (observeChanged) return observeChanged;
+    if (!unexpired()) return observationExpired(base, call, capturedRules, capturedOptions);
     const retained: unknown = await store.read(proposal.rosterId);
-    if (!stable()) return inputChanged(base, call, rules, options);
-    if (!unexpired()) return observationExpired(base, call, rules, options);
+    const retainedChanged = integrityFailure();
+    if (retainedChanged) return retainedChanged;
+    if (!unexpired()) return observationExpired(base, call, capturedRules, capturedOptions);
     if (!validCheckpoint(retained, proposal.rosterId) || retained.rosterEpoch !== proposal.rosterEpoch || retained.rosterDigest !== proposal.rosterDigest) return ask(base);
     return base;
   } catch {
-    if (!stable()) return inputChanged(base, call, rules, options);
-    return unexpired() ? ask(base) : observationExpired(base, call, rules, options);
+    const failed = integrityFailure();
+    if (failed) return failed;
+    return unexpired() ? ask(base) : observationExpired(base, call, capturedRules, capturedOptions);
   }
+=======
+    const observeChanged = integrityFailure();
+    if (observeChanged) return observeChanged;
+    const retained: unknown = await store.read(proposal.rosterId);
+    const retainedChanged = integrityFailure();
+    if (retainedChanged) return retainedChanged;
+    if (!validCheckpoint(retained, proposal.rosterId) || retained.rosterEpoch !== proposal.rosterEpoch || retained.rosterDigest !== proposal.rosterDigest) return ask(base);
+    return base;
+  } catch { return integrityFailure() ?? ask(base); }
+>>>>>>> 2dfc492 (fix(aegis): bind async gate to entry evaluator configuration and preserve deny floors)
 }

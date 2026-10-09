@@ -26,3 +26,23 @@ mutate-and-restore (ABA) between observations, mutable rules/options, and mutati
 comparison remain outside this guarantee. The checkpoint host still owns authentication, atomic
 monotonic persistence and independently retained truth. Exp-56 tests mutable input DURING one
 invocation; it does not replace RT-45 history validation or production host integration tests.
+
+## RT-48 — Bind evaluator configuration through awaited I/O
+
+The strict async gate privately captures effective entry options (including exported defaults) and
+compiled rules with stateless RegExp source/flags. After every read/observe (including rejected I/O),
+it compares the live policy. Drift fails closed with
+`swarmlab.rt48.async-source-policy-gate-requires-stable-configuration`; original and current
+configuration deny classifications are retained even when caller ToolCall changes simultaneously.
+Early drift prevents observe; post-observe drift prevents another read. This refusal cannot be
+overridden by permissive severity. Equivalent copied config is allowed; caller data is not frozen
+or modified. Unsnapshotable options fail closed. RegExp lastIndex is incidental, not policy identity.
+
+This is observed configuration integrity, not hot-reload coordination or action atomicity. Hosts
+still own valid plain-data config, authentic checkpoint, trusted stateless regex and immediate
+exact execution. Getters/proxies, function overrides, transient ABA and post-return races remain
+unproven. Pure evaluate and elapsed-clock semantics are unchanged. Exp58 has21 frozen scenarios
+with repeated real baseline red and unchanged candidate green; RT48 intentionally reserves RT47
+for prior unlanded exp57.
+
+RT48 local verification:1087 tests, release evidence47/47 (RT47 reserved/unlanded), focused29/29. The previous RT47 branch must reconcile clock-function capture with RT48 plain-policy snapshots when rebased; combined behavior is not proven by these receipts.

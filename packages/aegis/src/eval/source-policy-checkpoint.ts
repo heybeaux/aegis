@@ -178,20 +178,14 @@ export async function evaluateWithSourcePolicyRosterCheckpoint(
   };
   try {
     const prior: unknown = await store.read(proposal.rosterId);
-<<<<<<< HEAD
     const changed = integrityFailure();
     if (changed) return changed;
     if (!unexpired()) return observationExpired(base, call, capturedRules, capturedOptions);
-=======
-    const changed = integrityFailure();
-    if (changed) return changed;
->>>>>>> 2dfc492 (fix(aegis): bind async gate to entry evaluator configuration and preserve deny floors)
     if (prior !== null) {
       if (!validCheckpoint(prior, proposal.rosterId) || prior.rosterEpoch > proposal.rosterEpoch ||
         prior.rosterEpoch === proposal.rosterEpoch && prior.rosterDigest !== proposal.rosterDigest) return ask(base);
     }
     try { await store.observe(Object.freeze({ ...proposal })); } catch { /* possibly committed; attest through readback */ }
-<<<<<<< HEAD
     const observeChanged = integrityFailure();
     if (observeChanged) return observeChanged;
     if (!unexpired()) return observationExpired(base, call, capturedRules, capturedOptions);
@@ -206,14 +200,4 @@ export async function evaluateWithSourcePolicyRosterCheckpoint(
     if (failed) return failed;
     return unexpired() ? ask(base) : observationExpired(base, call, capturedRules, capturedOptions);
   }
-=======
-    const observeChanged = integrityFailure();
-    if (observeChanged) return observeChanged;
-    const retained: unknown = await store.read(proposal.rosterId);
-    const retainedChanged = integrityFailure();
-    if (retainedChanged) return retainedChanged;
-    if (!validCheckpoint(retained, proposal.rosterId) || retained.rosterEpoch !== proposal.rosterEpoch || retained.rosterDigest !== proposal.rosterDigest) return ask(base);
-    return base;
-  } catch { return integrityFailure() ?? ask(base); }
->>>>>>> 2dfc492 (fix(aegis): bind async gate to entry evaluator configuration and preserve deny floors)
 }

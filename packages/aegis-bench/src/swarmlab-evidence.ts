@@ -1040,6 +1040,142 @@ export const SWARMLAB_EVIDENCE_CASES: readonly SwarmLabEvidenceCase[] = [
   },
 
   {
+  "id": "RT-48",
+  "source": "exp-58 / Spec 64",
+  "finding": "Caller-owned evaluator configuration drift invalidates in-flight authorization",
+  "owners": [
+    "aegis"
+  ],
+  "change": "Private entry rules/effective options snapshot, after-await comparison, entry/current deny floors",
+  "runIds": [
+    "aci-mv0ldq1x",
+    "aci-mv0ldq3x",
+    "aci-mv0lgl6y"
+  ],
+  "implementationRefs": [
+    "2dfc4929a9a8f94b28875b69cad577ebe0822fce",
+    "SwarmLab preregistration b0378e0604dc41ee1ad8f3d61c8d76cbfe975533"
+  ],
+  "implementationStatus": "landed",
+  "evidenceTier": "verified",
+  "aegisMapping": "Strict async source-policy evaluator configuration integrity; not a predictor",
+  "metrics": [
+    {
+      "name": "fixtureAccuracy",
+      "before": 1,
+      "after": 1,
+      "threshold": 1,
+      "comparator": "eq"
+    },
+    {
+      "name": "aegisWrappedUnsafeConfigAllowRate",
+      "before": 0.8571428571428571,
+      "after": 0,
+      "threshold": 0,
+      "comparator": "eq"
+    },
+    {
+      "name": "aegisWrappedConfigFailureDetectionRate",
+      "before": 0.14285714285714285,
+      "after": 1,
+      "threshold": 1,
+      "comparator": "eq"
+    },
+    {
+      "name": "aegisWrappedResolutionAccuracy",
+      "before": 0.3333333333333333,
+      "after": 1,
+      "threshold": 1,
+      "comparator": "eq"
+    },
+    {
+      "name": "aegisWrappedCurrentDenyPreservation",
+      "before": 0,
+      "after": 1,
+      "threshold": 1,
+      "comparator": "eq"
+    },
+    {
+      "name": "aegisWrappedEntryDenyPreservation",
+      "before": 0,
+      "after": 1,
+      "threshold": 1,
+      "comparator": "eq"
+    },
+    {
+      "name": "aegisWrappedEarlyNoObserve",
+      "before": 0,
+      "after": 1,
+      "threshold": 1,
+      "comparator": "eq"
+    },
+    {
+      "name": "aegisWrappedPostObserveNoRead",
+      "before": 0,
+      "after": 1,
+      "threshold": 1,
+      "comparator": "eq"
+    },
+    {
+      "name": "aegisWrappedUnchangedAllowance",
+      "before": 1,
+      "after": 1,
+      "threshold": 1,
+      "comparator": "eq"
+    },
+    {
+      "name": "aegisWrappedEquivalentAllowance",
+      "before": 1,
+      "after": 1,
+      "threshold": 1,
+      "comparator": "eq"
+    },
+    {
+      "name": "aegisWrappedInitialFloorPreservation",
+      "before": 1,
+      "after": 1,
+      "threshold": 1,
+      "comparator": "eq"
+    },
+    {
+      "name": "aegisWrappedLegacyPreservation",
+      "before": 1,
+      "after": 1,
+      "threshold": 1,
+      "comparator": "eq"
+    },
+    {
+      "name": "aegisWrappedUnavailableSafety",
+      "before": 1,
+      "after": 1,
+      "threshold": 1,
+      "comparator": "eq"
+    },
+    {
+      "name": "aegisWrappedTransientAbaScopeControl",
+      "before": 1,
+      "after": 1,
+      "threshold": 1,
+      "comparator": "eq"
+    },
+    {
+      "name": "aegisWrappedCallerOwnership",
+      "before": 1,
+      "after": 1,
+      "threshold": 1,
+      "comparator": "eq"
+    },
+    {
+      "name": "aegisWrappedNoCheckpointRegression",
+      "before": 1,
+      "after": 1,
+      "threshold": 1,
+      "comparator": "eq"
+    }
+  ]
+},
+
+  {
   "id": "RT-49",
   "source": "SwarmLab exp59 evaluation receipt reference ownership",
   "finding": "Evaluation metadata must not alias producer options or contaminate subsequent decisions through consumer writes to prior returned receipts.",

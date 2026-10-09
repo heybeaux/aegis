@@ -7,6 +7,15 @@ import {
 } from '../src/swarmlab-evidence.js';
 
 describe('SwarmLab evidence gate', () => {
+  it('pins RT-48 configuration integrity, original/current deny and real package receipts', () => {
+    const c = SWARMLAB_EVIDENCE_CASES.find(c => c.id === 'RT-48');
+    expect(c?.runIds).toEqual(['aci-mv0ldq1x','aci-mv0ldq3x','aci-mv0lgl6y']);
+    expect(c?.implementationRefs).toContain('2dfc4929a9a8f94b28875b69cad577ebe0822fce');
+    expect(c?.metrics).toEqual(expect.arrayContaining([
+      expect.objectContaining({name:'aegisWrappedUnsafeConfigAllowRate',before:12/14,after:0,threshold:0,comparator:'eq'}),
+      expect.objectContaining({name:'aegisWrappedEntryDenyPreservation',before:0,after:1,threshold:1,comparator:'eq'}),
+    ]));
+  });
   it('pins RT-49 receipt ownership red-green',()=>{
     const c=SWARMLAB_EVIDENCE_CASES.find(c=>c.id==='RT-49');
     expect(c?.runIds).toEqual(['ero-mv20uicz','ero-mv20uig5','ero-mv20w6b7']);
@@ -37,8 +46,8 @@ describe('SwarmLab evidence gate', () => {
   it('passes when all stack mappings are landed with verified evidence', () => {
     const result = evaluateSwarmLabEvidence();
     expect(result.status).toBe('passed');
-    expect(result.total).toBe(48);
-    expect(result.passed).toBe(48);
+    expect(result.total).toBe(49);
+    expect(result.passed).toBe(49);
     expect(result.failed).toBe(0);
     expect(result.partial).toBe(0);
     expect(result.pendingImplementation).toBe(0);
@@ -264,6 +273,7 @@ describe('SwarmLab evidence gate', () => {
       'RT-45',
       'RT-46',
       'RT-47',
+      'RT-48',
       'RT-49',
     ]);
 

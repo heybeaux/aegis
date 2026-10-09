@@ -1,7 +1,7 @@
 import { createHash } from 'node:crypto';
 import { isDeepStrictEqual } from 'node:util';
 import type { CompiledRule, Evaluation, ToolCall } from '../types.js';
-import { evaluate, type EvaluateOptions } from './evaluate.js';
+import { evaluate, DEFAULT_SEVERITY_TABLE, DEFAULT_PREDICTION_THRESHOLDS, type EvaluateOptions } from './evaluate.js';
 
 /** Independently authenticated durable high-water for one source-policy roster. */
 export interface SourcePolicyRosterCheckpoint {
@@ -71,6 +71,34 @@ function inputChanged(base: Evaluation, call: ToolCall, rules: CompiledRule[], o
   };
 }
 
+/** Effective entry/current policy including mutable exported evaluator defaults. */
+function effectiveOptions(options: EvaluateOptions): EvaluateOptions {
+  return { ...options, severityTable: options.severityTable ?? DEFAULT_SEVERITY_TABLE,
+    predictionThresholds: options.predictionThresholds ?? DEFAULT_PREDICTION_THRESHOLDS };
+}
+function snapshotRules(rules: CompiledRule[]): CompiledRule[] {
+  const copy = structuredClone(rules);
+  // Allowed compiled flags are stateless; lastIndex is incidental state, not policy identity.
+  for (const entry of copy) if (entry.regex) entry.regex.lastIndex = 0;
+  return copy;
+}
+/** Configuration failure is an explicit ask floor, preserving old AND current deny policies. */
+function configurationChanged(base: Evaluation, call: ToolCall, rules: CompiledRule[], options: EvaluateOptions,
+  capturedRules?: CompiledRule[], capturedOptions?: EvaluateOptions): Evaluation {
+  let floor = base;
+  for (const r of [capturedRules, rules]) {
+    for (const o of [capturedOptions, effectiveOptions(options)]) {
+      if (!r || !o) continue;
+      try { const result = evaluate(call, r, o); if (result.action === 'deny') floor = result; }
+      catch { /* Malformed current policy must not turn refusal into an exception/allow. */ }
+    }
+  }
+  return { ...floor, action: floor.action === 'deny' ? 'deny' : 'ask',
+    decidedBy: floor.action === 'deny' ? floor.decidedBy : 'severity',
+    reason: floor.action === 'deny' ? floor.reason : 'SwarmLab RT-48: async evaluator configuration changed or cannot be snapshotted',
+    matches: [...floor.matches, { id: 'swarmlab.rt48.async-source-policy-gate-requires-stable-configuration', severity: 'medium', category: 'swarmlab', target: 'argv' }] };
+}
+
 /**
  * Strict source-policy boundary. Pure evaluate remains backward compatible, but cannot promise
  * cross-call rollback safety. Never invoke the action before this async gate returns allow.
@@ -84,25 +112,45 @@ export async function evaluateWithSourcePolicyRosterCheckpoint(
 ): Promise<Evaluation> {
   // Snapshot plain ToolCall data before any host callback. Do not freeze or alter caller-owned data.
   // The live caller input is compared after every await; equivalent deep copies remain valid.
+  let capturedRules: CompiledRule[];
+  let capturedOptions: EvaluateOptions;
+  try {
+    capturedRules = snapshotRules(rules);
+    capturedOptions = structuredClone(effectiveOptions(options));
+  } catch {
+    return configurationChanged(evaluate(call, rules, options), call, rules, options);
+  }
   let snapshot: ToolCall;
-  try { snapshot = structuredClone(call); } catch { return inputChanged(evaluate(call, rules, options), call, rules, options); }
-  const base = evaluate(snapshot, rules, options);
+  try { snapshot = structuredClone(call); } catch { return inputChanged(evaluate(call, capturedRules, capturedOptions), call, capturedRules, capturedOptions); }
+  const base = evaluate(snapshot, capturedRules, capturedOptions);
   if (base.action !== 'allow') return base;
   const stable = () => isDeepStrictEqual(call, snapshot);
+  const configStable = () => {
+    try { return isDeepStrictEqual(snapshotRules(rules), capturedRules) &&
+      isDeepStrictEqual(effectiveOptions(options), capturedOptions); }
+    catch { return false; }
+  };
+  const integrityFailure = (): Evaluation | null => {
+    if (!configStable()) return configurationChanged(base, call, rules, options, capturedRules, capturedOptions);
+    return stable() ? null : inputChanged(base, call, capturedRules, capturedOptions);
+  };
   const proposal = requestedCheckpoint(snapshot);
   if (!proposal) return ask(base);
   try {
     const prior: unknown = await store.read(proposal.rosterId);
-    if (!stable()) return inputChanged(base, call, rules, options);
+    const changed = integrityFailure();
+    if (changed) return changed;
     if (prior !== null) {
       if (!validCheckpoint(prior, proposal.rosterId) || prior.rosterEpoch > proposal.rosterEpoch ||
         prior.rosterEpoch === proposal.rosterEpoch && prior.rosterDigest !== proposal.rosterDigest) return ask(base);
     }
     try { await store.observe(Object.freeze({ ...proposal })); } catch { /* possibly committed; attest through readback */ }
-    if (!stable()) return inputChanged(base, call, rules, options);
+    const observeChanged = integrityFailure();
+    if (observeChanged) return observeChanged;
     const retained: unknown = await store.read(proposal.rosterId);
-    if (!stable()) return inputChanged(base, call, rules, options);
+    const retainedChanged = integrityFailure();
+    if (retainedChanged) return retainedChanged;
     if (!validCheckpoint(retained, proposal.rosterId) || retained.rosterEpoch !== proposal.rosterEpoch || retained.rosterDigest !== proposal.rosterDigest) return ask(base);
     return base;
-  } catch { return stable() ? ask(base) : inputChanged(base, call, rules, options); }
+  } catch { return integrityFailure() ?? ask(base); }
 }

@@ -64,3 +64,5 @@ exact execution. Getters/proxies, function overrides, transient ABA and post-ret
 unproven. Pure evaluate remains unchanged; elapsed-clock checks from RT47 are applied independently. Exp58 has 21 frozen scenarios with repeated real baseline red and unchanged candidate green.
 
 The RT48 receipts were recorded before RT47 integration; verify combined behavior separately before claiming it.
+
+Linked experiment PR: https://github.com/heybeaux/swarmlab/pull/46; runtime PR: https://github.com/heybeaux/aegis/pull/63. CI/merge state is recorded in nightly pipeline ledger, not presumed by local receipts.

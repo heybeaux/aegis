@@ -46,3 +46,5 @@ with repeated real baseline red and unchanged candidate green; RT48 intentionall
 for prior unlanded exp57.
 
 RT48 local verification:1087 tests, release evidence47/47 (RT47 reserved/unlanded), focused29/29. The previous RT47 branch must reconcile clock-function capture with RT48 plain-policy snapshots when rebased; combined behavior is not proven by these receipts.
+
+Linked experiment PR: https://github.com/heybeaux/swarmlab/pull/46; runtime PR: https://github.com/heybeaux/aegis/pull/63. CI/merge state is recorded in nightly pipeline ledger, not presumed by local receipts.

@@ -74,6 +74,24 @@ describe('RT-47 immutable observation lifetime during awaited I/O', () => {
     const store=new Store(cp());let tick=0;const options={monotonicNowMs:()=>tick};store.read=async()=>{tick=91;options.monotonicNowMs=()=>0;return cp();};
     expect((await evaluateWithSourcePolicyRosterCheckpoint(call(),rules,store,options)).action).toBe('ask');expect(Object.isFrozen(options)).toBe(false);
   });
+  it('keeps entry/current deny floors when policy drifts and the source expires together', async () => {
+    const mutable = loadPack({ packId: 'combined', version: '1', rules: [{ id: 'critical', description: 'critical', severity: 'critical', category: 'destructive', appliesTo: ['*'], enabled: false, match: { target: 'command', kind: 'substring', pattern: 'danger' } }] });
+    const input = { ...call(), command: 'danger' }; const store = new Store(cp()); let tick = 0;
+    store.read = async () => { mutable[0]!.rule.enabled = true; tick = 91; return cp(); };
+    const result = await evaluateWithSourcePolicyRosterCheckpoint(input, mutable, store, { monotonicNowMs: () => tick });
+    expect(result.action).toBe('deny');
+    expect(result.matches.map(m => m.id)).toContain('swarmlab.rt48.async-source-policy-gate-requires-stable-configuration');
+    expect(store.writes).toBe(0);
+  });
+  it('captures the clock while independently detecting policy drift after an await', async () => {
+    const mutable = loadPack({ packId: 'combined', version: '1', rules: [] }); const store = new Store(cp());
+    let tick = 0; const options = { monotonicNowMs: () => tick, ruleVersions: ['v1'] };
+    store.read = async () => { options.monotonicNowMs = () => 0; options.ruleVersions.push('v2'); tick = 91; return cp(); };
+    const result = await evaluateWithSourcePolicyRosterCheckpoint(call(), mutable, store, options);
+    expect(result.action).toBe('ask');
+    expect(result.matches.map(m => m.id)).toContain('swarmlab.rt48.async-source-policy-gate-requires-stable-configuration');
+    expect(store.writes).toBe(0);
+  });
   it('uses a real monotonic default clock, not synthetic action timestamps as live time',async()=>{
     const clock=vi.spyOn(performance,'now');let tick=0;clock.mockImplementation(()=>tick);const store=new Store(cp());store.read=async()=>{tick=91;return cp();};
     try{expect((await evaluateWithSourcePolicyRosterCheckpoint(call(),rules,store)).action).toBe('ask');expect(store.writes).toBe(0);}finally{clock.mockRestore();}

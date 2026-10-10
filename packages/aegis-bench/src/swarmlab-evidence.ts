@@ -1040,6 +1040,30 @@ export const SWARMLAB_EVIDENCE_CASES: readonly SwarmLabEvidenceCase[] = [
   },
 
   {
+    id: 'RT-47', source: 'SwarmLab exp-57 async source-observation expiry',
+    finding: 'Unchanged source observations can expire during awaited checkpoint I/O while entry-time evaluation still allows.',
+    owners: ['aegis'], change: 'Debit observation budget by monotonic elapsed gate time after every await; invalid/regressing clocks fail closed; early no-observe and deny floors preserved.',
+    runIds: ["ase-muz5zo5h", "ase-muz5zoav", "ase-muz63pn3"], implementationRefs: ['aeb1abf434d0789b1770ffc956ddb6c96aa987c0'], evidenceTier: 'verified', implementationStatus: 'landed',
+    aegisMapping: 'strict async source-policy gate requires unexpired observation through awaited boundaries',
+    metrics: [
+      { name: 'fixtureAccuracy', before: 1, after: 1, threshold: 1, comparator: 'eq' },
+      { name: 'aegisWrappedUnsafeExpiredAllowRate', before: 1, after: 0, threshold: 0, comparator: 'eq' },
+      { name: 'aegisWrappedFailureDetectionRate', before: 0, after: 1, threshold: 1, comparator: 'eq' },
+      { name: 'aegisWrappedResolutionAccuracy', before: 0.4, after: 1, threshold: 1, comparator: 'eq' },
+      { name: 'aegisWrappedInclusiveBoundaryAllowance', before: 1, after: 1, threshold: 1, comparator: 'eq' },
+      { name: 'aegisWrappedEarlyExpiryNoObserve', before: 0, after: 1, threshold: 1, comparator: 'eq' },
+      { name: 'aegisWrappedPostObserveExpiryNoRead', before: 0, after: 1, threshold: 1, comparator: 'eq' },
+      { name: 'aegisWrappedClockFailureSafety', before: 0, after: 1, threshold: 1, comparator: 'eq' },
+      { name: 'aegisWrappedCriticalDenyPreservation', before: 1, after: 1, threshold: 1, comparator: 'eq' },
+      { name: 'aegisWrappedLegacyPreservation', before: 1, after: 1, threshold: 1, comparator: 'eq' },
+      { name: 'aegisWrappedUnavailableSafety', before: 1, after: 1, threshold: 1, comparator: 'eq' },
+      { name: 'aegisWrappedUnchangedInput', before: 1, after: 1, threshold: 1, comparator: 'eq' },
+      { name: 'aegisWrappedNoCheckpointRegression', before: 1, after: 1, threshold: 1, comparator: 'eq' },
+    ],
+  },
+
+
+  {
   "id": "RT-48",
   "source": "exp-58 / Spec 64",
   "finding": "Caller-owned evaluator configuration drift invalidates in-flight authorization",
@@ -1288,28 +1312,6 @@ export const SWARMLAB_EVIDENCE_CASES: readonly SwarmLabEvidenceCase[] = [
     }
   ]
 },
-
-    id: 'RT-47', source: 'SwarmLab exp-57 async source-observation expiry',
-    finding: 'Unchanged source observations can expire during awaited checkpoint I/O while entry-time evaluation still allows.',
-    owners: ['aegis'], change: 'Debit observation budget by monotonic elapsed gate time after every await; invalid/regressing clocks fail closed; early no-observe and deny floors preserved.',
-    runIds: ["ase-muz5zo5h", "ase-muz5zoav", "ase-muz63pn3"], implementationRefs: ['aeb1abf434d0789b1770ffc956ddb6c96aa987c0'], evidenceTier: 'verified', implementationStatus: 'landed',
-    aegisMapping: 'strict async source-policy gate requires unexpired observation through awaited boundaries',
-    metrics: [
-      { name: 'fixtureAccuracy', before: 1, after: 1, threshold: 1, comparator: 'eq' },
-      { name: 'aegisWrappedUnsafeExpiredAllowRate', before: 1, after: 0, threshold: 0, comparator: 'eq' },
-      { name: 'aegisWrappedFailureDetectionRate', before: 0, after: 1, threshold: 1, comparator: 'eq' },
-      { name: 'aegisWrappedResolutionAccuracy', before: 0.4, after: 1, threshold: 1, comparator: 'eq' },
-      { name: 'aegisWrappedInclusiveBoundaryAllowance', before: 1, after: 1, threshold: 1, comparator: 'eq' },
-      { name: 'aegisWrappedEarlyExpiryNoObserve', before: 0, after: 1, threshold: 1, comparator: 'eq' },
-      { name: 'aegisWrappedPostObserveExpiryNoRead', before: 0, after: 1, threshold: 1, comparator: 'eq' },
-      { name: 'aegisWrappedClockFailureSafety', before: 0, after: 1, threshold: 1, comparator: 'eq' },
-      { name: 'aegisWrappedCriticalDenyPreservation', before: 1, after: 1, threshold: 1, comparator: 'eq' },
-      { name: 'aegisWrappedLegacyPreservation', before: 1, after: 1, threshold: 1, comparator: 'eq' },
-      { name: 'aegisWrappedUnavailableSafety', before: 1, after: 1, threshold: 1, comparator: 'eq' },
-      { name: 'aegisWrappedUnchangedInput', before: 1, after: 1, threshold: 1, comparator: 'eq' },
-      { name: 'aegisWrappedNoCheckpointRegression', before: 1, after: 1, threshold: 1, comparator: 'eq' },
-    ],
-  },
 
 
 ];

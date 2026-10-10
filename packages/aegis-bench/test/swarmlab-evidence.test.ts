@@ -25,7 +25,7 @@ describe('SwarmLab evidence gate', () => {
       expect.objectContaining({name:'aegisCrossCallContaminationRate',before:1,after:0,threshold:0}),
       expect.objectContaining({name:'aegisEntryActionAccuracy',before:1,after:1,threshold:1}),
     ]));
-    expect(SWARMLAB_EVIDENCE_CASES.some(c=>c.id==='RT-47'||c.id==='RT-48')).toBe(false);  });
+  });
   it('pins RT-47 immutable-observation expiry and exact real-package receipts', () => {
     const c = SWARMLAB_EVIDENCE_CASES.find(c => c.id === 'RT-47');
     expect(c?.runIds).toEqual(['ase-muz5zo5h','ase-muz5zoav','ase-muz63pn3']);

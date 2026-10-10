@@ -88,6 +88,8 @@ function observationExpired(base: Evaluation, call: ToolCall, rules: CompiledRul
     reason: floor.action === 'deny' ? floor.reason : 'SwarmLab RT-47: source observation expired during async checkpoint I/O or monotonic clock is invalid',
     matches: [...floor.matches, { id: 'swarmlab.rt47.async-source-policy-gate-requires-unexpired-observation', severity: 'medium', category: 'swarmlab', target: 'argv' }],
   };
+}
+
 /** Effective entry/current policy including mutable exported evaluator defaults. */
 function effectiveOptions(options: EvaluateOptions): EvaluateOptions {
   const { monotonicNowMs: _clock, ...evaluatorOptions } = options as SourcePolicyRosterCheckpointOptions;

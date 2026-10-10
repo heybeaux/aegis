@@ -1039,6 +1039,120 @@ export const SWARMLAB_EVIDENCE_CASES: readonly SwarmLabEvidenceCase[] = [
     ],
   },
 
+  {
+  "id": "RT-49",
+  "source": "SwarmLab exp59 evaluation receipt reference ownership",
+  "finding": "Evaluation metadata must not alias producer options or contaminate subsequent decisions through consumer writes to prior returned receipts.",
+  "owners": [
+    "aegis"
+  ],
+  "change": "Independent flat prediction/version metadata at Evaluation construction; no public immutability change.",
+  "runIds": [
+    "ero-mv20uicz",
+    "ero-mv20uig5",
+    "ero-mv20w6b7"
+  ],
+  "implementationRefs": [
+    "7b4c5b08ab09201d6371a06de343eb435f0b26ed"
+  ],
+  "implementationStatus": "landed",
+  "evidenceTier": "verified",
+  "aegisMapping": "Reference ownership regression in this candidate source; remote main merge/CI tracked separately in linked PR.",
+  "metrics": [
+    {
+      "name": "controlAccuracy",
+      "before": 1,
+      "after": 1,
+      "threshold": 1,
+      "comparator": "eq"
+    },
+    {
+      "name": "oracleAccuracy",
+      "before": 1,
+      "after": 1,
+      "threshold": 1,
+      "comparator": "eq"
+    },
+    {
+      "name": "aegisReceiptDriftRate",
+      "before": 1,
+      "after": 0,
+      "threshold": 0,
+      "comparator": "eq"
+    },
+    {
+      "name": "aegisCrossCallContaminationRate",
+      "before": 1,
+      "after": 0,
+      "threshold": 0,
+      "comparator": "eq"
+    },
+    {
+      "name": "aegisResolutionAccuracy",
+      "before": 0.14285714285714285,
+      "after": 1,
+      "threshold": 1,
+      "comparator": "eq"
+    },
+    {
+      "name": "aegisProvenanceIsolationRate",
+      "before": 0,
+      "after": 1,
+      "threshold": 1,
+      "comparator": "eq"
+    },
+    {
+      "name": "aegisMatchesIsolation",
+      "before": 1,
+      "after": 1,
+      "threshold": 1,
+      "comparator": "eq"
+    },
+    {
+      "name": "aegisDefaultsCompatibility",
+      "before": 1,
+      "after": 1,
+      "threshold": 1,
+      "comparator": "eq"
+    },
+    {
+      "name": "aegisFrozenCompatibility",
+      "before": 0,
+      "after": 1,
+      "threshold": 1,
+      "comparator": "eq"
+    },
+    {
+      "name": "aegisSiblingIsolation",
+      "before": 0,
+      "after": 1,
+      "threshold": 1,
+      "comparator": "eq"
+    },
+    {
+      "name": "aegisCallerOwnership",
+      "before": 1,
+      "after": 1,
+      "threshold": 1,
+      "comparator": "eq"
+    },
+    {
+      "name": "aegisExplicitMutationScopeControl",
+      "before": 1,
+      "after": 1,
+      "threshold": 1,
+      "comparator": "eq"
+    },
+    {
+      "name": "aegisEntryActionAccuracy",
+      "before": 1,
+      "after": 1,
+      "threshold": 1,
+      "comparator": "eq"
+    }
+  ]
+},
+
 ];
 
 export function evaluateSwarmLabEvidence(

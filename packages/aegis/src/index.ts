@@ -44,4 +44,4 @@ export {
 export type { EvaluateOptions } from './eval/evaluate.js';
 export { extractDecodedVariants } from './eval/preprocess.js';
 export { evaluateWithSourcePolicyRosterCheckpoint } from './eval/source-policy-checkpoint.js';
-export type { SourcePolicyRosterCheckpoint, SourcePolicyRosterCheckpointStore } from './eval/source-policy-checkpoint.js';
+export type { SourcePolicyRosterCheckpoint, SourcePolicyRosterCheckpointStore, SourcePolicyRosterCheckpointOptions } from './eval/source-policy-checkpoint.js';

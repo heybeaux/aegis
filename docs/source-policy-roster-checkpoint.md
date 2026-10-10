@@ -66,3 +66,13 @@ unproven. Pure evaluate remains unchanged; elapsed-clock checks from RT47 are ap
 The RT48 receipts were recorded before RT47 integration; verify combined behavior separately before claiming it.
 
 Linked experiment PR: https://github.com/heybeaux/swarmlab/pull/46; runtime PR: https://github.com/heybeaux/aegis/pull/63. CI/merge state is recorded in nightly pipeline ledger, not presumed by local receipts.
+
+## RT-47 + RT-48 integration (current main)
+
+The combined boundary separates the trusted `monotonicNowMs` callback from the plain-data evaluator
+configuration snapshot. It captures the callback once, compares rules/effective options and the ToolCall
+after every awaited checkpoint operation, then debits elapsed observation lifetime before further I/O
+or allow. Configuration drift and input changes preserve their deny floors; expiry still fails closed.
+These are observable boundary checks, not detection of transient ABA or a transaction with the action.
+The frozen exp57/58 receipts above refer to their original, separate candidates; combined behavior
+was additionally checked against both unchanged harnesses without rewriting those historical traces.

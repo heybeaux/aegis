@@ -697,8 +697,13 @@ export function evaluate(
     action,
     decidedBy,
     matches: hits,
-    prediction: opts.prediction,
+    // RT-49: receipts own their metadata; callers may update reusable options after return.
+    prediction: opts.prediction === undefined ? undefined : {
+      pFailure: opts.prediction.pFailure,
+      confidence: opts.prediction.confidence,
+      source: opts.prediction.source,
+    },
     reason,
-    ruleVersions: opts.ruleVersions ?? [],
+    ruleVersions: [...(opts.ruleVersions ?? [])],
   };
 }

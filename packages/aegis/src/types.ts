@@ -474,7 +474,7 @@ export interface RuleHit {
   target: MatchTarget;
 }
 
-/** A predictive contribution (AWM or rule-derived prior). */
+/** A predictive contribution (AWM or rule-derived prior). Both numeric fields must be finite in [0,1]. */
 export interface Prediction {
   pFailure: number;
   confidence: number;
@@ -495,8 +495,8 @@ export interface Evaluation {
 export type SeverityTable = Record<Severity, GateAction>;
 
 export interface PredictionThresholds {
-  /** P(failure) >= this -> deny. */
+  /** Finite [0,1]; must be >= askAtOrAbove. P(failure) >= this -> deny. */
   denyAtOrAbove: number;
-  /** P(failure) >= this -> ask. */
+  /** Finite [0,1]; must be <= denyAtOrAbove. Equality is valid; deny wins. */
   askAtOrAbove: number;
 }

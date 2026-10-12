@@ -10,8 +10,8 @@
 /** Shell metacharacters/combinators that disqualify a command from the fast path. */
 const COMBINATORS = [';', '&&', '||', '|', '$(', '`', '>', '<', '&'];
 
-/** Conservative default allowlist of read-only-ish commands. Tunable via constitution. */
-const DEFAULT_SAFE = new Set([
+/** Package-owned implicit allowlist; explicit allowlist arguments select host policy. */
+const IMPLICIT_SAFE = new Set([
   'ls',
   'cat',
   'echo',
@@ -37,7 +37,7 @@ function hasCombinator(command: string): boolean {
  */
 export function isSafeCommand(
   command: string,
-  allowlist: ReadonlySet<string> = DEFAULT_SAFE,
+  allowlist: ReadonlySet<string> = IMPLICIT_SAFE,
 ): boolean {
   const trimmed = command.trim();
   if (trimmed.length === 0) return false;
@@ -51,4 +51,5 @@ export function isSafeCommand(
   return allowlist.has(head);
 }
 
-export { DEFAULT_SAFE };
+/** Editable recipe. Set mutations affect only calls explicitly supplied this template. */
+export const DEFAULT_SAFE = new Set(IMPLICIT_SAFE);

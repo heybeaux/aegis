@@ -2,7 +2,8 @@ import { createHash } from 'node:crypto';
 import { isDeepStrictEqual } from 'node:util';
 import { performance } from 'node:perf_hooks';
 import type { CompiledRule, Evaluation, ToolCall } from '../types.js';
-import { evaluate, DEFAULT_SEVERITY_TABLE, DEFAULT_PREDICTION_THRESHOLDS, type EvaluateOptions } from './evaluate.js';
+import { evaluate, type EvaluateOptions } from './evaluate.js';
+import { IMPLICIT_SEVERITY_TABLE, IMPLICIT_PREDICTION_THRESHOLDS } from './policy-defaults.js';
 
 /** Independently authenticated durable high-water for one source-policy roster. */
 export interface SourcePolicyRosterCheckpoint {
@@ -90,11 +91,11 @@ function observationExpired(base: Evaluation, call: ToolCall, rules: CompiledRul
   };
 }
 
-/** Effective entry/current policy including mutable exported evaluator defaults. */
+/** Effective policy: explicit host overrides or package-private implicit defaults. */
 function effectiveOptions(options: EvaluateOptions): EvaluateOptions {
   const { monotonicNowMs: _clock, ...evaluatorOptions } = options as SourcePolicyRosterCheckpointOptions;
-  return { ...evaluatorOptions, severityTable: options.severityTable ?? DEFAULT_SEVERITY_TABLE,
-    predictionThresholds: options.predictionThresholds ?? DEFAULT_PREDICTION_THRESHOLDS };
+  return { ...evaluatorOptions, severityTable: options.severityTable ?? IMPLICIT_SEVERITY_TABLE,
+    predictionThresholds: options.predictionThresholds ?? IMPLICIT_PREDICTION_THRESHOLDS };
 }
 function snapshotRules(rules: CompiledRule[]): CompiledRule[] {
   const copy = structuredClone(rules);

@@ -23,18 +23,12 @@ import type {
   ToolCall,
 } from '../types.js';
 import { extractDecodedVariants } from './preprocess.js';
+import { IMPLICIT_SEVERITY_TABLE, IMPLICIT_PREDICTION_THRESHOLDS } from './policy-defaults.js';
 
-export const DEFAULT_SEVERITY_TABLE: SeverityTable = {
-  critical: 'deny',
-  high: 'ask',
-  medium: 'ask',
-  low: 'allow',
-};
-
-export const DEFAULT_PREDICTION_THRESHOLDS: PredictionThresholds = {
-  denyAtOrAbove: 0.8,
-  askAtOrAbove: 0.4,
-};
+/** Editable recipe; pass explicitly to EvaluateOptions to select a host override. */
+export const DEFAULT_SEVERITY_TABLE: SeverityTable = { ...IMPLICIT_SEVERITY_TABLE };
+/** Editable recipe; mutating it does not change the package's implicit policy. */
+export const DEFAULT_PREDICTION_THRESHOLDS: PredictionThresholds = { ...IMPLICIT_PREDICTION_THRESHOLDS };
 
 const ACTION_RANK: Record<GateAction, number> = {
   allow: 0,
@@ -632,8 +626,8 @@ export function evaluate(
   compiledRules: CompiledRule[],
   opts: EvaluateOptions = {},
 ): Evaluation {
-  const severityTable = opts.severityTable ?? DEFAULT_SEVERITY_TABLE;
-  const thresholds = opts.predictionThresholds ?? DEFAULT_PREDICTION_THRESHOLDS;
+  const severityTable = opts.severityTable ?? IMPLICIT_SEVERITY_TABLE;
+  const thresholds = opts.predictionThresholds ?? IMPLICIT_PREDICTION_THRESHOLDS;
 
   // Build the set of ToolCall variants to test. When preprocessing is on,
   // decoded variants of the command are synthesized and evaluated in addition

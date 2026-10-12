@@ -7,6 +7,16 @@ import {
 } from '../src/swarmlab-evidence.js';
 
 describe('SwarmLab evidence gate', () => {
+  it('pins RT51 implementation in candidate source without claiming remote main certification', () => {
+    const c = SWARMLAB_EVIDENCE_CASES.find(c => c.id === 'RT-51');
+    expect(c?.implementationStatus).toBe('landed');
+    expect(c?.aegisMapping).toContain('not remote main/CI certification');
+    expect(c?.runIds).toEqual(['dpi-mv4vqk63','dpi-mv4vqkba','dpi-mv4vti3m']);
+    expect(c?.metrics).toEqual(expect.arrayContaining([
+      expect.objectContaining({name:'aegisGlobalDefaultInfluenceRate',before:1,after:0,threshold:0}),
+      expect.objectContaining({name:'aegisResolutionAccuracy',before:7/16,after:1,threshold:1}),
+    ]));
+  });
   it('pins RT-48 configuration integrity, original/current deny and real package receipts', () => {
     const c = SWARMLAB_EVIDENCE_CASES.find(c => c.id === 'RT-48');
     expect(c?.runIds).toEqual(['aci-mv0ldq1x','aci-mv0ldq3x','aci-mv0lgl6y']);
@@ -43,11 +53,11 @@ describe('SwarmLab evidence gate', () => {
       expect.objectContaining({name:'aegisWrappedCriticalDenyPreservation',before:0,after:1,threshold:1,comparator:'eq'}),
     ]));
   });
-  it('passes when all stack mappings are landed with verified evidence', () => {
+  it('passes measured mappings implemented in the tested candidate source', () => {
     const result = evaluateSwarmLabEvidence();
     expect(result.status).toBe('passed');
-    expect(result.total).toBe(49);
-    expect(result.passed).toBe(49);
+    expect(result.total).toBe(50);
+    expect(result.passed).toBe(50);
     expect(result.failed).toBe(0);
     expect(result.partial).toBe(0);
     expect(result.pendingImplementation).toBe(0);
@@ -275,6 +285,7 @@ describe('SwarmLab evidence gate', () => {
       'RT-47',
       'RT-48',
       'RT-49',
+      'RT-51',
     ]);
 
     const mappings = SWARMLAB_EVIDENCE_CASES.map((c) => c.aegisMapping).join('\n');
@@ -324,7 +335,7 @@ describe('SwarmLab evidence gate', () => {
 
   it('renders a report banner matching the evaluated evidence range', () => {
     const markdown = swarmLabEvidenceToMarkdown(evaluateSwarmLabEvidence());
-    expect(markdown).toContain('REPLAY-VERIFIED SWARMLAB RETESTS (RT-01..RT-49)');
+    expect(markdown).toContain('REPLAY-VERIFIED SWARMLAB RETESTS (RT-01..RT-51)');
     expect(markdown).not.toContain('RT-01..RT-10');
     expect(markdown).toContain('0 provisional evidence tier');
     expect(markdown).toContain('| RT-06 | passed | landed | verified |');

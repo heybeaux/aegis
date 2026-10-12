@@ -158,3 +158,8 @@ Test fixtures intentionally contain **fake** token-shaped strings (clearly label
 ## License
 
 MIT — see [LICENSE](LICENSE).
+
+### Default policy ownership
+
+Exported DEFAULT_* values are editable recipes, not global implicit authorization state.
+Host overrides must be passed explicitly per call; see [RT51 migration](docs/package-default-policy-isolation.md).

@@ -1314,6 +1314,113 @@ export const SWARMLAB_EVIDENCE_CASES: readonly SwarmLabEvidenceCase[] = [
 },
 
 
+{
+  "id": "RT-51",
+  "source": "SwarmLab exp61 / Spec67",
+  "finding": "Editable exported default recipes cannot silently change implicit policy across calls.",
+  "owners": [
+    "aegis"
+  ],
+  "change": "Private default policy separated from public editable recipe copies, including strict async effective policy.",
+  "runIds": [
+    "dpi-mv4vqk63",
+    "dpi-mv4vqkba",
+    "dpi-mv4vti3m"
+  ],
+  "implementationRefs": [
+    "186cc3541218ca0a591bc36fd02bc7708f0d65bd",
+    "SwarmLab preregistration 5271a6f0a95728cfc74e18ed2e102501554cd229"
+  ],
+  "implementationStatus": "landed",
+  "evidenceTier": "verified",
+  "aegisMapping": "Implemented in this candidate source (not remote main/CI certification): private implicit defaults; explicit host overrides/editability preserved. RT50 reserved separately.",
+  "metrics": [
+    {
+      "name": "capturedControlAccuracy",
+      "before": 1,
+      "after": 1,
+      "threshold": 1,
+      "comparator": "eq"
+    },
+    {
+      "name": "explicitControlAccuracy",
+      "before": 1,
+      "after": 1,
+      "threshold": 1,
+      "comparator": "eq"
+    },
+    {
+      "name": "aegisGlobalDefaultInfluenceRate",
+      "before": 1,
+      "after": 0,
+      "threshold": 0,
+      "comparator": "eq"
+    },
+    {
+      "name": "aegisResolutionAccuracy",
+      "before": 0.4375,
+      "after": 1,
+      "threshold": 1,
+      "comparator": "eq"
+    },
+    {
+      "name": "aegisUnsafeImplicitAuthorizationRate",
+      "before": 1,
+      "after": 0,
+      "threshold": 0,
+      "comparator": "eq"
+    },
+    {
+      "name": "aegisPureActionAccuracy",
+      "before": 0.625,
+      "after": 1,
+      "threshold": 1,
+      "comparator": "eq"
+    },
+    {
+      "name": "aegisStrictActionAccuracy",
+      "before": 0.625,
+      "after": 1,
+      "threshold": 1,
+      "comparator": "eq"
+    },
+    {
+      "name": "aegisSafeClassificationAccuracy",
+      "before": 0.8125,
+      "after": 1,
+      "threshold": 1,
+      "comparator": "eq"
+    },
+    {
+      "name": "aegisStrictIOAccuracy",
+      "before": 0.6875,
+      "after": 1,
+      "threshold": 1,
+      "comparator": "eq"
+    },
+    {
+      "name": "aegisCallerOwnership",
+      "before": 1,
+      "after": 1,
+      "threshold": 1,
+      "comparator": "eq"
+    },
+    {
+      "name": "aegisTemplateEditCompatibility",
+      "before": 1,
+      "after": 1,
+      "threshold": 1,
+      "comparator": "eq"
+    },
+    {
+      "name": "aegisCustomOverrideCompatibility",
+      "before": 1,
+      "after": 1,
+      "threshold": 1,
+      "comparator": "eq"
+    }
+  ]
+},
 ];
 
 export function evaluateSwarmLabEvidence(

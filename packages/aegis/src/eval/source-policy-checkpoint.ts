@@ -1,6 +1,7 @@
 import { createHash } from 'node:crypto';
 import { isDeepStrictEqual } from 'node:util';
 import { performance } from 'node:perf_hooks';
+import { invalidCompiledMatcher } from './compiled-rule-binding.js';
 import type { CompiledRule, Evaluation, ToolCall } from '../types.js';
 import { evaluate, DEFAULT_SEVERITY_TABLE, DEFAULT_PREDICTION_THRESHOLDS, type EvaluateOptions } from './evaluate.js';
 
@@ -114,11 +115,10 @@ function configurationChanged(base: Evaluation, call: ToolCall, rules: CompiledR
         if (result.action === 'deny') floor = result;
         // A changed critical cache formerly supplied RT48's current deny floor. RT52 must
         // not execute an invalid matcher to rediscover that floor: conservatively deny
-        // uncertain critical coverage during in-flight configuration drift instead.
-        else if (result.matches.some(hit => hit.id === 'swarmlab.rt52.compiled-rule-requires-bound-stateless-matcher') &&
-          (o.severityTable ?? DEFAULT_SEVERITY_TABLE).critical === 'deny' &&
-          r.some(entry => entry.rule.enabled !== false && entry.rule.severity === 'critical' &&
-            (entry.rule.appliesTo.includes('*') || entry.rule.appliesTo.includes(call.tool)))) {
+        // uncertain critical coverage during in-flight configuration drift instead. The critical
+        // severity and invalid binding must belong to the SAME entry.
+        else if ((o.severityTable ?? DEFAULT_SEVERITY_TABLE).critical === 'deny' &&
+          r.some(entry => entry.rule.severity === 'critical' && invalidCompiledMatcher(entry, call))) {
           floor = { ...result, action: 'deny', decidedBy: 'severity',
             reason: 'SwarmLab RT-48: changed critical matcher coverage is indeterminate' };
         }

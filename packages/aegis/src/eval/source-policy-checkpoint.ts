@@ -2,7 +2,7 @@ import { createHash } from 'node:crypto';
 import { isDeepStrictEqual } from 'node:util';
 import { performance } from 'node:perf_hooks';
 import { invalidCompiledMatcher } from './compiled-rule-binding.js';
-import type { CompiledRule, Evaluation, ToolCall } from '../types.js';
+import type { CompiledRule, Evaluation, RuleHit, ToolCall } from '../types.js';
 import { evaluate, DEFAULT_SEVERITY_TABLE, DEFAULT_PREDICTION_THRESHOLDS, type EvaluateOptions } from './evaluate.js';
 
 /** Independently authenticated durable high-water for one source-policy roster. */
@@ -107,11 +107,13 @@ function snapshotRules(rules: CompiledRule[]): CompiledRule[] {
 function configurationChanged(base: Evaluation, call: ToolCall, rules: CompiledRule[], options: EvaluateOptions,
   capturedRules?: CompiledRule[], capturedOptions?: EvaluateOptions): Evaluation {
   let floor = base;
+  let bindingFailure: RuleHit | undefined;
   for (const r of [capturedRules, rules]) {
     for (const o of [capturedOptions, effectiveOptions(options)]) {
       if (!r || !o) continue;
       try {
         const result = evaluate(call, r, o);
+        bindingFailure ??= result.matches.find(hit => hit.id === 'swarmlab.rt52.compiled-rule-requires-bound-stateless-matcher');
         if (result.action === 'deny') floor = result;
         // A changed critical cache formerly supplied RT48's current deny floor. RT52 must
         // not execute an invalid matcher to rediscover that floor: conservatively deny
@@ -129,7 +131,9 @@ function configurationChanged(base: Evaluation, call: ToolCall, rules: CompiledR
   return { ...floor, action: floor.action === 'deny' ? 'deny' : 'ask',
     decidedBy: floor.action === 'deny' ? floor.decidedBy : 'severity',
     reason: floor.action === 'deny' ? floor.reason : 'SwarmLab RT-48: async evaluator configuration changed or cannot be snapshotted',
-    matches: [...floor.matches, { id: 'swarmlab.rt48.async-source-policy-gate-requires-stable-configuration', severity: 'medium', category: 'swarmlab', target: 'argv' }] };
+    matches: [...floor.matches,
+      ...(bindingFailure && !floor.matches.some(hit => hit.id === bindingFailure!.id) ? [bindingFailure] : []),
+      { id: 'swarmlab.rt48.async-source-policy-gate-requires-stable-configuration', severity: 'medium', category: 'swarmlab', target: 'argv' }] };
 }
 
 /**

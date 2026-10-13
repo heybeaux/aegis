@@ -30,6 +30,7 @@ describe('RT52 invalid cache attribution during RT48 drift',()=>{
   },{monotonicNowMs:()=>100});
   expect(result.action).toBe('ask');
   expect(result.matches.map(h=>h.id)).toContain(CONFIG);
+  expect(result.matches.map(h=>h.id)).toContain(DIAG);
   // An unbound low cache is not evidence that a different valid critical rule fired.
   expect(result.matches.map(h=>h.id)).not.toContain('binding.valid-critical');
   expect(reads).toBe(phase==='last'?2:1);expect(observes).toBe(phase==='first'||phase==='reject'?0:1);

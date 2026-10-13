@@ -1313,6 +1313,92 @@ export const SWARMLAB_EVIDENCE_CASES: readonly SwarmLabEvidenceCase[] = [
   ]
 },
 
+{
+  "id": "RT-52",
+  "source": "SwarmLab exp62 / Spec68 compiled rule binding integrity",
+  "finding": "Enabled applicable compiled regex caches must remain bound to declared stateless rule configuration at invocation; real Aegis baseline silently allowed6/16 hazards, candidate refuses all with explicit diagnostic while retaining valid deny/controls.",
+  "owners": [
+    "aegis"
+  ],
+  "change": "Validate declared/cache binding and stateless dialect at Aegis public evaluation entry, skip invalid matcher, explicit non-weakenable ask floor, retain valid deny/prediction and async RT48 conservative critical drift refusal.",
+  "runIds": [
+    "crbi-mv6b9cr1",
+    "crbi-mv6b9ctl",
+    "crbi-mv6bfvgw"
+  ],
+  "implementationRefs": [
+    "bdaace056ac4cbce8a04fc2966702e26e472dd85"
+  ],
+  "implementationStatus": "landed",
+  "evidenceTier": "verified",
+  "aegisMapping": "Binding refusal implemented in this candidate source; source-level release regression mapping, remote merge and CI are tracked separately. Stored metrics are not fresh execution.",
+  "metrics": [
+    {
+      "name": "controlAccuracy",
+      "before": 1,
+      "after": 1,
+      "threshold": 1,
+      "comparator": "eq"
+    },
+    {
+      "name": "aegisUnsafeInvalidAllowRate",
+      "before": 0.375,
+      "after": 0,
+      "threshold": 0,
+      "comparator": "eq"
+    },
+    {
+      "name": "aegisInvalidBindingDetectionRate",
+      "before": 0,
+      "after": 1,
+      "threshold": 1,
+      "comparator": "eq"
+    },
+    {
+      "name": "aegisResolutionAccuracy",
+      "before": 0.4666666666666667,
+      "after": 1,
+      "threshold": 1,
+      "comparator": "eq"
+    },
+    {
+      "name": "aegisDenyPreservation",
+      "before": 1,
+      "after": 1,
+      "threshold": 1,
+      "comparator": "eq"
+    },
+    {
+      "name": "aegisEarlyNoIO",
+      "before": 0.875,
+      "after": 1,
+      "threshold": 1,
+      "comparator": "eq"
+    },
+    {
+      "name": "aegisValidCompatibility",
+      "before": 1,
+      "after": 1,
+      "threshold": 1,
+      "comparator": "eq"
+    },
+    {
+      "name": "aegisCallerOwnership",
+      "before": 0.9333333333333333,
+      "after": 1,
+      "threshold": 1,
+      "comparator": "eq"
+    },
+    {
+      "name": "aegisHitDedup",
+      "before": 1,
+      "after": 1,
+      "threshold": 1,
+      "comparator": "eq"
+    }
+  ]
+},
+
 
 ];
 

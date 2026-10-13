@@ -23,6 +23,7 @@ import type {
   ToolCall,
 } from '../types.js';
 import { extractDecodedVariants } from './preprocess.js';
+import { invalidCompiledMatcher } from './compiled-rule-binding.js';
 
 export const DEFAULT_SEVERITY_TABLE: SeverityTable = {
   critical: 'deny',
@@ -647,7 +648,12 @@ export function evaluate(
     }
   }
 
-  const hits: RuleHit[] = [];
+  const invalidMatchers = new Set(compiledRules.filter(compiled => invalidCompiledMatcher(compiled, call)));
+  const compiledBindingFailure = invalidMatchers.size > 0;
+  const hits: RuleHit[] = compiledBindingFailure ? [{
+    id: 'swarmlab.rt52.compiled-rule-requires-bound-stateless-matcher',
+    severity: 'medium', category: 'swarmlab', target: 'argv',
+  }] : [];
   let maxSeverity: Severity | null = null;
   let topReason = '';
 
@@ -661,7 +667,7 @@ export function evaluate(
 
   for (const testCall of callsToTest) {
     for (const compiled of compiledRules) {
-      if (!matchesRule(compiled, testCall)) continue;
+      if (invalidMatchers.has(compiled) || !matchesRule(compiled, testCall)) continue;
       const { rule } = compiled;
       // Avoid duplicate hit entries when the same rule fires on multiple variants.
       if (!hits.some((h) => h.id === rule.id)) {
@@ -679,7 +685,9 @@ export function evaluate(
     }
   }
 
-  const severityFloor: GateAction = maxSeverity ? severityTable[maxSeverity] : 'allow';
+  const ordinaryFloor: GateAction = maxSeverity ? severityTable[maxSeverity] : 'allow';
+  // Configuration refusal cannot be weakened by a caller's severity mapping.
+  const severityFloor: GateAction = compiledBindingFailure ? strictest(ordinaryFloor, 'ask') : ordinaryFloor;
   const predAction = predictionAction(opts.prediction, thresholds);
   const action = strictest(severityFloor, predAction);
 
@@ -691,7 +699,9 @@ export function evaluate(
   const reason =
     decidedBy === 'prediction' && opts.prediction
       ? `predicted P(failure)=${opts.prediction.pFailure.toFixed(2)} — ${action}`
-      : topReason || 'no rule matched';
+      : compiledBindingFailure && ordinaryFloor !== 'deny'
+        ? 'SwarmLab RT-52: compiled regex is missing, stateful or not bound to declared rule; reload the rule pack'
+        : topReason || 'no rule matched';
 
   return {
     action,

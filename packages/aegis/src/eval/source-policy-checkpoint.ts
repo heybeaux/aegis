@@ -109,7 +109,20 @@ function configurationChanged(base: Evaluation, call: ToolCall, rules: CompiledR
   for (const r of [capturedRules, rules]) {
     for (const o of [capturedOptions, effectiveOptions(options)]) {
       if (!r || !o) continue;
-      try { const result = evaluate(call, r, o); if (result.action === 'deny') floor = result; }
+      try {
+        const result = evaluate(call, r, o);
+        if (result.action === 'deny') floor = result;
+        // A changed critical cache formerly supplied RT48's current deny floor. RT52 must
+        // not execute an invalid matcher to rediscover that floor: conservatively deny
+        // uncertain critical coverage during in-flight configuration drift instead.
+        else if (result.matches.some(hit => hit.id === 'swarmlab.rt52.compiled-rule-requires-bound-stateless-matcher') &&
+          (o.severityTable ?? DEFAULT_SEVERITY_TABLE).critical === 'deny' &&
+          r.some(entry => entry.rule.enabled !== false && entry.rule.severity === 'critical' &&
+            (entry.rule.appliesTo.includes('*') || entry.rule.appliesTo.includes(call.tool)))) {
+          floor = { ...result, action: 'deny', decidedBy: 'severity',
+            reason: 'SwarmLab RT-48: changed critical matcher coverage is indeterminate' };
+        }
+      }
       catch { /* Malformed current policy must not turn refusal into an exception/allow. */ }
     }
   }

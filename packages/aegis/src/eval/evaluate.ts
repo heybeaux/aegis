@@ -79,6 +79,20 @@ function matchesRule(compiled: CompiledRule, call: ToolCall): boolean {
   return false;
 }
 
+/** Validate the cache against declared policy; never silently recompile an unadmitted rule. */
+function invalidCompiledMatcher(compiled: CompiledRule, call: ToolCall): boolean {
+  const { rule, regex } = compiled;
+  if (rule.enabled === false || !ruleApplies(rule.appliesTo, call.tool) || rule.match.kind !== 'regex') return false;
+  if (!(regex instanceof RegExp)) return true;
+  try {
+    const flags = rule.match.flags ?? '';
+    if ([...flags].some(flag => !'imsu'.includes(flag)) || [...regex.flags].some(flag => !'imsu'.includes(flag))) return true;
+    // RegExp.source escapes slash/newline/empty source and flags have canonical order.
+    const declared = new RegExp(rule.match.pattern, flags);
+    return declared.source !== regex.source || declared.flags !== regex.flags;
+  } catch { return true; }
+}
+
 function validSourceId(value: unknown): value is string {
   return typeof value === 'string' && value.length > 0 && value.length <= 256 && value.trim() === value;
 }
@@ -647,7 +661,12 @@ export function evaluate(
     }
   }
 
-  const hits: RuleHit[] = [];
+  const invalidMatchers = new Set(compiledRules.filter(compiled => invalidCompiledMatcher(compiled, call)));
+  const compiledBindingFailure = invalidMatchers.size > 0;
+  const hits: RuleHit[] = compiledBindingFailure ? [{
+    id: 'swarmlab.rt52.compiled-rule-requires-bound-stateless-matcher',
+    severity: 'medium', category: 'swarmlab', target: 'argv',
+  }] : [];
   let maxSeverity: Severity | null = null;
   let topReason = '';
 
@@ -661,7 +680,7 @@ export function evaluate(
 
   for (const testCall of callsToTest) {
     for (const compiled of compiledRules) {
-      if (!matchesRule(compiled, testCall)) continue;
+      if (invalidMatchers.has(compiled) || !matchesRule(compiled, testCall)) continue;
       const { rule } = compiled;
       // Avoid duplicate hit entries when the same rule fires on multiple variants.
       if (!hits.some((h) => h.id === rule.id)) {
@@ -679,7 +698,9 @@ export function evaluate(
     }
   }
 
-  const severityFloor: GateAction = maxSeverity ? severityTable[maxSeverity] : 'allow';
+  const ordinaryFloor: GateAction = maxSeverity ? severityTable[maxSeverity] : 'allow';
+  // Configuration refusal cannot be weakened by a caller's severity mapping.
+  const severityFloor: GateAction = compiledBindingFailure ? strictest(ordinaryFloor, 'ask') : ordinaryFloor;
   const predAction = predictionAction(opts.prediction, thresholds);
   const action = strictest(severityFloor, predAction);
 
@@ -691,7 +712,9 @@ export function evaluate(
   const reason =
     decidedBy === 'prediction' && opts.prediction
       ? `predicted P(failure)=${opts.prediction.pFailure.toFixed(2)} — ${action}`
-      : topReason || 'no rule matched';
+      : compiledBindingFailure && ordinaryFloor !== 'deny'
+        ? 'SwarmLab RT-52: compiled regex is missing, stateful or not bound to declared rule; reload the rule pack'
+        : topReason || 'no rule matched';
 
   return {
     action,

@@ -68,10 +68,10 @@ export interface RulePack {
   rules: Rule[];
 }
 
-/** A rule compiled and ready for matching. */
+/** A rule compiled and ready for matching. Reload with loadPack after changing pattern/flags. */
 export interface CompiledRule {
   rule: Rule;
-  /** Present when match.kind === 'regex'. */
+  /** Required for enabled/applicable regex rules; must match declared source and stateless flags. */
   regex?: RegExp;
 }
 

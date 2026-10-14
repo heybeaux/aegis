@@ -287,6 +287,7 @@ describe('SwarmLab evidence gate', () => {
       'RT-47',
       'RT-48',
       'RT-49',
+      'RT-53',
     ]);
 
     const mappings = SWARMLAB_EVIDENCE_CASES.map((c) => c.aegisMapping).join('\n');

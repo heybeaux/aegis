@@ -122,6 +122,27 @@ Merge is **by `(packId, rule.id)`**, deep-merge of fields:
 > loader warns and keeps the stricter builtin. Prevents a careless project overlay from silently
 > defanging `rm -rf /`.
 
+### Coverage consent (RT53 / exp63)
+Severity alone does not protect coverage. `mergeLayers` also refuses changes to an enabled
+preceding effective rule's match kind, pattern, target or effective flags, and contractions
+of its case-sensitive `appliesTo` tool set, unless THIS overlay supplies `allowDowngrade: true`.
+A previous layer's consent is not authority for the next. Rejection preserves the entire
+preceding rule and returns a warning; it does not silently preserve only severity.
+
+Regex source changes require review even if a particular change broadens coverage: Aegis
+makes no regex-language inclusion proof. Flag order and absent/empty flags are equivalent;
+tool order/duplicates are irrelevant, finite set expansion and replacement with `*` are safe,
+but replacing `*` with a finite set needs consent. Descriptive fields and severity increases
+with unchanged coverage remain free; disabled bases have no matcher coverage to preserve.
+Existing severity/disable guards still apply. New IDs and insertion order remain compatible.
+
+Public runtime typing stays `Rule[][]` (complete match objects, not partial overlays).
+The earlier prose's partial/deep-merge and `(packId,rule.id)` claim is not implemented by
+this public function: identity is `rule.id`, object fields merge shallowly, nested match is
+replaced. RT53 does not expand that interface. Hosts own overlay authentication/review,
+valid pack data, and explicit consent. No post-merge mutation isolation promise.
+
+
 ---
 
 ## 4. Severity → gate action (the constitution table)

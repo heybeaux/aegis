@@ -70,6 +70,16 @@ describe('mergeLayers coverage authority', () => {
     const b=copy(base(),{enabled:false});expect(mergeLayers([[b],[copy(b,{severity:'low'})]]).warnings).toHaveLength(1);
     const enabled=base();expect(mergeLayers([[enabled],[copy(enabled,{enabled:false})]]).warnings).toHaveLength(1);
   });
+  it('allows explicitly reviewed disabling of an enabled base',()=>{
+    const b=base(),o=copy(b,{enabled:false,allowDowngrade:true});
+    expect(mergeLayers([[b],[o]])).toEqual({rules:[o],warnings:[]});
+    expect(evaluate({tool:'Bash',command:'BLOCK'},loadPack({packId:'test',version:'1',rules:[o]})).action).toBe('allow');
+  });
+  it('treats mixed wildcard base as unbounded, not a finite tool list',()=>{
+    const b=copy(base(),{appliesTo:['Bash','*']});
+    expect(mergeLayers([[b],[copy(b,{appliesTo:['Bash','Shell']})]]).warnings).toHaveLength(1);
+    expect(mergeLayers([[b],[copy(b,{appliesTo:['*']})]]).warnings).toHaveLength(0);
+  });
   it('returns empty for empty layers and adds unseen rules without review',()=>{
     expect(mergeLayers([[],[]])).toEqual({rules:[],warnings:[]});const b=base();expect(mergeLayers([[],[b]])).toEqual({rules:[b],warnings:[]});
   });

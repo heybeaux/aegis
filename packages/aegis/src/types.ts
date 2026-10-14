@@ -56,7 +56,10 @@ export interface Rule {
   references?: string[];
   /** Packs may ship disabled rules; overlays can flip. Defaults true. */
   enabled?: boolean;
-  /** Required on an overlay rule that LOWERS a builtin's strictness. Default false. */
+  /** Current overlay must explicitly consent to disable/severity downgrade,
+   * matcher replacement or tool-scope contraction of an enabled effective base.
+   * Regex inclusion is not inferred; flag-order and set-equivalent scope are safe.
+   * Default false; never inherited as consent from the preceding rule. */
   allowDowngrade?: boolean;
 }
 

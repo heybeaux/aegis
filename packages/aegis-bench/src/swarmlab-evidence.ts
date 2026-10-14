@@ -1314,6 +1314,85 @@ export const SWARMLAB_EVIDENCE_CASES: readonly SwarmLabEvidenceCase[] = [
 },
 
 
+{
+  "id": "RT-53",
+  "source": "SwarmLab exp63 rule-overlay coverage consent",
+  "finding": "Matcher and tool-scope overrides can remove coverage even when severity stays strict.",
+  "owners": [
+    "aegis"
+  ],
+  "change": "Conservative per-overlay consent checks on enabled effective matcher and tool-set containment.",
+  "runIds": [
+    "occ-mv7qlhb7",
+    "occ-mv7qlhdk",
+    "occ-mv7qn439"
+  ],
+  "implementationRefs": [
+    "bc879d6c7fd213b49ef355b64bd83196098ffa0e"
+  ],
+  "implementationStatus": "landed",
+  "evidenceTier": "verified",
+  "aegisMapping": "Runtime is present in this candidate source; remote merge/CI and deliberate migration review tracked separately. Prior RT50-52 not included.",
+  "metrics": [
+    {
+      "name": "aegisUnsafeCoverageLossRate",
+      "before": 1,
+      "after": 0,
+      "threshold": 0,
+      "comparator": "eq"
+    },
+    {
+      "name": "aegisCoverageRejectionRate",
+      "before": 0,
+      "after": 1,
+      "threshold": 1,
+      "comparator": "eq"
+    },
+    {
+      "name": "aegisResolutionAccuracy",
+      "before": 0.56,
+      "after": 1,
+      "threshold": 1,
+      "comparator": "eq"
+    },
+    {
+      "name": "pinnedBaseControlAccuracy",
+      "before": 1,
+      "after": 1,
+      "threshold": 1,
+      "comparator": "eq"
+    },
+    {
+      "name": "aegisControlAccuracy",
+      "before": 0.9333333333333333,
+      "after": 1,
+      "threshold": 1,
+      "comparator": "eq"
+    },
+    {
+      "name": "aegisInputOwnership",
+      "before": 1,
+      "after": 1,
+      "threshold": 1,
+      "comparator": "eq"
+    },
+    {
+      "name": "protectedBaseFixtureAccuracy",
+      "before": 1,
+      "after": 1,
+      "threshold": 1,
+      "comparator": "eq"
+    },
+    {
+      "name": "explicitConsentAccuracy",
+      "before": 1,
+      "after": 1,
+      "threshold": 1,
+      "comparator": "eq"
+    }
+  ]
+},
+
 ];
 
 export function evaluateSwarmLabEvidence(

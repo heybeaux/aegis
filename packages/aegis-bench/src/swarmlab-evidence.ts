@@ -1313,7 +1313,77 @@ export const SWARMLAB_EVIDENCE_CASES: readonly SwarmLabEvidenceCase[] = [
   ]
 },
 
-
+{
+  "id": "RT-54",
+  "source": "SwarmLab exp64 merged rule reference ownership / Spec70",
+  "finding": "Mutable caller recipes must not silently edit a constructed effective cascade or receive consumer edits through merged rule aliases.",
+  "owners": [
+    "aegis"
+  ],
+  "change": "Each returned effective Rule owns a structured clone; precedence, warnings and mutable output contract unchanged.",
+  "runIds": [
+    "mro-mv96376j",
+    "mro-mv9637ag",
+    "mro-mv966i1f"
+  ],
+  "implementationRefs": [
+    "f27427879984856bad36731788376dbc74702aaa"
+  ],
+  "implementationStatus": "landed",
+  "evidenceTier": "verified",
+  "aegisMapping": "Implemented in this candidate source; historical static scores are not live verification. Focused ownership regressions executable; remote PR/CI/merge tracked separately. Pending RT50\u201353 not imported.",
+  "metrics": [
+    {
+      "name": "detachedControlAccuracy",
+      "before": 1,
+      "after": 1,
+      "threshold": 1,
+      "comparator": "eq"
+    },
+    {
+      "name": "aegisProducerDriftRate",
+      "before": 0.8888888888888888,
+      "after": 0,
+      "threshold": 0,
+      "comparator": "eq"
+    },
+    {
+      "name": "aegisUnsafeAllowRate",
+      "before": 0.8888888888888888,
+      "after": 0,
+      "threshold": 0,
+      "comparator": "eq"
+    },
+    {
+      "name": "aegisResolutionAccuracy",
+      "before": 0.38095238095238093,
+      "after": 1,
+      "threshold": 1,
+      "comparator": "eq"
+    },
+    {
+      "name": "aegisConsumerIsolation",
+      "before": 0,
+      "after": 1,
+      "threshold": 1,
+      "comparator": "eq"
+    },
+    {
+      "name": "aegisControlAccuracy",
+      "before": 0.7777777777777778,
+      "after": 1,
+      "threshold": 1,
+      "comparator": "eq"
+    },
+    {
+      "name": "aegisCallerOwnership",
+      "before": 1,
+      "after": 1,
+      "threshold": 1,
+      "comparator": "eq"
+    }
+  ]
+}
 ];
 
 export function evaluateSwarmLabEvidence(

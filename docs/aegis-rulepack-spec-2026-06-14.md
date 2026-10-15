@@ -124,6 +124,24 @@ Merge is **by `(packId, rule.id)`**, deep-merge of fields:
 
 ---
 
+### 3.1 Effective rule value ownership (exp64 / RT54)
+
+`mergeLayers(layers)` returns editable, independent plain-data Rule values. Each
+rule owns its nested `match`, `appliesTo`, and optional `references`; distinct
+ids and separate invocations cannot share those containers through caller recipes.
+Inputs are not frozen or changed. Editing an input recipe after merge requires
+an explicit re-merge/reload to update policy. Editing a returned effective rule
+is still supported, and its subsequent compilation/evaluation sees that edit.
+This does not change cascade precedence, disable/severity consent, insertion
+order, warning shape or public types. It is not an immutability guarantee for
+explicitly edited outputs or the direct `loadPack()` API, nor does it supply
+host provenance or atomic execution. The input contract remains valid plain-data
+Rule packs, not getters/proxies/functions or a partial-overlay type migration.
+
+Evidence: SwarmLab Spec70/exp64, source-recipe/output mutations between merge and
+compile. Unlike RT48, no await/in-flight change is needed; unlike RT53, no new
+classifier-replacing overlay is submitted. Existing pending candidates are separate.
+
 ## 4. Severity → gate action (the constitution table)
 
 The rule pack carries **severity**; the **constitution config** (separate file, separate spec, but

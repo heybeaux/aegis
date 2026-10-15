@@ -41,7 +41,9 @@ export interface MergeResult {
 
 /**
  * Merge layers in increasing precedence. Pass [builtin, user, project].
- * Returns the effective rule set plus any strictness warnings.
+ * Returns the effective rule set plus any strictness warnings. Each returned rule
+ * owns an independent copy of its plain-data values; caller recipe edits require
+ * an explicit re-merge. Results remain editable and inputs are never frozen.
  */
 export function mergeLayers(layers: Rule[][]): MergeResult {
   const effective = new Map<string, Rule>();
@@ -67,5 +69,8 @@ export function mergeLayers(layers: Rule[][]): MergeResult {
     }
   }
 
-  return { rules: [...effective.values()], warnings };
+  // Clone each rule separately: one clone of the whole array would preserve
+  // shared nested references between distinct rule ids. Rule packs are data,
+  // and neither producer recipes nor sibling results should own this cascade.
+  return { rules: [...effective.values()].map((rule) => structuredClone(rule)), warnings };
 }

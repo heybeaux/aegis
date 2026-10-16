@@ -68,7 +68,7 @@ export interface RulePack {
   rules: Rule[];
 }
 
-/** A rule compiled and ready for matching. */
+/** A compiled rule owning its validated, editable Rule snapshot (loadPack inputs stay independent). */
 export interface CompiledRule {
   rule: Rule;
   /** Present when match.kind === 'regex'. */

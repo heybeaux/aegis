@@ -109,13 +109,22 @@ function validateRuleShape(pack: RulePack, rule: Rule): void {
   }
 }
 
-/** Compile a single pack. Throws RulePackError on any guard violation. */
+/**
+ * Compile a single pack into independently owned, editable Rule values.
+ * Producer recipe edits require an explicit reload; inputs are never frozen or
+ * mutated. Throws RulePackError on any guard violation.
+ */
 export function loadPack(pack: RulePack): CompiledRule[] {
   if (!pack.packId) throw new RulePackError('pack missing packId', '<unknown>');
   const seen = new Set<string>();
   const compiled: CompiledRule[] = [];
 
-  for (const rule of pack.rules) {
+  for (const recipe of pack.rules) {
+    // Validate and compile the same owned plain-data snapshot. Retaining the
+    // caller's Rule would let later draft edits bypass this validation boundary
+    // (and leave regex declarations inconsistent with their compiled cache).
+    // Clone per rule, not per pack, to detach shared nested recipe containers.
+    const rule = structuredClone(recipe);
     validateRuleShape(pack, rule);
     if (seen.has(rule.id)) {
       throw new RulePackError(`duplicate rule id within pack`, pack.packId, rule.id);

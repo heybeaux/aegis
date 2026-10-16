@@ -142,6 +142,30 @@ Evidence: SwarmLab Spec70/exp64, source-recipe/output mutations between merge an
 compile. Unlike RT48, no await/in-flight change is needed; unlike RT53, no new
 classifier-replacing overlay is submitted. Existing pending candidates are separate.
 
+### 3.2 Validated loader value ownership (exp65 / RT55)
+
+`loadPack(pack)` snapshots each plain-data Rule independently **before** validating
+and compiling it. Each CompiledRule owns its editable Rule values, including
+`match`, `appliesTo` and optional `references`. Later producer recipe edits cannot
+change a loaded policy or its regex declaration without explicit reload. Separate
+loads and distinct ids sharing source containers are isolated. Inputs are never
+frozen or modified. A reload creates new compiled values; old outputs keep the
+prior validated snapshot.
+
+Intentional edits to `compiled.rule` remain supported; this is not immutable
+compiled policy or compiled-cache integrity enforcement. Hosts that previously
+mutated the original pack to retune a loaded policy must reload and replace the
+compiled output explicitly. The repository hook/bench consumers load JSON and
+retain compiled outputs; they do not depend on recipe live linkage. Same shape,
+flag, duplicate-id, regex compilation, ReDoS checks, ordering and public types
+remain. Only valid typed plain-data Rule packs are covered; not getters/proxies,
+functions, arbitrary extension data, async mutation or atomic execution. Host
+still owns policy provenance, deliberate output edits and execution.
+
+Evidence: SwarmLab Spec71/exp65, direct load -> recipe edit -> evaluate, with no
+mergeLayers call. This closes a different construction boundary from RT54 and
+is not the pending compiled-cache or overlay-consent candidates.
+
 ## 4. Severity → gate action (the constitution table)
 
 The rule pack carries **severity**; the **constitution config** (separate file, separate spec, but

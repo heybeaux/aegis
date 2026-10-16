@@ -1383,6 +1383,77 @@ export const SWARMLAB_EVIDENCE_CASES: readonly SwarmLabEvidenceCase[] = [
       "comparator": "eq"
     }
   ]
+},
+{
+  "id": "RT-55",
+  "source": "SwarmLab exp65 loaded rule validation-snapshot ownership / Spec71",
+  "finding": "Loaded compiled policy owns its validated Rule snapshot: producer recipe edits require explicit reload and cannot silently retune decisions or backwrite through consumer outputs.",
+  "owners": [
+    "aegis"
+  ],
+  "change": "Snapshot each plain-data Rule before validation and compilation; input recipes, sibling ids and separate loads are independently owned.",
+  "runIds": [
+    "lro-mvalf27u",
+    "lro-mvalf2al",
+    "lro-mvalgz7p"
+  ],
+  "implementationRefs": [
+    "35f332ebca7ea7a5c58f069574345a3768c6c29f"
+  ],
+  "implementationStatus": "landed",
+  "evidenceTier": "verified",
+  "aegisMapping": "Implemented in candidate source. Frozen historical measured scores below are not live runtime checks; loader ownership tests are executable; linked SwarmLab CI reruns the frozen harness against pinned real Aegis. No cache-tamper/immutability/atomic execution claim.",
+  "metrics": [
+    {
+      "name": "detachedControlAccuracy",
+      "before": 1,
+      "after": 1,
+      "threshold": 1,
+      "comparator": "eq"
+    },
+    {
+      "name": "aegisProducerDriftRate",
+      "before": 1,
+      "after": 0,
+      "threshold": 0,
+      "comparator": "eq"
+    },
+    {
+      "name": "aegisUnsafeAllowRate",
+      "before": 1,
+      "after": 0,
+      "threshold": 0,
+      "comparator": "eq"
+    },
+    {
+      "name": "aegisResolutionAccuracy",
+      "before": 0.16666666666666666,
+      "after": 1,
+      "threshold": 1,
+      "comparator": "eq"
+    },
+    {
+      "name": "aegisConsumerIsolation",
+      "before": 0,
+      "after": 1,
+      "threshold": 1,
+      "comparator": "eq"
+    },
+    {
+      "name": "aegisControlAccuracy",
+      "before": 0.5,
+      "after": 1,
+      "threshold": 1,
+      "comparator": "eq"
+    },
+    {
+      "name": "aegisCallerOwnership",
+      "before": 1,
+      "after": 1,
+      "threshold": 1,
+      "comparator": "eq"
+    }
+  ]
 }
 ];
 

@@ -7,6 +7,15 @@ import {
 } from '../src/swarmlab-evidence.js';
 
 describe('SwarmLab evidence gate', () => {
+  it('pins RT55 validated loader snapshot real-package red-green, not live score execution',()=>{
+    const c=SWARMLAB_EVIDENCE_CASES.find(c=>c.id==='RT-55');
+    expect(c?.runIds).toEqual(["lro-mvalf27u", "lro-mvalf2al", "lro-mvalgz7p"]);
+    expect(c?.implementationRefs).toContain('35f332ebca7ea7a5c58f069574345a3768c6c29f');
+    expect(c?.metrics.find(m=>m.name==='aegisProducerDriftRate')).toMatchObject({before:1,after:0,threshold:0,comparator:'eq'});
+    expect(c?.metrics.find(m=>m.name==='aegisUnsafeAllowRate')).toMatchObject({before:1,after:0,threshold:0,comparator:'eq'});
+    expect(c?.metrics.find(m=>m.name==='aegisResolutionAccuracy')).toMatchObject({before:3/18,after:1,threshold:1,comparator:'eq'});
+  });
+
   it('pins RT-48 configuration integrity, original/current deny and real package receipts', () => {
     const c = SWARMLAB_EVIDENCE_CASES.find(c => c.id === 'RT-48');
     expect(c?.runIds).toEqual(['aci-mv0ldq1x','aci-mv0ldq3x','aci-mv0lgl6y']);
@@ -52,8 +61,8 @@ describe('SwarmLab evidence gate', () => {
   it('passes when all stack mappings are landed with verified evidence', () => {
     const result = evaluateSwarmLabEvidence();
     expect(result.status).toBe('passed');
-    expect(result.total).toBe(50);
-    expect(result.passed).toBe(50);
+    expect(result.total).toBe(51);
+    expect(result.passed).toBe(51);
     expect(result.failed).toBe(0);
     expect(result.partial).toBe(0);
     expect(result.pendingImplementation).toBe(0);
@@ -331,7 +340,7 @@ describe('SwarmLab evidence gate', () => {
 
   it('renders a report banner matching the evaluated evidence range', () => {
     const markdown = swarmLabEvidenceToMarkdown(evaluateSwarmLabEvidence());
-    expect(markdown).toContain('REPLAY-VERIFIED SWARMLAB RETESTS (RT-01..RT-54)');
+    expect(markdown).toContain('REPLAY-VERIFIED SWARMLAB RETESTS (RT-01..RT-55)');
     expect(markdown).not.toContain('RT-01..RT-10');
     expect(markdown).toContain('0 provisional evidence tier');
     expect(markdown).toContain('| RT-06 | passed | landed | verified |');

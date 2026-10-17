@@ -94,7 +94,7 @@ function observationExpired(base: Evaluation, call: ToolCall, rules: CompiledRul
 function effectiveOptions(options: EvaluateOptions): EvaluateOptions {
   const { monotonicNowMs: _clock, ...evaluatorOptions } = options as SourcePolicyRosterCheckpointOptions;
   return { ...evaluatorOptions, severityTable: options.severityTable ?? DEFAULT_SEVERITY_TABLE,
-    predictionThresholds: options.predictionThresholds ?? DEFAULT_PREDICTION_THRESHOLDS };
+    predictionThresholds: options.predictionThresholds === undefined ? DEFAULT_PREDICTION_THRESHOLDS : options.predictionThresholds };
 }
 function snapshotRules(rules: CompiledRule[]): CompiledRule[] {
   const copy = structuredClone(rules);

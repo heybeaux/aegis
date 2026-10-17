@@ -596,6 +596,20 @@ function swarmlabReason(id: string): string {
   return 'SwarmLab RT-07: delegation depth >= 2 requires a value-echo handoff manifest';
 }
 
+const PREDICTOR_CONTRACT_HIT = 'swarmlab.rt50.predictor-requires-valid-numeric-contract';
+const plainObject = (value: unknown): value is Record<string, unknown> =>
+  value !== null && typeof value === 'object' && !Array.isArray(value);
+const probability = (value: unknown): value is number =>
+  typeof value === 'number' && Number.isFinite(value) && value >= 0 && value <= 1;
+function validPrediction(value: unknown): value is Prediction {
+  return plainObject(value) && probability(value['pFailure']) && probability(value['confidence']) &&
+    (value['source'] === 'awm' || value['source'] === 'prior');
+}
+function validThresholds(value: unknown): value is PredictionThresholds {
+  return plainObject(value) && probability(value['askAtOrAbove']) && probability(value['denyAtOrAbove']) &&
+    value['askAtOrAbove'] <= value['denyAtOrAbove'];
+}
+
 function predictionAction(
   prediction: Prediction | undefined,
   thresholds: PredictionThresholds,
@@ -633,7 +647,11 @@ export function evaluate(
   opts: EvaluateOptions = {},
 ): Evaluation {
   const severityTable = opts.severityTable ?? DEFAULT_SEVERITY_TABLE;
-  const thresholds = opts.predictionThresholds ?? DEFAULT_PREDICTION_THRESHOLDS;
+  // Only undefined means omitted. Null/missing fields cannot silently fall back to defaults.
+  const thresholds = opts.predictionThresholds === undefined ? DEFAULT_PREDICTION_THRESHOLDS : opts.predictionThresholds;
+  const predictionValid = opts.prediction === undefined || validPrediction(opts.prediction);
+  const contractInvalid = !predictionValid || !validThresholds(thresholds);
+  const prediction = predictionValid ? opts.prediction : undefined;
 
   // Build the set of ToolCall variants to test. When preprocessing is on,
   // decoded variants of the command are synthesized and evaluated in addition
@@ -680,7 +698,10 @@ export function evaluate(
   }
 
   const severityFloor: GateAction = maxSeverity ? severityTable[maxSeverity] : 'allow';
-  const predAction = predictionAction(opts.prediction, thresholds);
+  // The invalid-contract ask is independent of customizable severity tables. Do not coerce,
+  // clamp, or partly trust malformed predictions; deterministic deny still outranks it.
+  const predAction = contractInvalid ? 'ask' : predictionAction(prediction, thresholds);
+  if (contractInvalid) hits.push({ id: PREDICTOR_CONTRACT_HIT, severity: 'medium', category: 'swarmlab', target: 'argv' });
   const action = strictest(severityFloor, predAction);
 
   let decidedBy: Evaluation['decidedBy'];
@@ -689,19 +710,21 @@ export function evaluate(
   else decidedBy = 'severity';
 
   const reason =
-    decidedBy === 'prediction' && opts.prediction
-      ? `predicted P(failure)=${opts.prediction.pFailure.toFixed(2)} — ${action}`
-      : topReason || 'no rule matched';
+    contractInvalid && action !== 'deny'
+      ? 'SwarmLab RT-50: predictor contribution and thresholds require finite probabilities in [0,1], valid provenance, and ordered thresholds'
+      : decidedBy === 'prediction' && prediction
+        ? `predicted P(failure)=${prediction.pFailure.toFixed(2)} — ${action}`
+        : topReason || 'no rule matched';
 
   return {
     action,
     decidedBy,
     matches: hits,
     // RT-49: receipts own their metadata; callers may update reusable options after return.
-    prediction: opts.prediction === undefined ? undefined : {
-      pFailure: opts.prediction.pFailure,
-      confidence: opts.prediction.confidence,
-      source: opts.prediction.source,
+    prediction: prediction === undefined ? undefined : {
+      pFailure: prediction.pFailure,
+      confidence: prediction.confidence,
+      source: prediction.source,
     },
     reason,
     ruleVersions: [...(opts.ruleVersions ?? [])],

@@ -1454,6 +1454,77 @@ export const SWARMLAB_EVIDENCE_CASES: readonly SwarmLabEvidenceCase[] = [
       "comparator": "eq"
     }
   ]
+},
+{
+  "id": "RT-56",
+  "source": "SwarmLab exp66 loader probe preemption / Spec72",
+  "finding": "Loader ReDoS probes need interrupting deadlines: synchronous post-match elapsed checks cannot reject a pack while native regex backtracking is stuck.",
+  "owners": [
+    "aegis"
+  ],
+  "change": "Execute each native regex probe inside a timed V8 context with fixed script/primitive inputs; normalize invalid environment budgets; preserve synchronous API and exact pack/rule errors.",
+  "runIds": [
+    "lpp-mvevxxcc-75248",
+    "lpp-mvevy3zp-75313",
+    "lpp-mvew13a8-82403"
+  ],
+  "implementationRefs": [
+    "528438cc279623e5c57fa3c5b6f8375b3c7109fc"
+  ],
+  "implementationStatus": "landed",
+  "evidenceTier": "verified",
+  "aegisMapping": "Implemented in candidate source. Stored scores are historical regression evidence, NOT live execution; bounded public-artifact loader tests and linked frozen SwarmLab CI execute the behavior. No general runtime regex deadline/safety claim.",
+  "metrics": [
+    {
+      "name": "aegisProbeWatchdogRate",
+      "before": 1,
+      "after": 0,
+      "threshold": 0,
+      "comparator": "eq"
+    },
+    {
+      "name": "aegisHazardRejectionRate",
+      "before": 0,
+      "after": 1,
+      "threshold": 1,
+      "comparator": "eq"
+    },
+    {
+      "name": "aegisResolutionAccuracy",
+      "before": 0.631578947368421,
+      "after": 1,
+      "threshold": 1,
+      "comparator": "eq"
+    },
+    {
+      "name": "aegisControlAccuracy",
+      "before": 0.8571428571428571,
+      "after": 1,
+      "threshold": 1,
+      "comparator": "eq"
+    },
+    {
+      "name": "aegisRecoveryRate",
+      "before": 0.631578947368421,
+      "after": 1,
+      "threshold": 1,
+      "comparator": "eq"
+    },
+    {
+      "name": "substringControlAccuracy",
+      "before": 1,
+      "after": 1,
+      "threshold": 1,
+      "comparator": "eq"
+    },
+    {
+      "name": "infrastructureFailures",
+      "before": 0,
+      "after": 0,
+      "threshold": 0,
+      "comparator": "eq"
+    }
+  ]
 }
 ];
 

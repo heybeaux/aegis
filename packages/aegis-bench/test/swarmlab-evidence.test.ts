@@ -7,6 +7,14 @@ import {
 } from '../src/swarmlab-evidence.js';
 
 describe('SwarmLab evidence gate', () => {
+  it('pins RT56 measured loader probe watchdog red-green without claiming live scores',()=>{
+    const c=SWARMLAB_EVIDENCE_CASES.find(c=>c.id==='RT-56');
+    expect(c?.runIds).toEqual(["lpp-mvevxxcc-75248", "lpp-mvevy3zp-75313", "lpp-mvew13a8-82403"]);
+    expect(c?.implementationRefs).toContain('528438cc279623e5c57fa3c5b6f8375b3c7109fc');
+    expect(c?.metrics.find(m=>m.name==='aegisProbeWatchdogRate')).toMatchObject({before:1,after:0,threshold:0,comparator:'eq'});
+    expect(c?.metrics.find(m=>m.name==='aegisResolutionAccuracy')).toMatchObject({before:12/19,after:1,threshold:1,comparator:'eq'});
+  });
+
   it('pins RT55 validated loader snapshot real-package red-green, not live score execution',()=>{
     const c=SWARMLAB_EVIDENCE_CASES.find(c=>c.id==='RT-55');
     expect(c?.runIds).toEqual(["lro-mvalf27u", "lro-mvalf2al", "lro-mvalgz7p"]);
@@ -292,6 +300,7 @@ describe('SwarmLab evidence gate', () => {
       'RT-49',
       'RT-54',
       'RT-55',
+      'RT-56',
     ]);
 
     const mappings = SWARMLAB_EVIDENCE_CASES.map((c) => c.aegisMapping).join('\n');
@@ -341,7 +350,7 @@ describe('SwarmLab evidence gate', () => {
 
   it('renders a report banner matching the evaluated evidence range', () => {
     const markdown = swarmLabEvidenceToMarkdown(evaluateSwarmLabEvidence());
-    expect(markdown).toContain('REPLAY-VERIFIED SWARMLAB RETESTS (RT-01..RT-55)');
+    expect(markdown).toContain('REPLAY-VERIFIED SWARMLAB RETESTS (RT-01..RT-56)');
     expect(markdown).not.toContain('RT-01..RT-10');
     expect(markdown).toContain('0 provisional evidence tier');
     expect(markdown).toContain('| RT-06 | passed | landed | verified |');

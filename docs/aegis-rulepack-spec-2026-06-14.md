@@ -95,10 +95,21 @@ suite becomes our spec — we don't trust the regex translated by eye.
 The compiler rejects any other flag at load time.
 
 ### 2.3 ReDoS guard
-Every rule is run under a per-match timeout budget (the engine is on the hot path of every tool
-call). Catastrophic-backtracking patterns must be caught at **pack-load time**, not runtime: the
-loader runs each compiled regex against a set of adversarial filler strings with a deadline and
-refuses to load a pack containing a pattern that blows the budget. Fail-closed on the pack, log loudly.
+At **pack-load time**, each compiled regex is run against a finite set of adversarial
+filler strings. Each probe constructs its regex inside a V8 context with an
+interrupting timeout, not a host-thread `test()` followed by an elapsed check.
+A timeout (or inability to finish the probe safely) throws a pack/rule-bound
+`RulePackError`; the entire pack fails closed. Substrings bypass regex probing.
+`AEGIS_REDOS_BUDGET_MS` defaults to 25ms per probe. Positive finite values up to
+2,147,483,647ms round up to integer milliseconds; invalid/zero/negative/out-of-range
+values fall back to25ms. This is a guard, not a performance microbenchmark.
+
+**Limit:** finite probes do not prove arbitrary regex safety. Runtime evaluation
+still uses native synchronous `RegExp.test` and has no general per-match deadline.
+No cumulative pack deadline, hostile-JS sandbox or production safety certification
+is claimed. Keep operator-controlled patterns and bound host inputs. Exp66/RT56
+measures preemption of the loader's own probes only; preserving JS features,
+synchronous loadPack and subsequent safe loads is part of that contract.
 
 ---
 

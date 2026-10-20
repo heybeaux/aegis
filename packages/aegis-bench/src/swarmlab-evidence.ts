@@ -1466,10 +1466,10 @@ export const SWARMLAB_EVIDENCE_CASES: readonly SwarmLabEvidenceCase[] = [
   "runIds": [
     "rrib-mvgbfpzj-90188",
     "rrib-mvgbfz19-90260",
-    "rrib-mvgbm9x1-7963"
+    "rrib-mvgctbkv-17960"
   ],
   "implementationRefs": [
-    "0bfd2fdc065d5e27c98f0e566d6d40e6ede99d77"
+    "dad90106194bee218a006243ae857decde2f7c52"
   ],
   "implementationStatus": "landed",
   "evidenceTier": "verified",

@@ -9,8 +9,8 @@ import {
 describe('SwarmLab evidence gate', () => {
   it('pins RT57 actual-input regex deadline real-package evidence, not live execution',()=>{
     const c=SWARMLAB_EVIDENCE_CASES.find(c=>c.id==='RT-57');
-    expect(c?.runIds).toEqual(["rrib-mvgbfpzj-90188", "rrib-mvgbfz19-90260", "rrib-mvgbm9x1-7963"]);
-    expect(c?.implementationRefs).toContain("0bfd2fdc065d5e27c98f0e566d6d40e6ede99d77");
+    expect(c?.runIds).toEqual(["rrib-mvgbfpzj-90188", "rrib-mvgbfz19-90260", "rrib-mvgctbkv-17960"]);
+    expect(c?.implementationRefs).toContain("dad90106194bee218a006243ae857decde2f7c52");
     expect(c?.metrics.find(m=>m.name==='runtimeWatchdogRate')).toMatchObject({before:1,after:0,threshold:0,comparator:'eq'});
     expect(c?.metrics.find(m=>m.name==='unresolvedSafetyRate')).toMatchObject({before:0,after:1,threshold:1,comparator:'eq'});
     expect(c?.metrics.find(m=>m.name==='resolutionAccuracy')).toMatchObject({before:12/19,after:1,threshold:1,comparator:'eq'});

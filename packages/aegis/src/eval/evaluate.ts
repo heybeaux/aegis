@@ -23,6 +23,7 @@ import type {
   ToolCall,
 } from '../types.js';
 import { extractDecodedVariants } from './preprocess.js';
+import { boundedRegexMatchMany, regexMatchBudgetMs, type RegexJob, type RegexJobResult } from './regex-budget.js';
 
 export const DEFAULT_SEVERITY_TABLE: SeverityTable = {
   critical: 'deny',
@@ -63,18 +64,35 @@ function ruleApplies(appliesTo: string[], tool: string): boolean {
   return appliesTo.includes('*') || appliesTo.includes(tool);
 }
 
-function matchesRule(compiled: CompiledRule, call: ToolCall): boolean {
-  const { rule, regex } = compiled;
-  if (!ruleApplies(rule.appliesTo, call.tool)) return false;
-  if (rule.enabled === false) return false;
+/** Strings a rule must test against this call, or null when the rule cannot apply. */
+function ruleStrings(compiled: CompiledRule, call: ToolCall): string[] | null {
+  const { rule } = compiled;
+  if (!ruleApplies(rule.appliesTo, call.tool)) return null;
+  if (rule.enabled === false) return null;
+  return targetString(call, rule.match.target);
+}
 
-  const strings = targetString(call, rule.match.target);
-  for (const s of strings) {
-    if (rule.match.kind === 'regex' && regex) {
-      if (regex.test(s)) return true;
-    } else if (rule.match.kind === 'substring') {
-      if (s.includes(rule.match.pattern)) return true;
+/**
+ * Match outcome for one (variant, rule). Regex results come from one bounded batch in
+ * the same order the sequential matcher would test them: first unknown => null, first
+ * match => true. Substring matching is unchanged and never enters the VM.
+ */
+function matchesRule(
+  compiled: CompiledRule,
+  strings: string[] | null,
+  regexResults: RegexJobResult[] | undefined,
+): boolean | null {
+  if (strings === null) return false;
+  const { rule, regex } = compiled;
+  if (rule.match.kind === 'regex' && regex) {
+    for (const r of regexResults ?? []) {
+      if (r === null) return null;
+      if (r === true) return true;
     }
+    return false;
+  }
+  if (rule.match.kind === 'substring') {
+    for (const s of strings) if (s.includes(rule.match.pattern)) return true;
   }
   return false;
 }
@@ -614,6 +632,8 @@ const SEVERITY_RANK: Record<Severity, number> = {
 };
 
 export interface EvaluateOptions {
+  /** Per native-regex match deadline in ms. Default 100; positive finite <=1000, rounded up. Invalid values use default. */
+  regexMatchBudgetMs?: number;
   severityTable?: SeverityTable;
   predictionThresholds?: PredictionThresholds;
   prediction?: Prediction;
@@ -634,6 +654,8 @@ export function evaluate(
 ): Evaluation {
   const severityTable = opts.severityTable ?? DEFAULT_SEVERITY_TABLE;
   const thresholds = opts.predictionThresholds ?? DEFAULT_PREDICTION_THRESHOLDS;
+  const matchBudget = regexMatchBudgetMs(opts.regexMatchBudgetMs);
+  const unresolvedRules = new Set<CompiledRule>();
 
   // Build the set of ToolCall variants to test. When preprocessing is on,
   // decoded variants of the command are synthesized and evaluated in addition
@@ -659,9 +681,41 @@ export function evaluate(
     }
   }
 
-  for (const testCall of callsToTest) {
-    for (const compiled of compiledRules) {
-      if (!matchesRule(compiled, testCall)) continue;
+  // Collect every native regex test up front, in sequential order, and run them in
+  // one interruptible batch (per-job budget; timed-out rule is unknown and skipped).
+  const ruleIndex = new Map<CompiledRule, number>();
+  compiledRules.forEach((c, i) => { if (!ruleIndex.has(c)) ruleIndex.set(c, i); });
+  const jobs: RegexJob[] = [];
+  const plan = callsToTest.map(testCall => compiledRules.map(compiled => {
+    const strings = ruleStrings(compiled, testCall);
+    let slice: [number, number] | undefined;
+    if (strings && compiled.rule.match.kind === 'regex' && compiled.regex && strings.length > 0) {
+      let source: string | undefined;
+      let flags: string | undefined;
+      try { source = compiled.regex.source; flags = compiled.regex.flags; } catch { /* unknown below */ }
+      const begin = jobs.length;
+      const group = jobs.length;
+      for (const input of strings) {
+        jobs.push({ rule: ruleIndex.get(compiled)!, group, source: typeof source === 'string' ? source : '(',
+          flags: typeof flags === 'string' ? flags : '', input });
+      }
+      slice = [begin, jobs.length];
+    }
+    return { strings, slice };
+  }));
+  const regexResults = boundedRegexMatchMany(jobs, matchBudget);
+
+  for (let v = 0; v < callsToTest.length; v++) {
+    for (let k = 0; k < compiledRules.length; k++) {
+      const compiled = compiledRules[k]!;
+      if (unresolvedRules.has(compiled)) continue;
+      const { strings, slice } = plan[v]![k]!;
+      const matched = matchesRule(compiled, strings, slice ? regexResults.slice(slice[0], slice[1]) : undefined);
+      if (matched === null) {
+        unresolvedRules.add(compiled);
+        continue;
+      }
+      if (!matched) continue;
       const { rule } = compiled;
       // Avoid duplicate hit entries when the same rule fires on multiple variants.
       if (!hits.some((h) => h.id === rule.id)) {
@@ -681,17 +735,26 @@ export function evaluate(
 
   const severityFloor: GateAction = maxSeverity ? severityTable[maxSeverity] : 'allow';
   const predAction = predictionAction(opts.prediction, thresholds);
-  const action = strictest(severityFloor, predAction);
+  // Unresolved matching is an independent ask floor, not a fabricated rule hit
+  // and not configurable through the ordinary severity table. Keep scanning so
+  // a separate genuine rule/predictor deny is never hidden by a timeout.
+  const policyAction = strictest(severityFloor, unresolvedRules.size > 0 ? 'ask' : 'allow');
+  const action = strictest(policyAction, predAction);
 
   let decidedBy: Evaluation['decidedBy'];
-  if (severityFloor === action && predAction === action) decidedBy = 'both';
-  else if (predAction === action && severityFloor !== action) decidedBy = 'prediction';
+  if (policyAction === action && predAction === action) decidedBy = 'both';
+  else if (predAction === action && policyAction !== action) decidedBy = 'prediction';
   else decidedBy = 'severity';
 
-  const reason =
+  let reason =
     decidedBy === 'prediction' && opts.prediction
       ? `predicted P(failure)=${opts.prediction.pFailure.toFixed(2)} — ${action}`
       : topReason || 'no rule matched';
+
+  if (unresolvedRules.size > 0) {
+    const diagnostic = `regex match budget exceeded or matching unavailable (${matchBudget}ms); unresolved rules: ${[...unresolvedRules].map(c => c.rule.id).join(', ')}`;
+    reason = action === 'deny' ? `${reason}; ${diagnostic}` : diagnostic;
+  }
 
   return {
     action,

@@ -1454,6 +1454,84 @@ export const SWARMLAB_EVIDENCE_CASES: readonly SwarmLabEvidenceCase[] = [
       "comparator": "eq"
     }
   ]
+},
+{
+  "id": "RT-57",
+  "source": "SwarmLab Spec73 / exp67 real-package runtime regex input budget",
+  "finding": "Finite loader probes miss catastrophic actual-input matching; bounded runtime match yields unknown ask floor, not a false nonmatch or hit.",
+  "owners": [
+    "aegis"
+  ],
+  "change": "Interrupt actual native regex matching; continue independent deny classification, safe budget fallback and caller ownership/recovery.",
+  "runIds": [
+    "rrib-mvgbfpzj-90188",
+    "rrib-mvgbfz19-90260",
+    "rrib-mvgctbkv-17960"
+  ],
+  "implementationRefs": [
+    "dad90106194bee218a006243ae857decde2f7c52"
+  ],
+  "implementationStatus": "landed",
+  "evidenceTier": "verified",
+  "aegisMapping": "Runtime regex match deadline + unknown decision floor; stored scores are historical regression only, live source/dist CI separately.",
+  "metrics": [
+    {
+      "name": "runtimeWatchdogRate",
+      "before": 1,
+      "after": 0,
+      "threshold": 0,
+      "comparator": "eq"
+    },
+    {
+      "name": "unresolvedSafetyRate",
+      "before": 0,
+      "after": 1,
+      "threshold": 1,
+      "comparator": "eq"
+    },
+    {
+      "name": "resolutionAccuracy",
+      "before": 0.631578947368421,
+      "after": 1,
+      "threshold": 1,
+      "comparator": "eq"
+    },
+    {
+      "name": "controlAccuracy",
+      "before": 1,
+      "after": 1,
+      "threshold": 1,
+      "comparator": "eq"
+    },
+    {
+      "name": "recoveryRate",
+      "before": 0.631578947368421,
+      "after": 1,
+      "threshold": 1,
+      "comparator": "eq"
+    },
+    {
+      "name": "ownershipRate",
+      "before": 0.631578947368421,
+      "after": 1,
+      "threshold": 1,
+      "comparator": "eq"
+    },
+    {
+      "name": "linearControlAccuracy",
+      "before": 1,
+      "after": 1,
+      "threshold": 1,
+      "comparator": "eq"
+    },
+    {
+      "name": "infrastructureFailures",
+      "before": 0,
+      "after": 0,
+      "threshold": 0,
+      "comparator": "eq"
+    }
+  ]
 }
 ];
 

@@ -7,6 +7,15 @@ import {
 } from '../src/swarmlab-evidence.js';
 
 describe('SwarmLab evidence gate', () => {
+  it('pins RT57 actual-input regex deadline real-package evidence, not live execution',()=>{
+    const c=SWARMLAB_EVIDENCE_CASES.find(c=>c.id==='RT-57');
+    expect(c?.runIds).toEqual(["rrib-mvgbfpzj-90188", "rrib-mvgbfz19-90260", "rrib-mvgctbkv-17960"]);
+    expect(c?.implementationRefs).toContain("dad90106194bee218a006243ae857decde2f7c52");
+    expect(c?.metrics.find(m=>m.name==='runtimeWatchdogRate')).toMatchObject({before:1,after:0,threshold:0,comparator:'eq'});
+    expect(c?.metrics.find(m=>m.name==='unresolvedSafetyRate')).toMatchObject({before:0,after:1,threshold:1,comparator:'eq'});
+    expect(c?.metrics.find(m=>m.name==='resolutionAccuracy')).toMatchObject({before:12/19,after:1,threshold:1,comparator:'eq'});
+  });
+
   it('pins RT55 validated loader snapshot real-package red-green, not live score execution',()=>{
     const c=SWARMLAB_EVIDENCE_CASES.find(c=>c.id==='RT-55');
     expect(c?.runIds).toEqual(["lro-mvalf27u", "lro-mvalf2al", "lro-mvalgz7p"]);
@@ -61,8 +70,8 @@ describe('SwarmLab evidence gate', () => {
   it('passes when all stack mappings are landed with verified evidence', () => {
     const result = evaluateSwarmLabEvidence();
     expect(result.status).toBe('passed');
-    expect(result.total).toBe(51);
-    expect(result.passed).toBe(51);
+    expect(result.total).toBe(52);
+    expect(result.passed).toBe(52);
     expect(result.failed).toBe(0);
     expect(result.partial).toBe(0);
     expect(result.pendingImplementation).toBe(0);
@@ -292,6 +301,7 @@ describe('SwarmLab evidence gate', () => {
       'RT-49',
       'RT-54',
       'RT-55',
+      'RT-57',
     ]);
 
     const mappings = SWARMLAB_EVIDENCE_CASES.map((c) => c.aegisMapping).join('\n');
@@ -341,7 +351,7 @@ describe('SwarmLab evidence gate', () => {
 
   it('renders a report banner matching the evaluated evidence range', () => {
     const markdown = swarmLabEvidenceToMarkdown(evaluateSwarmLabEvidence());
-    expect(markdown).toContain('REPLAY-VERIFIED SWARMLAB RETESTS (RT-01..RT-55)');
+    expect(markdown).toContain('REPLAY-VERIFIED SWARMLAB RETESTS (RT-01..RT-57)');
     expect(markdown).not.toContain('RT-01..RT-10');
     expect(markdown).toContain('0 provisional evidence tier');
     expect(markdown).toContain('| RT-06 | passed | landed | verified |');

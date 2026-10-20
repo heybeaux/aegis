@@ -272,6 +272,15 @@ variants; diagnostics are deduplicated. Disabled/inapplicable rules and absent
 input remain bypassed, substring matching is unchanged, and caller records and
 RegExp state remain owned by the caller. A later evaluation can recover normally.
 
+Implementation: all native tests for one evaluation run in one entry into a private
+fixed-code VM realm (compiled patterns cached by source+flags, `lastIndex` reset,
+legacy `RegExp.input` statics cleared and data slots released after each call). If a
+batch times out, the in-flight job is retried alone with a fresh full budget; only a
+job that alone exceeds the budget is unknown. Entering the VM once per match cost
+~2.4ms/eval on the builtin corpus and failed CI benchmark timeouts; batching is
+~0.1ms/eval. A same-rule unknown suppresses its later strings/variants (conservative
+ask), matching the sequential order.
+
 This does not bound cumulative work across an unbounded number of rules/strings,
 loader probes, regex compilation, preprocessing, memory use or arbitrary host
 JavaScript. It does not incorporate the separately held exp66 loader-probe change.

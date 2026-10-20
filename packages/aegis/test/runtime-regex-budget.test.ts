@@ -44,3 +44,31 @@ describe('RT-57 native runtime regex match budget',()=>{
   expect(boundedRegexMatch({source:'[',flags:''} as RegExp,'safe',100)).toBeNull();
  });
 });
+
+describe('RT-57 batched bounded matching keeps per-match semantics',()=>{
+ it('many individually-fast matches are never misreported unknown by a shared batch budget',()=>{
+  // Alphabet deliberately outside loader probes (exp66 / RT56 is held separately).
+  // Calibrate a moderately backtracking input so ONE match costs roughly budget/4.
+  const budget=40;let n=14,t=0;
+  for(;n<26;n++){const s=performance.now();/^(c+)+d$/.test('c'.repeat(n)+'!');t=performance.now()-s;if(t>=budget/4)break;}
+  if(t>=budget)return; // machine too slow to stay within a single budget; nothing to assert
+  const input='c'.repeat(n)+'!';
+  const rules=load(Array.from({length:12},(_,i)=>r(`slow-${i}`,{severity:'critical',match:{kind:'regex',pattern:'^(c+)+d$',target:'command'}})));
+  const out=evaluate({tool:'Bash',command:input},rules,{regexMatchBudgetMs:budget});
+  expect(out.reason).not.toMatch(/regex match budget/);expect(out.action).toBe('allow');
+ });
+ it('a timeout mid-batch still resolves later rules and a later genuine regex deny',()=>{
+  const rules=load([r('fast-a',{match:{kind:'regex',pattern:'^nothing$',target:'command'}}),r(),r('late-critical',{severity:'critical',match:{kind:'regex',pattern:'q!$',target:'command'}})]);
+  const out=evaluate({tool:'Bash',command:danger},rules,{regexMatchBudgetMs:10});
+  expect(out.action).toBe('deny');expect(out.matches.map(m=>m.id)).toEqual(['late-critical']);expect(out.reason).toMatch(/unresolved rules: hazard/);
+ });
+ it('reused cached regexes stay stateless across calls and inputs',()=>{
+  const rules=load([r('cached',{severity:'critical',match:{kind:'regex',pattern:'danger',flags:'i',target:'command'}})]);
+  for(let i=0;i<5;i++){expect(evaluate({tool:'Bash',command:'DANGER'},rules).action).toBe('deny');expect(evaluate({tool:'Bash',command:'ok'},rules).action).toBe('allow');}
+ });
+ it('first-match-per-target ordering: unknown before a later string is unknown, match before is a hit',()=>{
+  const rules=load([r('order',{severity:'critical',match:{kind:'regex',pattern:'^(q+)+r$',target:'argv'}})]);
+  expect(evaluate({tool:'Bash',argv:['qr',danger]},rules,{regexMatchBudgetMs:10}).action).toBe('deny');
+  expect(evaluate({tool:'Bash',argv:[danger,'qr']},rules,{regexMatchBudgetMs:10}).action).toBe('ask');
+ });
+});

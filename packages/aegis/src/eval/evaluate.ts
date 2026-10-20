@@ -23,7 +23,7 @@ import type {
   ToolCall,
 } from '../types.js';
 import { extractDecodedVariants } from './preprocess.js';
-import { boundedRegexMatch, regexMatchBudgetMs } from './regex-budget.js';
+import { boundedRegexMatchMany, regexMatchBudgetMs, type RegexJob, type RegexJobResult } from './regex-budget.js';
 
 export const DEFAULT_SEVERITY_TABLE: SeverityTable = {
   critical: 'deny',
@@ -64,20 +64,35 @@ function ruleApplies(appliesTo: string[], tool: string): boolean {
   return appliesTo.includes('*') || appliesTo.includes(tool);
 }
 
-function matchesRule(compiled: CompiledRule, call: ToolCall, budgetMs: number): boolean | null {
-  const { rule, regex } = compiled;
-  if (!ruleApplies(rule.appliesTo, call.tool)) return false;
-  if (rule.enabled === false) return false;
+/** Strings a rule must test against this call, or null when the rule cannot apply. */
+function ruleStrings(compiled: CompiledRule, call: ToolCall): string[] | null {
+  const { rule } = compiled;
+  if (!ruleApplies(rule.appliesTo, call.tool)) return null;
+  if (rule.enabled === false) return null;
+  return targetString(call, rule.match.target);
+}
 
-  const strings = targetString(call, rule.match.target);
-  for (const s of strings) {
-    if (rule.match.kind === 'regex' && regex) {
-      const matched = boundedRegexMatch(regex, s, budgetMs);
-      if (matched === null) return null;
-      if (matched) return true;
-    } else if (rule.match.kind === 'substring') {
-      if (s.includes(rule.match.pattern)) return true;
+/**
+ * Match outcome for one (variant, rule). Regex results come from one bounded batch in
+ * the same order the sequential matcher would test them: first unknown => null, first
+ * match => true. Substring matching is unchanged and never enters the VM.
+ */
+function matchesRule(
+  compiled: CompiledRule,
+  strings: string[] | null,
+  regexResults: RegexJobResult[] | undefined,
+): boolean | null {
+  if (strings === null) return false;
+  const { rule, regex } = compiled;
+  if (rule.match.kind === 'regex' && regex) {
+    for (const r of regexResults ?? []) {
+      if (r === null) return null;
+      if (r === true) return true;
     }
+    return false;
+  }
+  if (rule.match.kind === 'substring') {
+    for (const s of strings) if (s.includes(rule.match.pattern)) return true;
   }
   return false;
 }
@@ -666,10 +681,36 @@ export function evaluate(
     }
   }
 
-  for (const testCall of callsToTest) {
-    for (const compiled of compiledRules) {
+  // Collect every native regex test up front, in sequential order, and run them in
+  // one interruptible batch (per-job budget; timed-out rule is unknown and skipped).
+  const ruleIndex = new Map<CompiledRule, number>();
+  compiledRules.forEach((c, i) => { if (!ruleIndex.has(c)) ruleIndex.set(c, i); });
+  const jobs: RegexJob[] = [];
+  const plan = callsToTest.map(testCall => compiledRules.map(compiled => {
+    const strings = ruleStrings(compiled, testCall);
+    let slice: [number, number] | undefined;
+    if (strings && compiled.rule.match.kind === 'regex' && compiled.regex && strings.length > 0) {
+      let source: string | undefined;
+      let flags: string | undefined;
+      try { source = compiled.regex.source; flags = compiled.regex.flags; } catch { /* unknown below */ }
+      const begin = jobs.length;
+      const group = jobs.length;
+      for (const input of strings) {
+        jobs.push({ rule: ruleIndex.get(compiled)!, group, source: typeof source === 'string' ? source : '(',
+          flags: typeof flags === 'string' ? flags : '', input });
+      }
+      slice = [begin, jobs.length];
+    }
+    return { strings, slice };
+  }));
+  const regexResults = boundedRegexMatchMany(jobs, matchBudget);
+
+  for (let v = 0; v < callsToTest.length; v++) {
+    for (let k = 0; k < compiledRules.length; k++) {
+      const compiled = compiledRules[k]!;
       if (unresolvedRules.has(compiled)) continue;
-      const matched = matchesRule(compiled, testCall, matchBudget);
+      const { strings, slice } = plan[v]![k]!;
+      const matched = matchesRule(compiled, strings, slice ? regexResults.slice(slice[0], slice[1]) : undefined);
       if (matched === null) {
         unresolvedRules.add(compiled);
         continue;

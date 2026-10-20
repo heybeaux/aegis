@@ -23,6 +23,7 @@ import type {
   ToolCall,
 } from '../types.js';
 import { extractDecodedVariants } from './preprocess.js';
+import { boundedRegexMatch, regexMatchBudgetMs } from './regex-budget.js';
 
 export const DEFAULT_SEVERITY_TABLE: SeverityTable = {
   critical: 'deny',
@@ -63,7 +64,7 @@ function ruleApplies(appliesTo: string[], tool: string): boolean {
   return appliesTo.includes('*') || appliesTo.includes(tool);
 }
 
-function matchesRule(compiled: CompiledRule, call: ToolCall): boolean {
+function matchesRule(compiled: CompiledRule, call: ToolCall, budgetMs: number): boolean | null {
   const { rule, regex } = compiled;
   if (!ruleApplies(rule.appliesTo, call.tool)) return false;
   if (rule.enabled === false) return false;
@@ -71,7 +72,9 @@ function matchesRule(compiled: CompiledRule, call: ToolCall): boolean {
   const strings = targetString(call, rule.match.target);
   for (const s of strings) {
     if (rule.match.kind === 'regex' && regex) {
-      if (regex.test(s)) return true;
+      const matched = boundedRegexMatch(regex, s, budgetMs);
+      if (matched === null) return null;
+      if (matched) return true;
     } else if (rule.match.kind === 'substring') {
       if (s.includes(rule.match.pattern)) return true;
     }
@@ -614,6 +617,8 @@ const SEVERITY_RANK: Record<Severity, number> = {
 };
 
 export interface EvaluateOptions {
+  /** Per native-regex match deadline in ms. Default 100; positive finite <=1000, rounded up. Invalid values use default. */
+  regexMatchBudgetMs?: number;
   severityTable?: SeverityTable;
   predictionThresholds?: PredictionThresholds;
   prediction?: Prediction;
@@ -634,6 +639,8 @@ export function evaluate(
 ): Evaluation {
   const severityTable = opts.severityTable ?? DEFAULT_SEVERITY_TABLE;
   const thresholds = opts.predictionThresholds ?? DEFAULT_PREDICTION_THRESHOLDS;
+  const matchBudget = regexMatchBudgetMs(opts.regexMatchBudgetMs);
+  const unresolvedRules = new Set<CompiledRule>();
 
   // Build the set of ToolCall variants to test. When preprocessing is on,
   // decoded variants of the command are synthesized and evaluated in addition
@@ -661,7 +668,13 @@ export function evaluate(
 
   for (const testCall of callsToTest) {
     for (const compiled of compiledRules) {
-      if (!matchesRule(compiled, testCall)) continue;
+      if (unresolvedRules.has(compiled)) continue;
+      const matched = matchesRule(compiled, testCall, matchBudget);
+      if (matched === null) {
+        unresolvedRules.add(compiled);
+        continue;
+      }
+      if (!matched) continue;
       const { rule } = compiled;
       // Avoid duplicate hit entries when the same rule fires on multiple variants.
       if (!hits.some((h) => h.id === rule.id)) {
@@ -681,17 +694,26 @@ export function evaluate(
 
   const severityFloor: GateAction = maxSeverity ? severityTable[maxSeverity] : 'allow';
   const predAction = predictionAction(opts.prediction, thresholds);
-  const action = strictest(severityFloor, predAction);
+  // Unresolved matching is an independent ask floor, not a fabricated rule hit
+  // and not configurable through the ordinary severity table. Keep scanning so
+  // a separate genuine rule/predictor deny is never hidden by a timeout.
+  const policyAction = strictest(severityFloor, unresolvedRules.size > 0 ? 'ask' : 'allow');
+  const action = strictest(policyAction, predAction);
 
   let decidedBy: Evaluation['decidedBy'];
-  if (severityFloor === action && predAction === action) decidedBy = 'both';
-  else if (predAction === action && severityFloor !== action) decidedBy = 'prediction';
+  if (policyAction === action && predAction === action) decidedBy = 'both';
+  else if (predAction === action && policyAction !== action) decidedBy = 'prediction';
   else decidedBy = 'severity';
 
-  const reason =
+  let reason =
     decidedBy === 'prediction' && opts.prediction
       ? `predicted P(failure)=${opts.prediction.pFailure.toFixed(2)} — ${action}`
       : topReason || 'no rule matched';
+
+  if (unresolvedRules.size > 0) {
+    const diagnostic = `regex match budget exceeded or matching unavailable (${matchBudget}ms); unresolved rules: ${[...unresolvedRules].map(c => c.rule.id).join(', ')}`;
+    reason = action === 'deny' ? `${reason}; ${diagnostic}` : diagnostic;
+  }
 
   return {
     action,

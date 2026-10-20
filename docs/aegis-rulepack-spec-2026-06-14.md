@@ -250,3 +250,31 @@ label spec). The two specs meet here.
   `Read`). Need the canonical list to validate `appliesTo` at load. (OpenClaw tool registry.)
 - **Pack signing.** Do builtin packs get signed (ed25519, same as Sonder chain) so a tampered rule
   pack is detectable? Leaning yes for the published corpus.
+
+### Runtime input matching (SwarmLab exp67 / RT-57)
+
+Finite loader probes are a heuristic, not a proof of runtime regex safety. A pack
+can pass them and still backtrack catastrophically on a different tool input.
+`evaluate` now invokes native regex matching under an interruptible VM deadline
+for every actual command/content/path/argv string, including decoded variants.
+It remains synchronous. Policy/input strings are data; never interpolated into
+JavaScript. JS regex flags/lookbehind/backreference semantics remain supported.
+
+`EvaluateOptions.regexMatchBudgetMs` defaults to 100ms per native match. Positive
+finite values <=1000ms round up; absent, malformed, nonpositive or out-of-range
+values use the default. This is an interruption safety margin, not a benchmark.
+On timeout or unavailable execution the match is **unknown**, not false: an
+independent `ask` floor cannot be weakened by a custom severity table. The reason
+contains a regex budget/unavailable diagnostic and unresolved rule ids; no false
+rule hit is inserted into `matches`. Continue other rules so a genuine rule or
+predictor deny is preserved. An unresolved rule is not retried across decoded
+variants; diagnostics are deduplicated. Disabled/inapplicable rules and absent
+input remain bypassed, substring matching is unchanged, and caller records and
+RegExp state remain owned by the caller. A later evaluation can recover normally.
+
+This does not bound cumulative work across an unbounded number of rules/strings,
+loader probes, regex compilation, preprocessing, memory use or arbitrary host
+JavaScript. It does not incorporate the separately held exp66 loader-probe change.
+The full tool-call latency envelope needs a separate experiment. Evidence and
+run/package refs are pinned in the RT-57 release catalogue and SwarmLab receipts;
+historical scores alone are not live-package proof.

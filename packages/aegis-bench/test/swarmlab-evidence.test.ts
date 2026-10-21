@@ -7,6 +7,15 @@ import {
 } from '../src/swarmlab-evidence.js';
 
 describe('SwarmLab evidence gate', () => {
+  it('pins RT58 cumulative native-work evidence as historical regression, not live execution',()=>{
+    const c=SWARMLAB_EVIDENCE_CASES.find(c=>c.id==='RT-58');
+    expect(c?.runIds).toEqual(["crw-mvhqnt5r-74169", "crw-mvhqo3nm-74077", "crw-mvhqqvjv-84114"]);
+    expect(c?.implementationRefs).toContain('fee7bd9ab4d71d399c5f243b0c110aeb6833b616');
+    expect(c?.metrics.find(m=>m.name==='aggregateWatchdogRate')).toMatchObject({before:1,after:0,threshold:0,comparator:'eq'});
+    expect(c?.metrics.find(m=>m.name==='cumulativeSafetyRate')).toMatchObject({before:0,after:1,threshold:1,comparator:'eq'});
+    expect(c?.metrics.find(m=>m.name==='resolutionAccuracy')).toMatchObject({before:13/21,after:1,threshold:1,comparator:'eq'});
+  });
+
   it('pins RT57 actual-input regex deadline real-package evidence, not live execution',()=>{
     const c=SWARMLAB_EVIDENCE_CASES.find(c=>c.id==='RT-57');
     expect(c?.runIds).toEqual(["rrib-mvgbfpzj-90188", "rrib-mvgbfz19-90260", "rrib-mvgctbkv-17960"]);
@@ -302,6 +311,7 @@ describe('SwarmLab evidence gate', () => {
       'RT-54',
       'RT-55',
       'RT-57',
+      'RT-58',
     ]);
 
     const mappings = SWARMLAB_EVIDENCE_CASES.map((c) => c.aegisMapping).join('\n');
@@ -351,7 +361,7 @@ describe('SwarmLab evidence gate', () => {
 
   it('renders a report banner matching the evaluated evidence range', () => {
     const markdown = swarmLabEvidenceToMarkdown(evaluateSwarmLabEvidence());
-    expect(markdown).toContain('REPLAY-VERIFIED SWARMLAB RETESTS (RT-01..RT-57)');
+    expect(markdown).toContain('REPLAY-VERIFIED SWARMLAB RETESTS (RT-01..RT-58)');
     expect(markdown).not.toContain('RT-01..RT-10');
     expect(markdown).toContain('0 provisional evidence tier');
     expect(markdown).toContain('| RT-06 | passed | landed | verified |');

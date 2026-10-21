@@ -1533,6 +1533,84 @@ export const SWARMLAB_EVIDENCE_CASES: readonly SwarmLabEvidenceCase[] = [
     }
   ]
 }
+,{
+  "id": "RT-58",
+  "source": "SwarmLab Spec74 / exp68 cumulative native regex work budget",
+  "finding": "Independent bounded matches cumulatively starve one evaluate invocation; shared deadline returns truthful unresolved ask",
+  "owners": [
+    "aegis"
+  ],
+  "change": "Cap native batch and retries by one per-evaluation deadline; retain prior proven hits and independent substring/predictor deny",
+  "runIds": [
+    "crw-mvhqnt5r-74169",
+    "crw-mvhqo3nm-74077",
+    "crw-mvhqqvjv-84114"
+  ],
+  "implementationRefs": [
+    "fee7bd9ab4d71d399c5f243b0c110aeb6833b616"
+  ],
+  "implementationStatus": "landed",
+  "evidenceTier": "verified",
+  "aegisMapping": "Native regex cumulative work deadline only, not full evaluation/preprocessing bound; historical scores below, executable CI separately.",
+  "metrics": [
+    {
+      "name": "aggregateWatchdogRate",
+      "before": 1,
+      "after": 0,
+      "threshold": 0,
+      "comparator": "eq"
+    },
+    {
+      "name": "cumulativeSafetyRate",
+      "before": 0,
+      "after": 1,
+      "threshold": 1,
+      "comparator": "eq"
+    },
+    {
+      "name": "resolutionAccuracy",
+      "before": 0.6190476190476191,
+      "after": 1,
+      "threshold": 1,
+      "comparator": "eq"
+    },
+    {
+      "name": "controlAccuracy",
+      "before": 1,
+      "after": 1,
+      "threshold": 1,
+      "comparator": "eq"
+    },
+    {
+      "name": "recoveryRate",
+      "before": 0.6190476190476191,
+      "after": 1,
+      "threshold": 1,
+      "comparator": "eq"
+    },
+    {
+      "name": "ownershipRate",
+      "before": 0.6190476190476191,
+      "after": 1,
+      "threshold": 1,
+      "comparator": "eq"
+    },
+    {
+      "name": "linearControlAccuracy",
+      "before": 1,
+      "after": 1,
+      "threshold": 1,
+      "comparator": "eq"
+    },
+    {
+      "name": "infrastructureFailures",
+      "before": 0,
+      "after": 0,
+      "threshold": 0,
+      "comparator": "eq"
+    }
+  ]
+}
 ];
 
 export function evaluateSwarmLabEvidence(

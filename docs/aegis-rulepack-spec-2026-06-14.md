@@ -287,3 +287,9 @@ JavaScript. It does not incorporate the separately held exp66 loader-probe chang
 The full tool-call latency envelope needs a separate experiment. Evidence and
 run/package refs are pinned in the RT-57 release catalogue and SwarmLab receipts;
 historical scores alone are not live-package proof.
+
+
+## RT-58 — Cumulative native regex work
+`evaluate` now shares one `regexTotalBudgetMs` allowance across native matching for all rules, targets and decoded variants. Default250ms; positive finite<=1000ms, rounded up; invalid values fall back250ms. Per-match `regexMatchBudgetMs` remains100ms default. Remaining total caps batch/retry watchdogs; retry does not refresh the total deadline. A clamped final batch can conservatively leave even a quick job unresolved: unknown is not a nonmatch. GC/scheduling time in this monotonic wall-time allowance counts, not CPU-only time. Independently proven substring/predictor deny and prior regex hits remain; unrun native tests cannot claim matches. Distinct cumulative diagnostic once, no configurable-away ask floor. Each evaluate starts fresh; inputs are neither mutated nor frozen. Internal low-level `boundedRegexMatchMany` callers that omit total retain RT57 per-match behavior; the public evaluator always supplies a finite total.
+
+Scope excludes loading/probes (RT56 held separately), preprocessing, job-plan construction, general evaluate wall-time, compilation/memory limits, arbitrary proxy/getter behavior and malicious hosts. Exp68 Spec74 preregistered8 multi-rule hazards,13 compatibility controls,8linear controls; baseline twice8/8 watchdogs, controls21/21 passed; patched same design0watchdogs,21/21 resolution+8/8linear. Stored RT58 metrics are regression catalogue only, not fresh live execution or production certification. Source/dist receipts and frozen-design real-package CI live in linked SwarmLab.

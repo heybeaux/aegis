@@ -23,7 +23,7 @@ import type {
   ToolCall,
 } from '../types.js';
 import { extractDecodedVariants } from './preprocess.js';
-import { boundedRegexMatchMany, regexMatchBudgetMs, type RegexJob, type RegexJobResult } from './regex-budget.js';
+import { boundedRegexMatchMany, regexMatchBudgetMs, regexTotalBudgetMs, type RegexJob, type RegexJobResult } from './regex-budget.js';
 
 export const DEFAULT_SEVERITY_TABLE: SeverityTable = {
   critical: 'deny',
@@ -634,6 +634,8 @@ const SEVERITY_RANK: Record<Severity, number> = {
 export interface EvaluateOptions {
   /** Per native-regex match deadline in ms. Default 100; positive finite <=1000, rounded up. Invalid values use default. */
   regexMatchBudgetMs?: number;
+  /** Cumulative native-regex work deadline per evaluate call. Default 250ms; positive finite <=1000, rounded up. Invalid values use default. Not a preprocessing/planning deadline. */
+  regexTotalBudgetMs?: number;
   severityTable?: SeverityTable;
   predictionThresholds?: PredictionThresholds;
   prediction?: Prediction;
@@ -655,6 +657,7 @@ export function evaluate(
   const severityTable = opts.severityTable ?? DEFAULT_SEVERITY_TABLE;
   const thresholds = opts.predictionThresholds ?? DEFAULT_PREDICTION_THRESHOLDS;
   const matchBudget = regexMatchBudgetMs(opts.regexMatchBudgetMs);
+  const totalBudget = regexTotalBudgetMs(opts.regexTotalBudgetMs);
   const unresolvedRules = new Set<CompiledRule>();
 
   // Build the set of ToolCall variants to test. When preprocessing is on,
@@ -703,7 +706,7 @@ export function evaluate(
     }
     return { strings, slice };
   }));
-  const regexResults = boundedRegexMatchMany(jobs, matchBudget);
+  const regexResults = boundedRegexMatchMany(jobs, matchBudget, totalBudget);
 
   for (let v = 0; v < callsToTest.length; v++) {
     for (let k = 0; k < compiledRules.length; k++) {
@@ -752,7 +755,9 @@ export function evaluate(
       : topReason || 'no rule matched';
 
   if (unresolvedRules.size > 0) {
-    const diagnostic = `regex match budget exceeded or matching unavailable (${matchBudget}ms); unresolved rules: ${[...unresolvedRules].map(c => c.rule.id).join(', ')}`;
+    const diagnostic = regexResults.cumulativeBudgetExceeded
+      ? `cumulative regex work budget exceeded (${totalBudget}ms); unresolved rules: ${[...unresolvedRules].map(c => c.rule.id).join(', ')}`
+      : `regex match budget exceeded or matching unavailable (${matchBudget}ms); unresolved rules: ${[...unresolvedRules].map(c => c.rule.id).join(', ')}`;
     reason = action === 'deny' ? `${reason}; ${diagnostic}` : diagnostic;
   }
 

@@ -1532,6 +1532,84 @@ export const SWARMLAB_EVIDENCE_CASES: readonly SwarmLabEvidenceCase[] = [
       "comparator": "eq"
     }
   ]
+},
+{
+  "id": "RT-59",
+  "source": "exp-69 encoded occurrence coverage / Spec75",
+  "finding": "First-only encoded extraction allows a harmless leading payload to hide a later same-family consequential payload.",
+  "owners": [
+    "aegis"
+  ],
+  "change": "Enumerate all supported base64 occurrences within each recognizer; preserve family/source order, trim/dedup and one-layer grammar.",
+  "runIds": [
+    "eoc-mvj64lpu-32367",
+    "eoc-mvj64ml5-32409",
+    "eoc-mvj66nj2-36850"
+  ],
+  "implementationRefs": [
+    "5061c96bae57cf0084ba69721e2dd908899510b0"
+  ],
+  "implementationStatus": "landed",
+  "evidenceTier": "verified",
+  "aegisMapping": "Historical measured red/red/green regression catalogue only, NOT live proof or a merged-main claim. Runtime patch is in this candidate; executable SwarmLab CI separately checks pinned actual artifacts.",
+  "metrics": [
+    {
+      "name": "laterPayloadMissRate",
+      "before": 1,
+      "after": 0,
+      "threshold": 0,
+      "comparator": "eq"
+    },
+    {
+      "name": "extractionAccuracy",
+      "before": 0.36363636363636365,
+      "after": 1,
+      "threshold": 1,
+      "comparator": "eq"
+    },
+    {
+      "name": "resolutionAccuracy",
+      "before": 0.36363636363636365,
+      "after": 1,
+      "threshold": 1,
+      "comparator": "eq"
+    },
+    {
+      "name": "controlAccuracy",
+      "before": 0.6666666666666666,
+      "after": 1,
+      "threshold": 1,
+      "comparator": "eq"
+    },
+    {
+      "name": "directControlAccuracy",
+      "before": 1,
+      "after": 1,
+      "threshold": 1,
+      "comparator": "eq"
+    },
+    {
+      "name": "ownershipRate",
+      "before": 1,
+      "after": 1,
+      "threshold": 1,
+      "comparator": "eq"
+    },
+    {
+      "name": "recoveryRate",
+      "before": 1,
+      "after": 1,
+      "threshold": 1,
+      "comparator": "eq"
+    },
+    {
+      "name": "infrastructureFailures",
+      "before": 0,
+      "after": 0,
+      "threshold": 0,
+      "comparator": "eq"
+    }
+  ]
 }
 ];
 

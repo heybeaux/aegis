@@ -287,3 +287,17 @@ JavaScript. It does not incorporate the separately held exp66 loader-probe chang
 The full tool-call latency envelope needs a separate experiment. Evidence and
 run/package refs are pinned in the RT-57 release catalogue and SwarmLab receipts;
 historical scores alone are not live-package proof.
+
+### Encoded occurrence coverage (SwarmLab exp69 / RT-59)
+
+With preprocessing enabled, `extractDecodedVariants` enumerates every supported
+base64 pipe/herestring/subshell occurrence, not merely the first. Original command
+stays first; legacy family priority stays pipe, herestring, subshell, hex; within
+families, occurrences stay in source order. Empty/rejected/duplicate decoded
+candidates do not stop later extraction. Variants are trimmed, deduplicated and
+rescanned by the actual rule engine; strictest severity/prediction still wins.
+Fresh global iterators keep lastIndex private per call. Preprocessing remains
+opt-in and single-layer: no recursive decoding, new shell grammar, actual shell
+execution, arbitrary encodings, time/memory bounds or production certification.
+RT59 is independent of still-pending RT58 cumulative matching work. Stored
+catalogue scores are historical evidence, not executable live-package proof.

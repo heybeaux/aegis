@@ -62,25 +62,16 @@ function tryHexDecode(hexSeq: string): string | null {
 export function extractDecodedVariants(command: string): string[] {
   const variants: string[] = [command];
 
-  // base64 | shell pattern
-  const m1 = BASE64_PIPE_TO_SHELL.exec(command);
-  if (m1) {
-    const decoded = tryBase64Decode(m1[1]);
-    if (decoded && !variants.includes(decoded)) variants.push(decoded);
-  }
-
-  // base64 -d <<< pattern
-  const m2 = BASE64_HERESTRING.exec(command);
-  if (m2) {
-    const decoded = tryBase64Decode(m2[1]);
-    if (decoded && !variants.includes(decoded)) variants.push(decoded);
-  }
-
-  // $( ... | base64 -d ) subshell pattern
-  const m3 = BASE64_SUBSHELL_DECODE.exec(command);
-  if (m3) {
-    const decoded = tryBase64Decode(m3[1]);
-    if (decoded && !variants.includes(decoded)) variants.push(decoded);
+  // Enumerate all supported occurrences, not merely the first candidate. A safe,
+  // duplicate or rejected first payload says nothing about later encoded content.
+  // Fresh global iterators keep regex lastIndex private to this invocation. Family
+  // priority is retained for compatibility; source order is retained within each.
+  for (const pattern of [BASE64_PIPE_TO_SHELL, BASE64_HERESTRING, BASE64_SUBSHELL_DECODE]) {
+    const occurrences = new RegExp(pattern.source, `${pattern.flags}g`);
+    for (const match of command.matchAll(occurrences)) {
+      const decoded = tryBase64Decode(match[1]!);
+      if (decoded && !variants.includes(decoded)) variants.push(decoded);
+    }
   }
 
   // hex escape sequences

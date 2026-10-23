@@ -22,7 +22,7 @@ import type {
   SeverityTable,
   ToolCall,
 } from '../types.js';
-import { extractDecodedVariants } from './preprocess.js';
+import { admittedDecodedVariants } from './preprocess.js';
 import { boundedRegexMatchMany, regexMatchBudgetMs, type RegexJob, type RegexJobResult } from './regex-budget.js';
 
 export const DEFAULT_SEVERITY_TABLE: SeverityTable = {
@@ -642,6 +642,8 @@ export interface EvaluateOptions {
    * When true, decode-then-rescan preprocessing is applied to Bash commands.
    * Encoded payloads (base64, hex escapes) are decoded and rules are run against
    * both the original and decoded variants. The strictest match wins.
+   * Admission: <=65536 command UTF-16 units, <=64 unique variants including original,
+   * <=8192 total decoded units. Incomplete coverage independently requires ask.
    * Default: false (for backward compat — the hook enables this explicitly).
    */
   preprocess?: boolean;
@@ -661,8 +663,11 @@ export function evaluate(
   // decoded variants of the command are synthesized and evaluated in addition
   // to the original — the strictest result across all variants wins.
   const callsToTest: ToolCall[] = [call];
+  let preprocessingIncomplete = false;
   if (opts.preprocess && call.command) {
-    const variants = extractDecodedVariants(call.command);
+    const admitted = admittedDecodedVariants(call.command);
+    const variants = admitted.variants;
+    preprocessingIncomplete = admitted.incomplete;
     // Skip index 0 — that's the original, already in callsToTest.
     for (const variant of variants.slice(1)) {
       callsToTest.push({ ...call, command: variant });
@@ -738,7 +743,7 @@ export function evaluate(
   // Unresolved matching is an independent ask floor, not a fabricated rule hit
   // and not configurable through the ordinary severity table. Keep scanning so
   // a separate genuine rule/predictor deny is never hidden by a timeout.
-  const policyAction = strictest(severityFloor, unresolvedRules.size > 0 ? 'ask' : 'allow');
+  const policyAction = strictest(severityFloor, unresolvedRules.size > 0 || preprocessingIncomplete ? 'ask' : 'allow');
   const action = strictest(policyAction, predAction);
 
   let decidedBy: Evaluation['decidedBy'];
@@ -754,6 +759,11 @@ export function evaluate(
   if (unresolvedRules.size > 0) {
     const diagnostic = `regex match budget exceeded or matching unavailable (${matchBudget}ms); unresolved rules: ${[...unresolvedRules].map(c => c.rule.id).join(', ')}`;
     reason = action === 'deny' ? `${reason}; ${diagnostic}` : diagnostic;
+  }
+
+  if (preprocessingIncomplete) {
+    const diagnostic = 'preprocess admission budget exceeded; decoded coverage incomplete';
+    reason = reason === 'no rule matched' ? diagnostic : `${reason}; ${diagnostic}`;
   }
 
   return {

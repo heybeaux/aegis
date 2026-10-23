@@ -60,37 +60,53 @@ function tryHexDecode(hexSeq: string): string | null {
  * Callers should run the rule corpus against every element in the result.
  */
 export function extractDecodedVariants(command: string): string[] {
+  return collectDecodedVariants(command).variants;
+}
+
+interface AdmissionLimits {
+  commandUnits: number;
+  variants: number;
+  decodedUnits: number;
+}
+
+// Deterministic admission caps, not wall-clock or absolute resource guarantees.
+const EVALUATOR_LIMITS: AdmissionLimits = { commandUnits: 65536, variants: 64, decodedUnits: 8192 };
+
+/** Internal evaluator boundary. The public standalone extractor retains its legacy contract. */
+export function admittedDecodedVariants(command: string): { variants: string[]; incomplete: boolean } {
+  return collectDecodedVariants(command, EVALUATOR_LIMITS);
+}
+
+function collectDecodedVariants(command: string, limits?: AdmissionLimits): { variants: string[]; incomplete: boolean } {
   const variants: string[] = [command];
+  const seen = new Set(variants);
+  let decodedUnits = 0;
+  if (limits && command.length > limits.commandUnits) return { variants, incomplete: true };
 
-  // base64 | shell pattern
-  const m1 = BASE64_PIPE_TO_SHELL.exec(command);
-  if (m1) {
-    const decoded = tryBase64Decode(m1[1]);
-    if (decoded && !variants.includes(decoded)) variants.push(decoded);
+  // false signals the first exceeding UNIQUE candidate. Duplicates/noise do not
+  // consume admission. No partial payload or later encoding can conceal omission.
+  function admit(decoded: string | null): boolean {
+    if (!decoded || seen.has(decoded)) return true;
+    if (limits && (variants.length >= limits.variants || decodedUnits + decoded.length > limits.decodedUnits)) return false;
+    seen.add(decoded);
+    decodedUnits += decoded.length;
+    variants.push(decoded);
+    return true;
   }
 
-  // base64 -d <<< pattern
-  const m2 = BASE64_HERESTRING.exec(command);
-  if (m2) {
-    const decoded = tryBase64Decode(m2[1]);
-    if (decoded && !variants.includes(decoded)) variants.push(decoded);
+  // Preserve family priority and existing first-only base64 recognition. Exp69's
+  // pending occurrence-completeness change is a separate policy, not included here.
+  for (const pattern of [BASE64_PIPE_TO_SHELL, BASE64_HERESTRING, BASE64_SUBSHELL_DECODE]) {
+    const match = pattern.exec(command);
+    if (match && !admit(tryBase64Decode(match[1]!))) return { variants, incomplete: true };
   }
 
-  // $( ... | base64 -d ) subshell pattern
-  const m3 = BASE64_SUBSHELL_DECODE.exec(command);
-  if (m3) {
-    const decoded = tryBase64Decode(m3[1]);
-    if (decoded && !variants.includes(decoded)) variants.push(decoded);
+  // Iterate lazily; command.match() would materialize all matches before admission.
+  // A local RegExp keeps lastIndex isolated across calls and early returns.
+  const hex = new RegExp(HEX_ESCAPE_SEQ.source, HEX_ESCAPE_SEQ.flags);
+  let match: RegExpExecArray | null;
+  while ((match = hex.exec(command)) !== null) {
+    if (!admit(tryHexDecode(match[0]))) return { variants, incomplete: true };
   }
-
-  // hex escape sequences
-  const hexMatches = command.match(HEX_ESCAPE_SEQ);
-  if (hexMatches) {
-    for (const seq of hexMatches) {
-      const decoded = tryHexDecode(seq);
-      if (decoded && !variants.includes(decoded)) variants.push(decoded);
-    }
-  }
-
-  return variants;
+  return { variants, incomplete: false };
 }

@@ -26,4 +26,9 @@ describe('OpenClaw structured edit projection',()=>{
   expect(openClawToolCall({toolName:'read',params:{edits:[{newText:'DANGER'}]}})).toEqual({tool:'Read'});
   expect(openClawToolCall({toolName:'edit',params:{newText:'legacy'}})).toEqual({tool:'Edit',content:'legacy'});
  });
+ it('documents strict host field contract without inventing aliases',()=>{
+  const call=openClawToolCall({toolName:'edit',params:{edits:[{oldText:'a',new_text:'not-host-schema'},{oldText:'b',newText:4},{oldText:'c',newText:'valid'}]}});
+  expect(call.contentFragments).toEqual(['valid']);
+ });
+
 });

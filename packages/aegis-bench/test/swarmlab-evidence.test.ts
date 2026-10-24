@@ -446,7 +446,7 @@ describe('SwarmLab evidence gate', () => {
     expect(rt06?.implementationStatus).toBe('pending');
     expect(rt06?.evidenceTier).toBe('verified');
     expect(rt06?.status).toBe('partial');
-    expect(result.pendingImplementation).toBe(0);
+    expect(result.pendingImplementation).toBe(1);
     expect(result.provisionalEvidence).toBe(0);
   });
 });

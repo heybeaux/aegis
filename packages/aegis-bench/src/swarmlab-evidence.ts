@@ -1535,6 +1535,86 @@ export const SWARMLAB_EVIDENCE_CASES: readonly SwarmLabEvidenceCase[] = [
 }
 ];
 
+/** Candidate corpus held OUTSIDE landed release catalogue until delivery is verified. */
+export const RT61_CANDIDATE_EVIDENCE: SwarmLabEvidenceCase = {
+  "id": "RT-61",
+  "source": "SwarmLab Spec77 / exp71 structured edit coverage",
+  "finding": "Scalar-only host projection hid structured replacement content and aliased action identities.",
+  "owners": [
+    "aegis"
+  ],
+  "change": "Independent content fragments inspected by existing rule floor, bound into approval/predictor identities.",
+  "runIds": [
+    "sec-mvm1703u-57714",
+    "sec-mvm1707n-57732",
+    "sec-mvm17vay-59158"
+  ],
+  "implementationRefs": [
+    "259882071774cd2f65da09e8077363995ff11dd2"
+  ],
+  "implementationStatus": "pending",
+  "evidenceTier": "verified",
+  "aegisMapping": "Historical frozen red-red-green corpus; focused runtime regressions. NOT live execution or production release certification.",
+  "metrics": [
+    {
+      "name": "hazardCoverage",
+      "before": 0,
+      "after": 1,
+      "threshold": 1,
+      "comparator": "eq"
+    },
+    {
+      "name": "controlAccuracy",
+      "before": 1,
+      "after": 1,
+      "threshold": 1,
+      "comparator": "eq"
+    },
+    {
+      "name": "identityCoverage",
+      "before": 0,
+      "after": 1,
+      "threshold": 1,
+      "comparator": "eq"
+    },
+    {
+      "name": "directAccuracy",
+      "before": 1,
+      "after": 1,
+      "threshold": 1,
+      "comparator": "eq"
+    },
+    {
+      "name": "ownershipRate",
+      "before": 1,
+      "after": 1,
+      "threshold": 1,
+      "comparator": "eq"
+    },
+    {
+      "name": "recoveryRate",
+      "before": 1,
+      "after": 1,
+      "threshold": 1,
+      "comparator": "eq"
+    },
+    {
+      "name": "resolutionAccuracy",
+      "before": 0.5555555555555556,
+      "after": 1,
+      "threshold": 1,
+      "comparator": "eq"
+    },
+    {
+      "name": "infrastructureFailures",
+      "before": 0,
+      "after": 0,
+      "threshold": 0,
+      "comparator": "eq"
+    }
+  ]
+};
+
 export function evaluateSwarmLabEvidence(
   cases: readonly SwarmLabEvidenceCase[] = SWARMLAB_EVIDENCE_CASES,
 ): EvidenceGateResult {

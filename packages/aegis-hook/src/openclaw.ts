@@ -465,6 +465,14 @@ export function openClawToolCall(event: OpenClawToolEvent): ToolCall {
   const paths = pathsFor(event);
   if (command !== undefined) call.command = command;
   if (content !== undefined) call.content = content;
+  // Structured edits supplement (never replace) legacy scalar content. The host
+  // validates/apply-matches oldText; only replacement strings are written.
+  if (event.toolName.toLowerCase() === 'edit' && Array.isArray(params['edits'])) {
+    call.contentFragments = params['edits'].flatMap((edit) => {
+      const replacement = asRecord(edit)['newText'];
+      return typeof replacement === 'string' ? [replacement] : [];
+    });
+  }
   if (argv.length > 0) call.argv = argv;
   if (paths.length > 0) call.paths = paths;
 

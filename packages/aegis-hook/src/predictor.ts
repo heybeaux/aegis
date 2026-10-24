@@ -139,6 +139,9 @@ export function actionKeyFor(call: ToolCall): string {
     contentHash: call.content
       ? createHash('sha256').update(call.content).digest('hex').slice(0, 16)
       : undefined,
+    contentFragmentsHash: call.contentFragments === undefined
+      ? undefined
+      : createHash('sha256').update(JSON.stringify(call.contentFragments)).digest('hex'),
     paths: call.paths,
     argv: call.argv,
     handoff: call.handoff,
@@ -212,7 +215,7 @@ async function scorePrediction(call: ToolCall, now: Date): Promise<PredictorResu
     toolBaseRisk(call) +
       pathRisk(call.paths) +
       combinatorRisk(call.command) +
-      contentRisk(call.content) +
+      (call.contentFragments ?? []).reduce((risk, fragment) => Math.max(risk, contentRisk(fragment)), contentRisk(call.content)) +
       blockedRate * 0.38 +
       sessionBlockRate * 0.18 +
       sameActionRetryLift +

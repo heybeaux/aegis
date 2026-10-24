@@ -1,12 +1,20 @@
 import { describe, expect, it } from 'vitest';
 import {
   SWARMLAB_EVIDENCE_CASES,
+  RT61_CANDIDATE_EVIDENCE,
   evaluateSwarmLabEvidence,
   swarmLabEvidenceToMarkdown,
   type SwarmLabEvidenceCase,
 } from '../src/swarmlab-evidence.js';
 
 describe('SwarmLab evidence gate', () => {
+  it('pins RT61 measured coverage and binding without claiming live proof',()=>{
+    const c=RT61_CANDIDATE_EVIDENCE;
+    expect(evaluateSwarmLabEvidence([c]).status).toBe('partial');
+    expect(c?.implementationStatus).toBe('pending');
+    expect(c?.metrics.find(m=>m.name==='hazardCoverage')).toMatchObject({before:0,after:1,threshold:1});
+    expect(c?.metrics.find(m=>m.name==='identityCoverage')).toMatchObject({before:0,after:1,threshold:1});
+  });
   it('pins RT57 actual-input regex deadline real-package evidence, not live execution',()=>{
     const c=SWARMLAB_EVIDENCE_CASES.find(c=>c.id==='RT-57');
     expect(c?.runIds).toEqual(["rrib-mvgbfpzj-90188", "rrib-mvgbfz19-90260", "rrib-mvgctbkv-17960"]);

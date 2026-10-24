@@ -52,7 +52,8 @@ function targetString(call: ToolCall, target: CompiledRule['rule']['match']['tar
     case 'command':
       return call.command ? [call.command] : [];
     case 'content':
-      return call.content ? [call.content] : [];
+      // Each fragment is a separate rule input: joining can invent cross-edit matches.
+      return [...(call.content ? [call.content] : []), ...(call.contentFragments ?? [])];
     case 'path':
       return call.paths ?? [];
     case 'argv':

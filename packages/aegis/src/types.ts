@@ -434,6 +434,8 @@ export interface ToolCall {
   command?: string;
   /** File/secret content, for write/secret rules. */
   content?: string;
+  /** Additional independent replacement strings. Never joined across edit boundaries. */
+  contentFragments?: string[];
   /** Paths touched by the call. */
   paths?: string[];
   /** Raw argv, for argv-target rules. */

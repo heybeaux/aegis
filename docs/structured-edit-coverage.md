@@ -24,3 +24,7 @@ receipts in SwarmLab; historical benchmark row is NOT a fresh runtime check.
 Linked delivery/check status belongs to GitHub and nightly ledger. Prior RT57
 calibration CI issue77 remains open, no unrelated change attempted. Source .acr
 unchanged so Territory is not refreshed.
+
+The RT61 candidate evidence constant is deliberately outside the landed release
+catalogue. Its focused test requires PARTIAL while implementation is pending;
+the unchanged52-case historical catalogue stays independent of merge status.

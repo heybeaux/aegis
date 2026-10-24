@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import {
   SWARMLAB_EVIDENCE_CASES,
+  RT61_CANDIDATE_EVIDENCE,
   evaluateSwarmLabEvidence,
   swarmLabEvidenceToMarkdown,
   type SwarmLabEvidenceCase,
@@ -8,7 +9,8 @@ import {
 
 describe('SwarmLab evidence gate', () => {
   it('pins RT61 measured coverage and binding without claiming live proof',()=>{
-    const c=SWARMLAB_EVIDENCE_CASES.find(c=>c.id==='RT-61');
+    const c=RT61_CANDIDATE_EVIDENCE;
+    expect(evaluateSwarmLabEvidence([c]).status).toBe('partial');
     expect(c?.implementationStatus).toBe('pending');
     expect(c?.metrics.find(m=>m.name==='hazardCoverage')).toMatchObject({before:0,after:1,threshold:1});
     expect(c?.metrics.find(m=>m.name==='identityCoverage')).toMatchObject({before:0,after:1,threshold:1});
@@ -73,14 +75,14 @@ describe('SwarmLab evidence gate', () => {
       expect.objectContaining({name:'aegisWrappedCriticalDenyPreservation',before:0,after:1,threshold:1,comparator:'eq'}),
     ]));
   });
-  it('passes recorded metrics while RT61 implementation is pending', () => {
+  it('passes when all stack mappings are landed with verified evidence', () => {
     const result = evaluateSwarmLabEvidence();
     expect(result.status).toBe('passed');
-    expect(result.total).toBe(53);
-    expect(result.passed).toBe(53);
+    expect(result.total).toBe(52);
+    expect(result.passed).toBe(52);
     expect(result.failed).toBe(0);
     expect(result.partial).toBe(0);
-    expect(result.pendingImplementation).toBe(1);
+    expect(result.pendingImplementation).toBe(0);
     expect(result.provisionalEvidence).toBe(0);
 
     const rt06 = result.cases.find((c) => c.id === 'RT-06');
@@ -444,7 +446,7 @@ describe('SwarmLab evidence gate', () => {
     expect(rt06?.implementationStatus).toBe('pending');
     expect(rt06?.evidenceTier).toBe('verified');
     expect(rt06?.status).toBe('partial');
-    expect(result.pendingImplementation).toBe(1);
+    expect(result.pendingImplementation).toBe(0);
     expect(result.provisionalEvidence).toBe(0);
   });
 });

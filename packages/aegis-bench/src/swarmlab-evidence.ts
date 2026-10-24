@@ -1532,8 +1532,11 @@ export const SWARMLAB_EVIDENCE_CASES: readonly SwarmLabEvidenceCase[] = [
       "comparator": "eq"
     }
   ]
-},
-{
+}
+];
+
+/** Candidate corpus held OUTSIDE landed release catalogue until delivery is verified. */
+export const RT61_CANDIDATE_EVIDENCE: SwarmLabEvidenceCase = {
   "id": "RT-61",
   "source": "SwarmLab Spec77 / exp71 structured edit coverage",
   "finding": "Scalar-only host projection hid structured replacement content and aliased action identities.",
@@ -1610,8 +1613,7 @@ export const SWARMLAB_EVIDENCE_CASES: readonly SwarmLabEvidenceCase[] = [
       "comparator": "eq"
     }
   ]
-}
-];
+};
 
 export function evaluateSwarmLabEvidence(
   cases: readonly SwarmLabEvidenceCase[] = SWARMLAB_EVIDENCE_CASES,

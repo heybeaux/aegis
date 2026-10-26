@@ -1,5 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import {
+  RT62_CANDIDATE_EVIDENCE,
   SWARMLAB_EVIDENCE_CASES,
   evaluateSwarmLabEvidence,
   swarmLabEvidenceToMarkdown,
@@ -7,6 +8,12 @@ import {
 } from '../src/swarmlab-evidence.js';
 
 describe('SwarmLab evidence gate', () => {
+  it('keeps RT62 candidate evidence pending/outside landed catalogue',()=>{
+    expect(RT62_CANDIDATE_EVIDENCE.implementationStatus).toBe('pending');
+    expect(SWARMLAB_EVIDENCE_CASES.some(c=>c.id==='RT-62')).toBe(false);
+    const r=evaluateSwarmLabEvidence([RT62_CANDIDATE_EVIDENCE]);
+    expect(r.status).toBe('partial');expect(r.pendingImplementation).toBe(1);
+  });
   it('pins RT57 actual-input regex deadline real-package evidence, not live execution',()=>{
     const c=SWARMLAB_EVIDENCE_CASES.find(c=>c.id==='RT-57');
     expect(c?.runIds).toEqual(["rrib-mvgbfpzj-90188", "rrib-mvgbfz19-90260", "rrib-mvgctbkv-17960"]);

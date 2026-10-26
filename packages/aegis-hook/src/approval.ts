@@ -273,6 +273,7 @@ function signaturePayload(call: ToolCall, evaluation: Evaluation): unknown {
     call: {
       tool: call.tool,
       command: call.command,
+      processInputDigest: call.processInputDigest,
       content: call.content,
       paths: call.paths,
       argv: call.argv,

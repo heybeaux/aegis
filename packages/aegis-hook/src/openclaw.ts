@@ -1,3 +1,4 @@
+import { createHash } from 'node:crypto';
 import type { ToolCall } from '@heybeaux/lattice-aegis';
 import type { HostAdapter, HookRequest, HookResponse } from './adapters.js';
 import type { Decision } from './decide.js';
@@ -457,8 +458,22 @@ function normalizeApprovalEnvelope(value: unknown): ToolCall['approvalEnvelope']
 
 export function openClawToolCall(event: OpenClawToolEvent): ToolCall {
   const params = event.params;
-  const tool = normalizeToolName(event.toolName);
+  // Preserve this boundary rather than pretending one terminal fragment is a
+  // complete Bash command. Even an empty write or submit may execute prior input.
+  const processAction = params['action'];
+  const processInput = event.toolName.toLowerCase() === 'process' &&
+    (processAction === 'write' || processAction === 'send-keys' ||
+      processAction === 'submit' || processAction === 'paste');
+  const tool = processInput ? 'ProcessInput' : normalizeToolName(event.toolName);
   const call: ToolCall = { tool };
+  if (processInput) {
+    // Fixed ordered schema; hash raw validated JSON values, not a lossy text
+    // projection. A scalar command/safe flag cannot mask any input component.
+    // Digest owns no caller references. Undefined becomes null in this tuple.
+    const binding = ['action', 'sessionId', 'data', 'keys', 'hex', 'literal',
+      'text', 'bracketed', 'eof'].map(key => params[key]);
+    call.processInputDigest = createHash('sha256').update(JSON.stringify(binding)).digest('hex');
+  }
   const command = stringValue(params, 'command', 'cmd');
   const content = stringValue(params, 'content', 'newText', 'new_string', 'text', 'message');
   const argv = stringArray(params['argv']);

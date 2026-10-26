@@ -136,6 +136,7 @@ export function actionKeyFor(call: ToolCall): string {
   const payload = {
     tool: call.tool,
     command: call.command,
+    processInputDigest: call.processInputDigest,
     contentHash: call.content
       ? createHash('sha256').update(call.content).digest('hex').slice(0, 16)
       : undefined,

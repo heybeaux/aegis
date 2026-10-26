@@ -108,6 +108,65 @@ function caseStatus(metrics: readonly EvidenceMetricResult[]): EvidenceStatus {
  * - /Users/beauxwalton/projects/swarmlab/SYNTHESIS.md RT-01..RT-20
  * - /Users/beauxwalton/projects/swarmlab/docs/STACK-LIFECYCLE.md current priority list
  */
+/** Candidate corpus only. Excluded from landed release catalogue until CI/merge. */
+export const RT62_CANDIDATE_EVIDENCE: SwarmLabEvidenceCase = {
+  change: "Independent ProcessInput review floor and detached payload/session identity digest.",
+  "id": "RT-62",
+  "source": "SwarmLab exp72 / Spec78",
+  "finding": "Interactive process input must require review and bind exact target and raw payload; stateless fragments do not prove buffered-command safety.",
+  "owners": [
+    "aegis"
+  ],
+  "aegisMapping": "ProcessInput independent ask floor; OpenClaw adapter digest; approvalSignature/actionKeyFor binding. Candidate only, not yet landed.",
+  "implementationStatus": "pending",
+  "evidenceTier": "verified",
+  "runIds": [
+    "pib-mvowbjbg-97970",
+    "pib-mvowbjgw-97989",
+    "pib-mvowplbp-32581"
+  ],
+  "implementationRefs": [
+    "3acbacc4a9954992605c6136347371940ac6dac2"
+  ],
+  "metrics": [
+    {
+      "name": "reviewCoverage",
+      "before": 0,
+      "after": 1,
+      "threshold": 1,
+      "comparator": "eq"
+    },
+    {
+      "name": "identityCoverage",
+      "before": 0,
+      "after": 1,
+      "threshold": 1,
+      "comparator": "eq"
+    },
+    {
+      "name": "directBoundaryAccuracy",
+      "before": 0,
+      "after": 1,
+      "threshold": 1,
+      "comparator": "eq"
+    },
+    {
+      "name": "controlAccuracy",
+      "before": 1,
+      "after": 1,
+      "threshold": 1,
+      "comparator": "eq"
+    },
+    {
+      "name": "resolutionAccuracy",
+      "before": 0,
+      "after": 1,
+      "threshold": 1,
+      "comparator": "eq"
+    }
+  ]
+};
+
 export const SWARMLAB_EVIDENCE_CASES: readonly SwarmLabEvidenceCase[] = [
   {
     id: 'RT-01',

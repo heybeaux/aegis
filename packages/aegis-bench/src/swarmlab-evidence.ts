@@ -123,10 +123,10 @@ export const RT62_CANDIDATE_EVIDENCE: SwarmLabEvidenceCase = {
   "runIds": [
     "pib-mvowbjbg-97970",
     "pib-mvowbjgw-97989",
-    "pib-mvowdfh8-1211"
+    "pib-mvowplbp-32581"
   ],
   "implementationRefs": [
-    "97108ecec292dc2642c3f87692e57b2ff49c7a92"
+    "3acbacc4a9954992605c6136347371940ac6dac2"
   ],
   "metrics": [
     {

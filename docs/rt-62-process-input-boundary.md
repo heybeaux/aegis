@@ -18,3 +18,8 @@ RT62_CANDIDATE_EVIDENCE stays pending/outside landed catalogue; historical52/52
 release scores do not execute this new experiment. SwarmLab companion verifier
 re-scores raw results and checks exact pinned runtime artifacts and live outcomes.
 Prior release calibration holds are separate; CI and merge must be observed.
+
+Compatibility audit: tool refinement initially lost legacy process-scoped critical
+deny. Correction3acbacc keeps original process rules applicable to ProcessInput.
+Same frozen27cases allgreen; two focused regressions, full1228tests green.
+Initial review missed this; old corpus green superseded, red artifact retained.

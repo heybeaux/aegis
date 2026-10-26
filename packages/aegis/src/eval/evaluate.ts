@@ -61,7 +61,10 @@ function targetString(call: ToolCall, target: CompiledRule['rule']['match']['tar
 }
 
 function ruleApplies(appliesTo: string[], tool: string): boolean {
-  return appliesTo.includes('*') || appliesTo.includes(tool);
+  // ProcessInput refines the host's process tool; preserve existing operator
+  // rules scoped to that original name, including critical deny policies.
+  return appliesTo.includes('*') || appliesTo.includes(tool) ||
+    (tool === 'ProcessInput' && appliesTo.includes('process'));
 }
 
 /** Strings a rule must test against this call, or null when the rule cannot apply. */

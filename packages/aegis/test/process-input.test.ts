@@ -1,6 +1,12 @@
 import {describe,it,expect} from 'vitest';
 import {evaluate,loadPack} from '../src/index.js';
 describe('interactive process input review boundary',()=>{
+ it('preserves legacy process-scoped deny and applies input-specific rules without affecting management',()=>{
+  const rule={id:'legacy',category:'secrets' as const,severity:'critical' as const,description:'legacy process deny',appliesTo:['process'],match:{kind:'substring' as const,target:'content' as const,pattern:'STOP'}};
+  const rules=loadPack({packId:'compat',version:'1',rules:[rule,{...rule,id:'input',appliesTo:['ProcessInput']}]});
+  const r=evaluate({tool:'ProcessInput',content:'STOP'},rules);expect(r.action).toBe('deny');expect(r.matches.map(h=>h.id)).toEqual(['legacy','input']);expect(r.reason).toContain('legacy process deny');
+  expect(evaluate({tool:'process',content:'STOP'},rules).matches.map(h=>h.id)).toEqual(['legacy']);expect(evaluate({tool:'Bash',content:'STOP'},rules).action).toBe('allow');
+ });
  it('asks without metadata or rule matches and cannot be waived by severity or predictor',()=>{
   for(const processInputDigest of [undefined,'','safe']){const r=evaluate({tool:'ProcessInput',processInputDigest},[],{severityTable:{critical:'allow',high:'allow',medium:'allow',low:'allow'},prediction:{pFailure:0,confidence:1,source:'test'}});expect(r.action).toBe('ask');expect(r.reason).toContain('process input requires review');expect(r.matches).toEqual([]);}
  });

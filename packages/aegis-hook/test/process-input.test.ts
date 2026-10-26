@@ -6,11 +6,15 @@ import {openClawToolCall,createOpenClawAdapter} from '../src/openclaw.js';
 import {approvalSignature} from '../src/approval.js';
 import {actionKeyFor} from '../src/predictor.js';
 import {runHook} from '../src/runtime.js';
-import type {Evaluation} from '@heybeaux/lattice-aegis';
+import {evaluate,loadPack,type Evaluation} from '@heybeaux/lattice-aegis';
 const fixed:Evaluation={action:'ask',reason:'identity probe',matches:[],decidedBy:'severity',ruleVersions:[]};
 const event=(action='write')=>({toolName:'process',params:{action,sessionId:'session-a',data:'safe',keys:['x'],hex:['61'],literal:'x',text:'safe',bracketed:false,eof:false}});
 afterEach(()=>{delete process.env['AEGIS_HOME'];delete process.env['AEGIS_COLLECT_DIR'];});
 describe('process input adapter and runtime',()=>{
+ it('keeps an existing operator process rule denying through the adapter',()=>{
+  const rules=loadPack({packId:'compat',version:'1',rules:[{id:'operator.deny',category:'secrets',severity:'critical',description:'existing process policy',appliesTo:['process'],match:{kind:'substring',target:'content',pattern:'STOP'}}]});
+  const call=openClawToolCall({toolName:'process',params:{action:'paste',text:'STOP',sessionId:'a'}});const r=evaluate(call,rules);expect(r.action).toBe('deny');expect(r.matches.map(h=>h.id)).toEqual(['operator.deny']);
+ });
  it.each(['write','send-keys','submit','paste'])('classifies %s even benign/empty/decoy input',action=>{
   const e=event(action),before=structuredClone(e),call=openClawToolCall(e);expect(call.tool).toBe('ProcessInput');expect(call.processInputDigest).toMatch(/^[a-f0-9]{64}$/);expect(e).toEqual(before);
   expect(openClawToolCall({toolName:'PrOcEsS',params:{action}}).tool).toBe('ProcessInput');

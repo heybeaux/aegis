@@ -743,7 +743,11 @@ export function evaluate(
   // Unresolved matching is an independent ask floor, not a fabricated rule hit
   // and not configurable through the ordinary severity table. Keep scanning so
   // a separate genuine rule/predictor deny is never hidden by a timeout.
-  const policyAction = strictest(severityFloor, unresolvedRules.size > 0 || preprocessingIncomplete ? 'ask' : 'allow');
+  // A stateless input fragment (including submit/EOF) cannot establish the
+  // buffered command in an interactive process. Review independently of rules,
+  // predictor optimism, or caller-supplied metadata. Never fabricate a rule hit.
+  const processInputRequiresReview = call.tool === 'ProcessInput';
+  const policyAction = strictest(severityFloor, unresolvedRules.size > 0 || preprocessingIncomplete || processInputRequiresReview ? 'ask' : 'allow');
   const action = strictest(policyAction, predAction);
 
   let decidedBy: Evaluation['decidedBy'];
@@ -763,6 +767,11 @@ export function evaluate(
 
   if (preprocessingIncomplete) {
     const diagnostic = 'preprocess admission budget exceeded; decoded coverage incomplete';
+    reason = reason === 'no rule matched' ? diagnostic : `${reason}; ${diagnostic}`;
+  }
+
+  if (processInputRequiresReview) {
+    const diagnostic = 'process input requires review; buffered execution state unknown';
     reason = reason === 'no rule matched' ? diagnostic : `${reason}; ${diagnostic}`;
   }
 

@@ -432,6 +432,8 @@ export interface ToolCall {
   tool: string;
   /** Assembled shell command, for bash-like tools. */
   command?: string;
+  /** Host process input action/target/payload digest; identity only, never authorization. */
+  processInputDigest?: string;
   /** File/secret content, for write/secret rules. */
   content?: string;
   /** Paths touched by the call. */

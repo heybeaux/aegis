@@ -137,3 +137,16 @@ A missing, malformed, unauthenticated, misbound, stale, future, or unavailable p
 A host high-water watermark can itself be rolled back by a coherent backup restore. Hosts with an independently retained authority plane should implement `AnchoredApprovalExecutionPermitStore` and return an authenticated `ApprovalExecutionRevisionCheckpoint` from `readEffectRevisionCheckpoint()`. The checkpoint is a monotonic lower bound: host revision below it is `journal_stale`, while a host revision ahead of it is valid. Missing or unavailable checkpoints fail closed as unavailable; malformed, unverified, misbound, or extended checkpoint objects fail closed as inconsistent. `resolveAnchoredExecutionEffect()` exposes the contract explicitly, and ordinary resolution/start boundaries feature-detect and enforce it, including failed-CAS readback. The host must retain and authenticate this checkpoint outside the journal backup/restore domain; Aegis cannot create that independence.
 
 If more than one independent checkpoint authority exists, hosts should also implement `MultiAuthorityAnchoredApprovalExecutionPermitStore` and return every visible authority record from `readEffectRevisionCheckpoints()`. Aegis validates exact authority identity, operation binding, verified status, positive safe-integer revision, and `sha256:` history digest shape, rejects duplicate authorities, and fails closed when two authorities report different history digests for the same operation revision. `resolveMultiAuthorityAnchoredExecutionEffect()` exposes that plural boundary explicitly while the ordinary resolver feature-detects it so callers cannot bypass equivocation checks accidentally. The host still owns witness completeness, quorum/signature policy, and retaining authorities outside the rollback domain.
+
+## Interactive process input boundary (RT-62)
+
+OpenClaw `process` actions `write`, `send-keys`, `paste` and `submit` project to
+`ProcessInput`. Every such call requires at least review, even empty/benign input:
+a fragment, CR or EOF can complete a previously buffered command. The floor is
+independent of severity/predictor optimism, with no fabricated rule matches;
+independent deny still wins. Management `list/poll/log/kill/clear/remove` is unchanged.
+The adapter binds action, sessionId and raw data/keys/hex/literal/text/bracketed/eof
+into a detached digest included in approval and predictor identity. Plain validated
+JSON is the host contract. No terminal emulation, safe-fragment authorization,
+buffer-state authentication, automatic plugin deployment or production certification
+is claimed. Shadow mode remains observation-only; enforcement asks for approval.

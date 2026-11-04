@@ -95,10 +95,21 @@ suite becomes our spec — we don't trust the regex translated by eye.
 The compiler rejects any other flag at load time.
 
 ### 2.3 ReDoS guard
-Every rule is run under a per-match timeout budget (the engine is on the hot path of every tool
-call). Catastrophic-backtracking patterns must be caught at **pack-load time**, not runtime: the
-loader runs each compiled regex against a set of adversarial filler strings with a deadline and
-refuses to load a pack containing a pattern that blows the budget. Fail-closed on the pack, log loudly.
+At **pack-load time**, each compiled regex is run against a finite set of adversarial
+filler strings. Each probe constructs its regex inside a V8 context with an
+interrupting timeout, not a host-thread `test()` followed by an elapsed check.
+A timeout (or inability to finish the probe safely) throws a pack/rule-bound
+`RulePackError`; the entire pack fails closed. Substrings bypass regex probing.
+`AEGIS_REDOS_BUDGET_MS` defaults to 25ms per probe. Positive finite values up to
+2,147,483,647ms round up to integer milliseconds; invalid/zero/negative/out-of-range
+values fall back to25ms. This is a guard, not a performance microbenchmark.
+
+**Limit:** finite probes do not prove arbitrary regex safety. Runtime evaluation
+still uses native synchronous `RegExp.test` and has no general per-match deadline.
+No cumulative pack deadline, hostile-JS sandbox or production safety certification
+is claimed. Keep operator-controlled patterns and bound host inputs. Exp66/RT56
+measures preemption of the loader's own probes only; preserving JS features,
+synchronous loadPack and subsequent safe loads is part of that contract.
 
 ---
 
@@ -121,6 +132,27 @@ Merge is **by `(packId, rule.id)`**, deep-merge of fields:
 > (disable, or lower severity) requires `allowDowngrade: true` on the overlay rule — otherwise the
 > loader warns and keeps the stricter builtin. Prevents a careless project overlay from silently
 > defanging `rm -rf /`.
+
+### Coverage consent (RT53 / exp63)
+Severity alone does not protect coverage. `mergeLayers` also refuses changes to an enabled
+preceding effective rule's match kind, pattern, target or effective flags, and contractions
+of its case-sensitive `appliesTo` tool set, unless THIS overlay supplies `allowDowngrade: true`.
+A previous layer's consent is not authority for the next. Rejection preserves the entire
+preceding rule and returns a warning; it does not silently preserve only severity.
+
+Regex source changes require review even if a particular change broadens coverage: Aegis
+makes no regex-language inclusion proof. Flag order and absent/empty flags are equivalent;
+tool order/duplicates are irrelevant, finite set expansion and replacement with `*` are safe,
+but replacing `*` with a finite set needs consent. Descriptive fields and severity increases
+with unchanged coverage remain free; disabled bases have no matcher coverage to preserve.
+Existing severity/disable guards still apply. New IDs and insertion order remain compatible.
+
+Public runtime typing stays `Rule[][]` (complete match objects, not partial overlays).
+The earlier prose's partial/deep-merge and `(packId,rule.id)` claim is not implemented by
+this public function: identity is `rule.id`, object fields merge shallowly, nested match is
+replaced. RT53 does not expand that interface. Hosts own overlay authentication/review,
+valid pack data, and explicit consent. No post-merge mutation isolation promise.
+
 
 ---
 
@@ -287,3 +319,22 @@ JavaScript. It does not incorporate the separately held exp66 loader-probe chang
 The full tool-call latency envelope needs a separate experiment. Evidence and
 run/package refs are pinned in the RT-57 release catalogue and SwarmLab receipts;
 historical scores alone are not live-package proof.
+
+### Encoded occurrence coverage (SwarmLab exp69 / RT-59)
+
+With preprocessing enabled, `extractDecodedVariants` enumerates every supported
+base64 pipe/herestring/subshell occurrence, not merely the first. Original command
+stays first; legacy family priority stays pipe, herestring, subshell, hex; within
+families, occurrences stay in source order. Empty/rejected/duplicate decoded
+candidates do not stop later extraction. Variants are trimmed, deduplicated and
+rescanned by the actual rule engine; strictest severity/prediction still wins.
+Fresh global iterators keep lastIndex private per call. Preprocessing remains
+opt-in and single-layer: no recursive decoding, new shell grammar, actual shell
+execution, arbitrary encodings, time/memory bounds or production certification.
+RT59 is independent of still-pending RT58 cumulative matching work. Stored
+catalogue scores are historical evidence, not executable live-package proof.
+
+## RT-58 — Cumulative native regex work
+`evaluate` now shares one `regexTotalBudgetMs` allowance across native matching for all rules, targets and decoded variants. Default250ms; positive finite<=1000ms, rounded up; invalid values fall back250ms. Per-match `regexMatchBudgetMs` remains100ms default. Remaining total caps batch/retry watchdogs; retry does not refresh the total deadline. A clamped final batch can conservatively leave even a quick job unresolved: unknown is not a nonmatch. GC/scheduling time in this monotonic wall-time allowance counts, not CPU-only time. Independently proven substring/predictor deny and prior regex hits remain; unrun native tests cannot claim matches. Distinct cumulative diagnostic once, no configurable-away ask floor. Each evaluate starts fresh; inputs are neither mutated nor frozen. Internal low-level `boundedRegexMatchMany` callers that omit total retain RT57 per-match behavior; the public evaluator always supplies a finite total.
+
+Scope excludes loading/probes (RT56 held separately), preprocessing, job-plan construction, general evaluate wall-time, compilation/memory limits, arbitrary proxy/getter behavior and malicious hosts. Exp68 Spec74 preregistered8 multi-rule hazards,13 compatibility controls,8linear controls; baseline twice8/8 watchdogs, controls21/21 passed; patched same design0watchdogs,21/21 resolution+8/8linear. Stored RT58 metrics are regression catalogue only, not fresh live execution or production certification. Source/dist receipts and frozen-design real-package CI live in linked SwarmLab.

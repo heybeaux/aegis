@@ -33,3 +33,6 @@ jobs:
         env:
           AEGIS_REDOS_BUDGET_MS: '25'
         run: pnpm run release:check
+
+      - name: Verify simulated pilot without network
+        run: node --experimental-transform-types --test tools/aegis-pilot/pilot.test.ts

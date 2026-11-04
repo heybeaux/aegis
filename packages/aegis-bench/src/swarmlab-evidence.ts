@@ -1591,8 +1591,587 @@ export const SWARMLAB_EVIDENCE_CASES: readonly SwarmLabEvidenceCase[] = [
       "comparator": "eq"
     }
   ]
+},
+{
+  "id": "RT-59",
+  "source": "exp-69 encoded occurrence coverage / Spec75",
+  "finding": "First-only encoded extraction allows a harmless leading payload to hide a later same-family consequential payload.",
+  "owners": [
+    "aegis"
+  ],
+  "change": "Enumerate all supported base64 occurrences within each recognizer; preserve family/source order, trim/dedup and one-layer grammar.",
+  "runIds": [
+    "eoc-mvj64lpu-32367",
+    "eoc-mvj64ml5-32409",
+    "eoc-mvj66nj2-36850"
+  ],
+  "implementationRefs": [
+    "5061c96bae57cf0084ba69721e2dd908899510b0"
+  ],
+  "implementationStatus": "landed",
+  "evidenceTier": "verified",
+  "aegisMapping": "Historical measured red/red/green regression catalogue only, NOT live proof or a merged-main claim. Runtime patch is in this candidate; executable SwarmLab CI separately checks pinned actual artifacts.",
+  "metrics": [
+    {
+      "name": "laterPayloadMissRate",
+      "before": 1,
+      "after": 0,
+      "threshold": 0,
+      "comparator": "eq"
+    },
+    {
+      "name": "extractionAccuracy",
+      "before": 0.36363636363636365,
+      "after": 1,
+      "threshold": 1,
+      "comparator": "eq"
+    },
+    {
+      "name": "resolutionAccuracy",
+      "before": 0.36363636363636365,
+      "after": 1,
+      "threshold": 1,
+      "comparator": "eq"
+    },
+    {
+      "name": "controlAccuracy",
+      "before": 0.6666666666666666,
+      "after": 1,
+      "threshold": 1,
+      "comparator": "eq"
+    },
+    {
+      "name": "directControlAccuracy",
+      "before": 1,
+      "after": 1,
+      "threshold": 1,
+      "comparator": "eq"
+    },
+    {
+      "name": "ownershipRate",
+      "before": 1,
+      "after": 1,
+      "threshold": 1,
+      "comparator": "eq"
+    },
+    {
+      "name": "recoveryRate",
+      "before": 1,
+      "after": 1,
+      "threshold": 1,
+      "comparator": "eq"
+    },
+    {
+      "name": "infrastructureFailures",
+      "before": 0,
+      "after": 0,
+      "threshold": 0,
+      "comparator": "eq"
+    }
+  ]
 }
+,{
+  "id": "RT-58",
+  "source": "SwarmLab Spec74 / exp68 cumulative native regex work budget",
+  "finding": "Independent bounded matches cumulatively starve one evaluate invocation; shared deadline returns truthful unresolved ask",
+  "owners": [
+    "aegis"
+  ],
+  "change": "Cap native batch and retries by one per-evaluation deadline; retain prior proven hits and independent substring/predictor deny",
+  "runIds": [
+    "crw-mvhqnt5r-74169",
+    "crw-mvhqo3nm-74077",
+    "crw-mvhqqvjv-84114"
+  ],
+  "implementationRefs": [
+    "fee7bd9ab4d71d399c5f243b0c110aeb6833b616"
+  ],
+  "implementationStatus": "landed",
+  "evidenceTier": "verified",
+  "aegisMapping": "Native regex cumulative work deadline only, not full evaluation/preprocessing bound; historical scores below, executable CI separately.",
+  "metrics": [
+    {
+      "name": "aggregateWatchdogRate",
+      "before": 1,
+      "after": 0,
+      "threshold": 0,
+      "comparator": "eq"
+    },
+    {
+      "name": "cumulativeSafetyRate",
+      "before": 0,
+      "after": 1,
+      "threshold": 1,
+      "comparator": "eq"
+    },
+    {
+      "name": "resolutionAccuracy",
+      "before": 0.6190476190476191,
+      "after": 1,
+      "threshold": 1,
+      "comparator": "eq"
+    },
+    {
+      "name": "controlAccuracy",
+      "before": 1,
+      "after": 1,
+      "threshold": 1,
+      "comparator": "eq"
+    },
+    {
+      "name": "recoveryRate",
+      "before": 0.6190476190476191,
+      "after": 1,
+      "threshold": 1,
+      "comparator": "eq"
+    },
+    {
+      "name": "ownershipRate",
+      "before": 0.6190476190476191,
+      "after": 1,
+      "threshold": 1,
+      "comparator": "eq"
+    },
+    {
+      "name": "linearControlAccuracy",
+      "before": 1,
+      "after": 1,
+      "threshold": 1,
+      "comparator": "eq"
+    },
+    {
+      "name": "infrastructureFailures",
+      "before": 0,
+      "after": 0,
+      "threshold": 0,
+      "comparator": "eq"
+    }
+  ]
+},
+{
+  "id": "RT-52",
+  "source": "SwarmLab exp62 / Spec68 compiled rule binding integrity",
+  "finding": "Enabled applicable compiled regex caches must remain bound to declared stateless rule configuration at invocation; real Aegis baseline silently allowed6/16 hazards, candidate refuses all with explicit diagnostic while retaining valid deny/controls.",
+  "owners": [
+    "aegis"
+  ],
+  "change": "Validate declared/cache binding and stateless dialect at Aegis public evaluation entry, skip invalid matcher, explicit non-weakenable ask floor, retain valid deny/prediction and async RT48 conservative critical drift refusal.",
+  "runIds": [
+    "crbi-mv6b9cr1",
+    "crbi-mv6b9ctl",
+    "crbi-mv6bfvgw"
+  ],
+  "implementationRefs": [
+    "bdaace056ac4cbce8a04fc2966702e26e472dd85"
+  ],
+  "implementationStatus": "landed",
+  "evidenceTier": "verified",
+  "aegisMapping": "Binding refusal implemented in this candidate source; source-level release regression mapping, remote merge and CI are tracked separately. Stored metrics are not fresh execution.",
+  "metrics": [
+    {
+      "name": "controlAccuracy",
+      "before": 1,
+      "after": 1,
+      "threshold": 1,
+      "comparator": "eq"
+    },
+    {
+      "name": "aegisUnsafeInvalidAllowRate",
+      "before": 0.375,
+      "after": 0,
+      "threshold": 0,
+      "comparator": "eq"
+    },
+    {
+      "name": "aegisInvalidBindingDetectionRate",
+      "before": 0,
+      "after": 1,
+      "threshold": 1,
+      "comparator": "eq"
+    },
+    {
+      "name": "aegisResolutionAccuracy",
+      "before": 0.4666666666666667,
+      "after": 1,
+      "threshold": 1,
+      "comparator": "eq"
+    },
+    {
+      "name": "aegisDenyPreservation",
+      "before": 1,
+      "after": 1,
+      "threshold": 1,
+      "comparator": "eq"
+    },
+    {
+      "name": "aegisEarlyNoIO",
+      "before": 0.875,
+      "after": 1,
+      "threshold": 1,
+      "comparator": "eq"
+    },
+    {
+      "name": "aegisValidCompatibility",
+      "before": 1,
+      "after": 1,
+      "threshold": 1,
+      "comparator": "eq"
+    },
+    {
+      "name": "aegisCallerOwnership",
+      "before": 0.9333333333333333,
+      "after": 1,
+      "threshold": 1,
+      "comparator": "eq"
+    },
+    {
+      "name": "aegisHitDedup",
+      "before": 1,
+      "after": 1,
+      "threshold": 1,
+      "comparator": "eq"
+    }
+  ]
+},
+
+{
+  "id": "RT-51",
+  "source": "SwarmLab exp61 / Spec67",
+  "finding": "Editable exported default recipes cannot silently change implicit policy across calls.",
+  "owners": [
+    "aegis"
+  ],
+  "change": "Private default policy separated from public editable recipe copies, including strict async effective policy.",
+  "runIds": [
+    "dpi-mv4vqk63",
+    "dpi-mv4vqkba",
+    "dpi-mv4vti3m"
+  ],
+  "implementationRefs": [
+    "186cc3541218ca0a591bc36fd02bc7708f0d65bd",
+    "SwarmLab preregistration 5271a6f0a95728cfc74e18ed2e102501554cd229"
+  ],
+  "implementationStatus": "landed",
+  "evidenceTier": "verified",
+  "aegisMapping": "Implemented in this candidate source (not remote main/CI certification): private implicit defaults; explicit host overrides/editability preserved. RT50 reserved separately.",
+  "metrics": [
+    {
+      "name": "capturedControlAccuracy",
+      "before": 1,
+      "after": 1,
+      "threshold": 1,
+      "comparator": "eq"
+    },
+    {
+      "name": "explicitControlAccuracy",
+      "before": 1,
+      "after": 1,
+      "threshold": 1,
+      "comparator": "eq"
+    },
+    {
+      "name": "aegisGlobalDefaultInfluenceRate",
+      "before": 1,
+      "after": 0,
+      "threshold": 0,
+      "comparator": "eq"
+    },
+    {
+      "name": "aegisResolutionAccuracy",
+      "before": 0.4375,
+      "after": 1,
+      "threshold": 1,
+      "comparator": "eq"
+    },
+    {
+      "name": "aegisUnsafeImplicitAuthorizationRate",
+      "before": 1,
+      "after": 0,
+      "threshold": 0,
+      "comparator": "eq"
+    },
+    {
+      "name": "aegisPureActionAccuracy",
+      "before": 0.625,
+      "after": 1,
+      "threshold": 1,
+      "comparator": "eq"
+    },
+    {
+      "name": "aegisStrictActionAccuracy",
+      "before": 0.625,
+      "after": 1,
+      "threshold": 1,
+      "comparator": "eq"
+    },
+    {
+      "name": "aegisSafeClassificationAccuracy",
+      "before": 0.8125,
+      "after": 1,
+      "threshold": 1,
+      "comparator": "eq"
+    },
+    {
+      "name": "aegisStrictIOAccuracy",
+      "before": 0.6875,
+      "after": 1,
+      "threshold": 1,
+      "comparator": "eq"
+    },
+    {
+      "name": "aegisCallerOwnership",
+      "before": 1,
+      "after": 1,
+      "threshold": 1,
+      "comparator": "eq"
+    },
+    {
+      "name": "aegisTemplateEditCompatibility",
+      "before": 1,
+      "after": 1,
+      "threshold": 1,
+      "comparator": "eq"
+    },
+    {
+      "name": "aegisCustomOverrideCompatibility",
+      "before": 1,
+      "after": 1,
+      "threshold": 1,
+      "comparator": "eq"
+    }
+  ]
+},
+{
+  "id": "RT-53",
+  "source": "SwarmLab exp63 rule-overlay coverage consent",
+  "finding": "Matcher and tool-scope overrides can remove coverage even when severity stays strict.",
+  "owners": [
+    "aegis"
+  ],
+  "change": "Conservative per-overlay consent checks on enabled effective matcher and tool-set containment.",
+  "runIds": [
+    "occ-mv7qlhb7",
+    "occ-mv7qlhdk",
+    "occ-mv7qn439"
+  ],
+  "implementationRefs": [
+    "bc879d6c7fd213b49ef355b64bd83196098ffa0e"
+  ],
+  "implementationStatus": "landed",
+  "evidenceTier": "verified",
+  "aegisMapping": "Runtime is present in this candidate source; remote merge/CI and deliberate migration review tracked separately. Prior RT50-52 not included.",
+  "metrics": [
+    {
+      "name": "aegisUnsafeCoverageLossRate",
+      "before": 1,
+      "after": 0,
+      "threshold": 0,
+      "comparator": "eq"
+    },
+    {
+      "name": "aegisCoverageRejectionRate",
+      "before": 0,
+      "after": 1,
+      "threshold": 1,
+      "comparator": "eq"
+    },
+    {
+      "name": "aegisResolutionAccuracy",
+      "before": 0.56,
+      "after": 1,
+      "threshold": 1,
+      "comparator": "eq"
+    },
+    {
+      "name": "pinnedBaseControlAccuracy",
+      "before": 1,
+      "after": 1,
+      "threshold": 1,
+      "comparator": "eq"
+    },
+    {
+      "name": "aegisControlAccuracy",
+      "before": 0.9333333333333333,
+      "after": 1,
+      "threshold": 1,
+      "comparator": "eq"
+    },
+    {
+      "name": "aegisInputOwnership",
+      "before": 1,
+      "after": 1,
+      "threshold": 1,
+      "comparator": "eq"
+    },
+    {
+      "name": "protectedBaseFixtureAccuracy",
+      "before": 1,
+      "after": 1,
+      "threshold": 1,
+      "comparator": "eq"
+    },
+    {
+      "name": "explicitConsentAccuracy",
+      "before": 1,
+      "after": 1,
+      "threshold": 1,
+      "comparator": "eq"
+    }
+  ]
+},
+{
+  "id": "RT-56",
+  "source": "SwarmLab exp66 loader probe preemption / Spec72",
+  "finding": "Loader ReDoS probes need interrupting deadlines: synchronous post-match elapsed checks cannot reject a pack while native regex backtracking is stuck.",
+  "owners": [
+    "aegis"
+  ],
+  "change": "Execute each native regex probe inside a timed V8 context with fixed script/primitive inputs; normalize invalid environment budgets; preserve synchronous API and exact pack/rule errors.",
+  "runIds": [
+    "lpp-mvevxxcc-75248",
+    "lpp-mvevy3zp-75313",
+    "lpp-mvew13a8-82403"
+  ],
+  "implementationRefs": [
+    "528438cc279623e5c57fa3c5b6f8375b3c7109fc"
+  ],
+  "implementationStatus": "landed",
+  "evidenceTier": "verified",
+  "aegisMapping": "Implemented in candidate source. Stored scores are historical regression evidence, NOT live execution; bounded public-artifact loader tests and linked frozen SwarmLab CI execute the behavior. No general runtime regex deadline/safety claim.",
+  "metrics": [
+    {
+      "name": "aegisProbeWatchdogRate",
+      "before": 1,
+      "after": 0,
+      "threshold": 0,
+      "comparator": "eq"
+    },
+    {
+      "name": "aegisHazardRejectionRate",
+      "before": 0,
+      "after": 1,
+      "threshold": 1,
+      "comparator": "eq"
+    },
+    {
+      "name": "aegisResolutionAccuracy",
+      "before": 0.631578947368421,
+      "after": 1,
+      "threshold": 1,
+      "comparator": "eq"
+    },
+    {
+      "name": "aegisControlAccuracy",
+      "before": 0.8571428571428571,
+      "after": 1,
+      "threshold": 1,
+      "comparator": "eq"
+    },
+    {
+      "name": "aegisRecoveryRate",
+      "before": 0.631578947368421,
+      "after": 1,
+      "threshold": 1,
+      "comparator": "eq"
+    },
+    {
+      "name": "substringControlAccuracy",
+      "before": 1,
+      "after": 1,
+      "threshold": 1,
+      "comparator": "eq"
+    },
+    {
+      "name": "infrastructureFailures",
+      "before": 0,
+      "after": 0,
+      "threshold": 0,
+      "comparator": "eq"
+    }
+  ]
+}
+
 ];
+
+/** Candidate corpus held OUTSIDE landed release catalogue until delivery is verified. */
+export const RT61_CANDIDATE_EVIDENCE: SwarmLabEvidenceCase = {
+  "id": "RT-61",
+  "source": "SwarmLab Spec77 / exp71 structured edit coverage",
+  "finding": "Scalar-only host projection hid structured replacement content and aliased action identities.",
+  "owners": [
+    "aegis"
+  ],
+  "change": "Independent content fragments inspected by existing rule floor, bound into approval/predictor identities.",
+  "runIds": [
+    "sec-mvm1703u-57714",
+    "sec-mvm1707n-57732",
+    "sec-mvm17vay-59158"
+  ],
+  "implementationRefs": [
+    "259882071774cd2f65da09e8077363995ff11dd2"
+  ],
+  "implementationStatus": "pending",
+  "evidenceTier": "verified",
+  "aegisMapping": "Historical frozen red-red-green corpus; focused runtime regressions. NOT live execution or production release certification.",
+  "metrics": [
+    {
+      "name": "hazardCoverage",
+      "before": 0,
+      "after": 1,
+      "threshold": 1,
+      "comparator": "eq"
+    },
+    {
+      "name": "controlAccuracy",
+      "before": 1,
+      "after": 1,
+      "threshold": 1,
+      "comparator": "eq"
+    },
+    {
+      "name": "identityCoverage",
+      "before": 0,
+      "after": 1,
+      "threshold": 1,
+      "comparator": "eq"
+    },
+    {
+      "name": "directAccuracy",
+      "before": 1,
+      "after": 1,
+      "threshold": 1,
+      "comparator": "eq"
+    },
+    {
+      "name": "ownershipRate",
+      "before": 1,
+      "after": 1,
+      "threshold": 1,
+      "comparator": "eq"
+    },
+    {
+      "name": "recoveryRate",
+      "before": 1,
+      "after": 1,
+      "threshold": 1,
+      "comparator": "eq"
+    },
+    {
+      "name": "resolutionAccuracy",
+      "before": 0.5555555555555556,
+      "after": 1,
+      "threshold": 1,
+      "comparator": "eq"
+    },
+    {
+      "name": "infrastructureFailures",
+      "before": 0,
+      "after": 0,
+      "threshold": 0,
+      "comparator": "eq"
+    }
+  ]
+};
 
 export function evaluateSwarmLabEvidence(
   cases: readonly SwarmLabEvidenceCase[] = SWARMLAB_EVIDENCE_CASES,
@@ -1654,8 +2233,9 @@ function fmt(n: number, unit?: string): string {
 
 export function swarmLabEvidenceToMarkdown(result: EvidenceGateResult): string {
   const lines: string[] = [];
-  const firstCaseId = result.cases.at(0)?.id ?? 'none';
-  const lastCaseId = result.cases.at(-1)?.id ?? 'none';
+  const orderedIds = result.cases.map(c => c.id).sort((a, b) => a.localeCompare(b, undefined, { numeric: true }));
+  const firstCaseId = orderedIds.at(0) ?? 'none';
+  const lastCaseId = orderedIds.at(-1) ?? 'none';
   const caseRange = firstCaseId === lastCaseId ? firstCaseId : `${firstCaseId}..${lastCaseId}`;
 
   lines.push('# Aegis SwarmLab Evidence Gate');

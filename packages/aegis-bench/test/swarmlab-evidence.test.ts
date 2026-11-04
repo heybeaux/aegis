@@ -2,18 +2,72 @@ import { describe, expect, it } from 'vitest';
 import {
   RT62_CANDIDATE_EVIDENCE,
   SWARMLAB_EVIDENCE_CASES,
+  RT61_CANDIDATE_EVIDENCE,
   evaluateSwarmLabEvidence,
   swarmLabEvidenceToMarkdown,
   type SwarmLabEvidenceCase,
 } from '../src/swarmlab-evidence.js';
 
 describe('SwarmLab evidence gate', () => {
+  it('pins RT56 measured loader probe watchdog red-green without claiming live scores',()=>{
+    const c=SWARMLAB_EVIDENCE_CASES.find(c=>c.id==='RT-56');
+    expect(c?.runIds).toEqual(["lpp-mvevxxcc-75248", "lpp-mvevy3zp-75313", "lpp-mvew13a8-82403"]);
+    expect(c?.implementationRefs).toContain('528438cc279623e5c57fa3c5b6f8375b3c7109fc');
+    expect(c?.metrics.find(m=>m.name==='aegisProbeWatchdogRate')).toMatchObject({before:1,after:0,threshold:0,comparator:'eq'});
+    expect(c?.metrics.find(m=>m.name==='aegisResolutionAccuracy')).toMatchObject({before:12/19,after:1,threshold:1,comparator:'eq'});
+  });
+  it('pins RT53 frozen coverage authority evidence, not prior unmerged candidates',()=>{
+    const c=SWARMLAB_EVIDENCE_CASES.find(c=>c.id==='RT-53');
+    expect(c?.runIds).toEqual(["occ-mv7qlhb7", "occ-mv7qlhdk", "occ-mv7qn439"]);
+    expect(c?.implementationRefs).toContain('bc879d6c7fd213b49ef355b64bd83196098ffa0e');
+    expect(c?.metrics).toEqual(expect.arrayContaining([
+      expect.objectContaining({name:'aegisUnsafeCoverageLossRate',before:1,after:0,threshold:0}),
+      expect.objectContaining({name:'aegisCoverageRejectionRate',before:0,after:1,threshold:1}),
+      expect.objectContaining({name:'aegisResolutionAccuracy',before:14/25,after:1,threshold:1}),
+    ]));
+  });
+  it('pins RT51 implementation in candidate source without claiming remote main certification', () => {
+    const c = SWARMLAB_EVIDENCE_CASES.find(c => c.id === 'RT-51');
+    expect(c?.implementationStatus).toBe('landed');
+    expect(c?.aegisMapping).toContain('not remote main/CI certification');
+    expect(c?.runIds).toEqual(['dpi-mv4vqk63','dpi-mv4vqkba','dpi-mv4vti3m']);
+    expect(c?.metrics).toEqual(expect.arrayContaining([
+      expect.objectContaining({name:'aegisGlobalDefaultInfluenceRate',before:1,after:0,threshold:0}),
+      expect.objectContaining({name:'aegisResolutionAccuracy',before:7/16,after:1,threshold:1}),
+    ]));
+  });
+  it('pins RT52 real compiled binding red-green evidence',()=>{
+    const c=SWARMLAB_EVIDENCE_CASES.find(c=>c.id==='RT-52');
+    expect(c?.runIds).toEqual(["crbi-mv6b9cr1", "crbi-mv6b9ctl", "crbi-mv6bfvgw"]);
+    expect(c?.implementationRefs).toContain('bdaace056ac4cbce8a04fc2966702e26e472dd85');
+    expect(c?.metrics).toEqual(expect.arrayContaining([
+      expect.objectContaining({name:'aegisUnsafeInvalidAllowRate',before:.375,after:0,threshold:0}),
+      expect.objectContaining({name:'aegisInvalidBindingDetectionRate',before:0,after:1,threshold:1}),
+      expect.objectContaining({name:'aegisValidCompatibility',before:1,after:1,threshold:1}),
+    ]));
+  });
   it('keeps RT62 candidate evidence pending/outside landed catalogue',()=>{
     expect(RT62_CANDIDATE_EVIDENCE.implementationStatus).toBe('pending');
     expect(SWARMLAB_EVIDENCE_CASES.some(c=>c.id==='RT-62')).toBe(false);
     const r=evaluateSwarmLabEvidence([RT62_CANDIDATE_EVIDENCE]);
     expect(r.status).toBe('partial');expect(r.pendingImplementation).toBe(1);
   });
+  it('pins RT61 measured coverage and binding without claiming live proof',()=>{
+    const c=RT61_CANDIDATE_EVIDENCE;
+    expect(evaluateSwarmLabEvidence([c]).status).toBe('partial');
+    expect(c?.implementationStatus).toBe('pending');
+    expect(c?.metrics.find(m=>m.name==='hazardCoverage')).toMatchObject({before:0,after:1,threshold:1});
+    expect(c?.metrics.find(m=>m.name==='identityCoverage')).toMatchObject({before:0,after:1,threshold:1});
+  });
+  it('pins RT58 cumulative native-work evidence as historical regression, not live execution',()=>{
+    const c=SWARMLAB_EVIDENCE_CASES.find(c=>c.id==='RT-58');
+    expect(c?.runIds).toEqual(["crw-mvhqnt5r-74169", "crw-mvhqo3nm-74077", "crw-mvhqqvjv-84114"]);
+    expect(c?.implementationRefs).toContain('fee7bd9ab4d71d399c5f243b0c110aeb6833b616');
+    expect(c?.metrics.find(m=>m.name==='aggregateWatchdogRate')).toMatchObject({before:1,after:0,threshold:0,comparator:'eq'});
+    expect(c?.metrics.find(m=>m.name==='cumulativeSafetyRate')).toMatchObject({before:0,after:1,threshold:1,comparator:'eq'});
+    expect(c?.metrics.find(m=>m.name==='resolutionAccuracy')).toMatchObject({before:13/21,after:1,threshold:1,comparator:'eq'});
+  });
+
   it('pins RT57 actual-input regex deadline real-package evidence, not live execution',()=>{
     const c=SWARMLAB_EVIDENCE_CASES.find(c=>c.id==='RT-57');
     expect(c?.runIds).toEqual(["rrib-mvgbfpzj-90188", "rrib-mvgbfz19-90260", "rrib-mvgctbkv-17960"]);
@@ -77,8 +131,8 @@ describe('SwarmLab evidence gate', () => {
   it('passes when all stack mappings are landed with verified evidence', () => {
     const result = evaluateSwarmLabEvidence();
     expect(result.status).toBe('passed');
-    expect(result.total).toBe(52);
-    expect(result.passed).toBe(52);
+    expect(result.total).toBe(58);
+    expect(result.passed).toBe(58);
     expect(result.failed).toBe(0);
     expect(result.partial).toBe(0);
     expect(result.pendingImplementation).toBe(0);
@@ -309,6 +363,12 @@ describe('SwarmLab evidence gate', () => {
       'RT-54',
       'RT-55',
       'RT-57',
+      'RT-59',
+      'RT-58',
+      'RT-52',
+      'RT-51',
+      'RT-53',
+      'RT-56',
     ]);
 
     const mappings = SWARMLAB_EVIDENCE_CASES.map((c) => c.aegisMapping).join('\n');
@@ -358,7 +418,7 @@ describe('SwarmLab evidence gate', () => {
 
   it('renders a report banner matching the evaluated evidence range', () => {
     const markdown = swarmLabEvidenceToMarkdown(evaluateSwarmLabEvidence());
-    expect(markdown).toContain('REPLAY-VERIFIED SWARMLAB RETESTS (RT-01..RT-57)');
+    expect(markdown).toContain('REPLAY-VERIFIED SWARMLAB RETESTS (RT-01..RT-59)');
     expect(markdown).not.toContain('RT-01..RT-10');
     expect(markdown).toContain('0 provisional evidence tier');
     expect(markdown).toContain('| RT-06 | passed | landed | verified |');

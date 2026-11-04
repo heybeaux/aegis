@@ -1,3 +1,5 @@
+import { ruleApplies } from './rule-scope.js';
+import { IMPLICIT_SEVERITY_TABLE, IMPLICIT_PREDICTION_THRESHOLDS } from './policy-defaults.js';
 /**
  * The evaluator: match rules, take the deterministic severity floor, optionally
  * escalate with an AWM prediction, return the strictest action.
@@ -22,20 +24,14 @@ import type {
   SeverityTable,
   ToolCall,
 } from '../types.js';
+import { invalidCompiledMatcher } from './compiled-rule-binding.js';
 import { admittedDecodedVariants } from './preprocess.js';
-import { boundedRegexMatchMany, regexMatchBudgetMs, type RegexJob, type RegexJobResult } from './regex-budget.js';
+import { boundedRegexMatchMany, regexMatchBudgetMs, regexTotalBudgetMs, type RegexJob, type RegexJobResult } from './regex-budget.js';
 
-export const DEFAULT_SEVERITY_TABLE: SeverityTable = {
-  critical: 'deny',
-  high: 'ask',
-  medium: 'ask',
-  low: 'allow',
-};
-
-export const DEFAULT_PREDICTION_THRESHOLDS: PredictionThresholds = {
-  denyAtOrAbove: 0.8,
-  askAtOrAbove: 0.4,
-};
+/** Editable recipe; pass explicitly to EvaluateOptions to select a host override. */
+export const DEFAULT_SEVERITY_TABLE: SeverityTable = { ...IMPLICIT_SEVERITY_TABLE };
+/** Editable recipe; mutating it does not change the package's implicit policy. */
+export const DEFAULT_PREDICTION_THRESHOLDS: PredictionThresholds = { ...IMPLICIT_PREDICTION_THRESHOLDS };
 
 const ACTION_RANK: Record<GateAction, number> = {
   allow: 0,
@@ -52,7 +48,8 @@ function targetString(call: ToolCall, target: CompiledRule['rule']['match']['tar
     case 'command':
       return call.command ? [call.command] : [];
     case 'content':
-      return call.content ? [call.content] : [];
+      // Each fragment is a separate rule input: joining can invent cross-edit matches.
+      return [...(call.content ? [call.content] : []), ...(call.contentFragments ?? [])];
     case 'path':
       return call.paths ?? [];
     case 'argv':
@@ -60,12 +57,6 @@ function targetString(call: ToolCall, target: CompiledRule['rule']['match']['tar
   }
 }
 
-function ruleApplies(appliesTo: string[], tool: string): boolean {
-  // ProcessInput refines the host's process tool; preserve existing operator
-  // rules scoped to that original name, including critical deny policies.
-  return appliesTo.includes('*') || appliesTo.includes(tool) ||
-    (tool === 'ProcessInput' && appliesTo.includes('process'));
-}
 
 /** Strings a rule must test against this call, or null when the rule cannot apply. */
 function ruleStrings(compiled: CompiledRule, call: ToolCall): string[] | null {
@@ -617,6 +608,20 @@ function swarmlabReason(id: string): string {
   return 'SwarmLab RT-07: delegation depth >= 2 requires a value-echo handoff manifest';
 }
 
+const PREDICTOR_CONTRACT_HIT = 'swarmlab.rt50.predictor-requires-valid-numeric-contract';
+const plainObject = (value: unknown): value is Record<string, unknown> =>
+  value !== null && typeof value === 'object' && !Array.isArray(value);
+const probability = (value: unknown): value is number =>
+  typeof value === 'number' && Number.isFinite(value) && value >= 0 && value <= 1;
+function validPrediction(value: unknown): value is Prediction {
+  return plainObject(value) && probability(value['pFailure']) && probability(value['confidence']) &&
+    (value['source'] === 'awm' || value['source'] === 'prior');
+}
+function validThresholds(value: unknown): value is PredictionThresholds {
+  return plainObject(value) && probability(value['askAtOrAbove']) && probability(value['denyAtOrAbove']) &&
+    value['askAtOrAbove'] <= value['denyAtOrAbove'];
+}
+
 function predictionAction(
   prediction: Prediction | undefined,
   thresholds: PredictionThresholds,
@@ -637,6 +642,8 @@ const SEVERITY_RANK: Record<Severity, number> = {
 export interface EvaluateOptions {
   /** Per native-regex match deadline in ms. Default 100; positive finite <=1000, rounded up. Invalid values use default. */
   regexMatchBudgetMs?: number;
+  /** Cumulative native-regex work deadline per evaluate call. Default 250ms; positive finite <=1000, rounded up. Invalid values use default. Not a preprocessing/planning deadline. */
+  regexTotalBudgetMs?: number;
   severityTable?: SeverityTable;
   predictionThresholds?: PredictionThresholds;
   prediction?: Prediction;
@@ -657,9 +664,13 @@ export function evaluate(
   compiledRules: CompiledRule[],
   opts: EvaluateOptions = {},
 ): Evaluation {
-  const severityTable = opts.severityTable ?? DEFAULT_SEVERITY_TABLE;
-  const thresholds = opts.predictionThresholds ?? DEFAULT_PREDICTION_THRESHOLDS;
+  const severityTable = opts.severityTable ?? IMPLICIT_SEVERITY_TABLE;
+  const thresholds = opts.predictionThresholds === undefined ? IMPLICIT_PREDICTION_THRESHOLDS : opts.predictionThresholds;
+  const predictionValid = opts.prediction === undefined || validPrediction(opts.prediction);
+  const contractInvalid = !predictionValid || !validThresholds(thresholds);
+  const prediction = predictionValid ? opts.prediction : undefined;
   const matchBudget = regexMatchBudgetMs(opts.regexMatchBudgetMs);
+  const totalBudget = regexTotalBudgetMs(opts.regexTotalBudgetMs);
   const unresolvedRules = new Set<CompiledRule>();
 
   // Build the set of ToolCall variants to test. When preprocessing is on,
@@ -677,7 +688,12 @@ export function evaluate(
     }
   }
 
-  const hits: RuleHit[] = [];
+  const invalidMatchers = new Set(compiledRules.filter(compiled => invalidCompiledMatcher(compiled, call)));
+  const compiledBindingFailure = invalidMatchers.size > 0;
+  const hits: RuleHit[] = compiledBindingFailure ? [{
+    id: 'swarmlab.rt52.compiled-rule-requires-bound-stateless-matcher',
+    severity: 'medium', category: 'swarmlab', target: 'argv',
+  }] : [];
   let maxSeverity: Severity | null = null;
   let topReason = '';
 
@@ -695,7 +711,7 @@ export function evaluate(
   compiledRules.forEach((c, i) => { if (!ruleIndex.has(c)) ruleIndex.set(c, i); });
   const jobs: RegexJob[] = [];
   const plan = callsToTest.map(testCall => compiledRules.map(compiled => {
-    const strings = ruleStrings(compiled, testCall);
+    const strings = invalidMatchers.has(compiled) ? null : ruleStrings(compiled, testCall);
     let slice: [number, number] | undefined;
     if (strings && compiled.rule.match.kind === 'regex' && compiled.regex && strings.length > 0) {
       let source: string | undefined;
@@ -711,12 +727,12 @@ export function evaluate(
     }
     return { strings, slice };
   }));
-  const regexResults = boundedRegexMatchMany(jobs, matchBudget);
+  const regexResults = boundedRegexMatchMany(jobs, matchBudget, totalBudget);
 
   for (let v = 0; v < callsToTest.length; v++) {
     for (let k = 0; k < compiledRules.length; k++) {
       const compiled = compiledRules[k]!;
-      if (unresolvedRules.has(compiled)) continue;
+      if (invalidMatchers.has(compiled) || unresolvedRules.has(compiled)) continue;
       const { strings, slice } = plan[v]![k]!;
       const matched = matchesRule(compiled, strings, slice ? regexResults.slice(slice[0], slice[1]) : undefined);
       if (matched === null) {
@@ -741,8 +757,11 @@ export function evaluate(
     }
   }
 
-  const severityFloor: GateAction = maxSeverity ? severityTable[maxSeverity] : 'allow';
-  const predAction = predictionAction(opts.prediction, thresholds);
+  const ordinaryFloor: GateAction = maxSeverity ? severityTable[maxSeverity] : 'allow';
+  // Configuration refusal cannot be weakened by a caller's severity mapping.
+  const severityFloor: GateAction = compiledBindingFailure ? strictest(ordinaryFloor, 'ask') : ordinaryFloor;
+  const predAction = contractInvalid ? 'ask' : predictionAction(prediction, thresholds);
+  if (contractInvalid) hits.push({ id: PREDICTOR_CONTRACT_HIT, severity: 'medium', category: 'swarmlab', target: 'argv' });
   // Unresolved matching is an independent ask floor, not a fabricated rule hit
   // and not configurable through the ordinary severity table. Keep scanning so
   // a separate genuine rule/predictor deny is never hidden by a timeout.
@@ -759,12 +778,18 @@ export function evaluate(
   else decidedBy = 'severity';
 
   let reason =
-    decidedBy === 'prediction' && opts.prediction
-      ? `predicted P(failure)=${opts.prediction.pFailure.toFixed(2)} — ${action}`
-      : topReason || 'no rule matched';
+    contractInvalid && action !== 'deny'
+      ? 'SwarmLab RT-50: predictor contribution and thresholds require finite probabilities in [0,1], valid provenance, and ordered thresholds'
+      : decidedBy === 'prediction' && prediction
+      ? `predicted P(failure)=${prediction.pFailure.toFixed(2)} — ${action}`
+      : compiledBindingFailure && ordinaryFloor !== 'deny'
+        ? 'SwarmLab RT-52: compiled regex is missing, stateful or not bound to declared rule; reload the rule pack'
+        : topReason || 'no rule matched';
 
   if (unresolvedRules.size > 0) {
-    const diagnostic = `regex match budget exceeded or matching unavailable (${matchBudget}ms); unresolved rules: ${[...unresolvedRules].map(c => c.rule.id).join(', ')}`;
+    const diagnostic = regexResults.cumulativeBudgetExceeded
+      ? `cumulative regex work budget exceeded (${totalBudget}ms); unresolved rules: ${[...unresolvedRules].map(c => c.rule.id).join(', ')}`
+      : `regex match budget exceeded or matching unavailable (${matchBudget}ms); unresolved rules: ${[...unresolvedRules].map(c => c.rule.id).join(', ')}`;
     reason = action === 'deny' ? `${reason}; ${diagnostic}` : diagnostic;
   }
 
@@ -783,10 +808,10 @@ export function evaluate(
     decidedBy,
     matches: hits,
     // RT-49: receipts own their metadata; callers may update reusable options after return.
-    prediction: opts.prediction === undefined ? undefined : {
-      pFailure: opts.prediction.pFailure,
-      confidence: opts.prediction.confidence,
-      source: opts.prediction.source,
+    prediction: prediction === undefined ? undefined : {
+      pFailure: prediction.pFailure,
+      confidence: prediction.confidence,
+      source: prediction.source,
     },
     reason,
     ruleVersions: [...(opts.ruleVersions ?? [])],

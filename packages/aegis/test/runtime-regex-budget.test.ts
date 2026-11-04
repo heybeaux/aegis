@@ -1,6 +1,7 @@
-import { describe, it, expect } from 'vitest';
+import { Script } from 'node:vm';
+import { describe, it, expect, vi } from 'vitest';
 import { evaluate, loadPack, type Rule, type ToolCall } from '../src/index.js';
-import { boundedRegexMatch, regexMatchBudgetMs } from '../src/eval/regex-budget.js';
+import { boundedRegexMatch, boundedRegexMatchMany, regexMatchBudgetMs } from '../src/eval/regex-budget.js';
 const danger='q'.repeat(48)+'!';
 const r=(id='hazard',over:Partial<Rule>={}):Rule=>({id,category:'bash',severity:'low',description:'guard',match:{kind:'regex',pattern:'^(q+)+r$',target:'command'},appliesTo:['*'],...over});
 const load=(rules:Rule[])=>loadPack({packId:'test',version:'1',rules});
@@ -46,16 +47,20 @@ describe('RT-57 native runtime regex match budget',()=>{
 });
 
 describe('RT-57 batched bounded matching keeps per-match semantics',()=>{
- it('many individually-fast matches are never misreported unknown by a shared batch budget',()=>{
-  // Alphabet deliberately outside loader probes (exp66 / RT56 is held separately).
-  // Calibrate a moderately backtracking input so ONE match costs roughly budget/4.
-  const budget=40;let n=14,t=0;
-  for(;n<26;n++){const s=performance.now();/^(c+)+d$/.test('c'.repeat(n)+'!');t=performance.now()-s;if(t>=budget/4)break;}
-  if(t>=budget)return; // machine too slow to stay within a single budget; nothing to assert
-  const input='c'.repeat(n)+'!';
-  const rules=load(Array.from({length:12},(_,i)=>r(`slow-${i}`,{severity:'critical',match:{kind:'regex',pattern:'^(c+)+d$',target:'command'}})));
-  const out=evaluate({tool:'Bash',command:input},rules,{regexMatchBudgetMs:budget});
-  expect(out.reason).not.toMatch(/regex match budget/);expect(out.action).toBe('allow');
+ it('retries a batch-interrupted job with its own budget when no total allowance was requested',()=>{
+  const starts:number[]=[];
+  const run=vi.spyOn(Script.prototype,'runInContext').mockImplementation((context:any,options:any)=>{
+   if(!context.jobs)return; // cleanup script
+   starts.push(context.start);expect(options.timeout).toBe(40);
+   if(context.start===0){context.out[0]=0;context.out[1]=4;throw new Error('controlled batch interruption');}
+   for(let i=context.start;i<context.jobs.length;i++)context.out[i]=0;
+  });
+  try{
+   const jobs=Array.from({length:12},(_,i)=>({rule:i,group:i,source:'safe',flags:'',input:'other'}));
+   const result=boundedRegexMatchMany(jobs,40);
+   expect(result).toEqual(Array(12).fill(false));expect(starts).toEqual([0,1]);
+   expect(result.cumulativeBudgetExceeded).toBeUndefined();
+  }finally{run.mockRestore();}
  });
  it('a timeout mid-batch still resolves later rules and a later genuine regex deny',()=>{
   const rules=load([r('fast-a',{match:{kind:'regex',pattern:'^nothing$',target:'command'}}),r(),r('late-critical',{severity:'critical',match:{kind:'regex',pattern:'q!$',target:'command'}})]);

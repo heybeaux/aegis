@@ -50,3 +50,9 @@ configuration correctly rounds to 2ms but cannot promise safe-probe recovery
 within that deadline on a shared runner. Fractional normalization is now tested
 directly; normal-budget real loader preemption/recovery tests remain unchanged.
 No runtime budget or frozen experiment threshold was relaxed.
+
+The second CI run exposed RT57's obsolete calibrated evaluate test: RT58 now
+intentionally limits cumulative work, so twelve individually short jobs may ask.
+Its original per-job retry requirement is tested on the low-level API with a
+controlled batch interruption. Existing real native timeout tests and RT58
+cumulative refusal tests remain in place; no deadline was raised.

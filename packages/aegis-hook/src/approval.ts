@@ -4,7 +4,7 @@ import { homedir } from 'node:os';
 import { join } from 'node:path';
 import type { Evaluation, ToolCall } from '@heybeaux/lattice-aegis';
 
-import { processTargetFor } from './process-target.js';
+import { processTarget, processTargetFor } from './process-target.js';
 
 const ID_PREFIX = 'aegis_';
 
@@ -29,6 +29,8 @@ export interface ApprovalExecutionPermit {
 
 export interface ApprovalExecutionSnapshot {
   approvalId: string;
+  /** Fresh authenticated host target, required for ProcessInput permits. */
+  processTarget?: ToolCall['processTarget'];
   authorizationDigest?: string;
   effectiveConsumerId?: string;
   links?: NonNullable<ToolCall['approvalDelegation']>['links'];
@@ -41,6 +43,9 @@ export interface ApprovalExecutionPermitRecord {
   id: string;
   approvalId: string;
   signature: string;
+  /** ProcessInput records bind target lifetime through finalization and resume. */
+  tool?: 'ProcessInput';
+  processTarget?: ToolCall['processTarget'];
   authorizationDigest?: string;
   effectiveConsumerId?: string;
   links?: NonNullable<ToolCall['approvalDelegation']>['links'];
@@ -450,6 +455,10 @@ function executionPermitRecord(
   if (approvalIdValue !== approvalId(call, evaluation)) {
     throw new Error('approval id does not match the consumed call');
   }
+  const target = processTargetFor(call);
+  if (call.tool === 'ProcessInput' && target === undefined) {
+    throw new Error('authenticated process target required for execution permit');
+  }
   const delegation = call.approvalDelegation;
   const signature = approvalSignature(call, evaluation);
   const id = executionPermitId(approvalIdValue, signature);
@@ -457,6 +466,7 @@ function executionPermitRecord(
     id,
     approvalId: approvalIdValue,
     signature,
+    ...(call.tool === 'ProcessInput' ? { tool: 'ProcessInput' as const, processTarget: target } : {}),
     ...(call.approvalProvenance?.authorizationDigest !== undefined
       ? { authorizationDigest: call.approvalProvenance.authorizationDigest }
       : {}),
@@ -514,6 +524,12 @@ function executionSnapshotValid(
   record: ApprovalExecutionPermitRecord,
   current: ApprovalExecutionSnapshot,
 ): boolean {
+  if (record.tool === 'ProcessInput' || record.processTarget !== undefined) {
+    const bound = processTarget(record.processTarget);
+    const fresh = processTarget(current.processTarget);
+    if (record.tool !== 'ProcessInput' || bound === undefined || fresh === undefined ||
+        stable(bound) !== stable(fresh)) return false;
+  }
   if (
     current.approvalId !== record.approvalId ||
     current.revocationChecked !== true ||

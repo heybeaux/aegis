@@ -1,9 +1,10 @@
+import { ruleApplies } from './rule-scope.js';
 import type { CompiledRule, ToolCall } from '../types.js';
 
 /** Validate the cache against declared policy; never silently recompile an unadmitted rule. */
 export function invalidCompiledMatcher(compiled: CompiledRule, call: ToolCall): boolean {
   const { rule, regex } = compiled;
-  if (rule.enabled === false || !(rule.appliesTo.includes('*') || rule.appliesTo.includes(call.tool)) || rule.match.kind !== 'regex') return false;
+  if (rule.enabled === false || !ruleApplies(rule.appliesTo, call.tool) || rule.match.kind !== 'regex') return false;
   if (!(regex instanceof RegExp)) return true;
   try {
     const flags = rule.match.flags ?? '';

@@ -437,6 +437,14 @@ export interface ToolCall {
   command?: string;
   /** Host process input action/target/payload digest; identity only, never authorization. */
   processInputDigest?: string;
+  /** Trusted host attestation of the immutable process lifetime, never tool-authored metadata.
+   * The host must resolve this afresh and bind it to the exact target before execution. */
+  processTarget?: {
+    hostId: string;
+    sessionId: string;
+    generationId: string;
+    verified: boolean;
+  };
   /** File/secret content, for write/secret rules. */
   content?: string;
   /** Additional independent replacement strings. Never joined across edit boundaries. */

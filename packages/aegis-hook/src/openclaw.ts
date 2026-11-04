@@ -1,4 +1,5 @@
 import { createHash } from 'node:crypto';
+import { processTarget } from './process-target.js';
 import type { ToolCall } from '@heybeaux/lattice-aegis';
 import type { HostAdapter, HookRequest, HookResponse } from './adapters.js';
 import type { Decision } from './decide.js';
@@ -9,6 +10,9 @@ export interface OpenClawToolEvent {
   params: Record<string, unknown>;
   toolCallId?: string;
   derivedPaths?: readonly string[];
+  /** Trusted host evidence, resolved outside model-controlled params on every retry.
+   * Generation IDs must never be reused within a host; execution must use this target. */
+  processTarget?: ToolCall['processTarget'];
 }
 
 export interface OpenClawShadowObservation {
@@ -467,6 +471,10 @@ export function openClawToolCall(event: OpenClawToolEvent): ToolCall {
   const tool = processInput ? 'ProcessInput' : normalizeToolName(event.toolName);
   const call: ToolCall = { tool };
   if (processInput) {
+    const target = processTarget(event.processTarget);
+    if (target !== undefined && target.sessionId === params['sessionId']) {
+      call.processTarget = target;
+    }
     // Fixed ordered schema; hash raw validated JSON values, not a lossy text
     // projection. A scalar command/safe flag cannot mask any input component.
     // Digest owns no caller references. Undefined becomes null in this tuple.

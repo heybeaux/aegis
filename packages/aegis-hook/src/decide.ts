@@ -14,6 +14,7 @@
 
 import type { Evaluation, ToolCall } from '@heybeaux/lattice-aegis';
 import { approvalId, consumeApproval, requestApproval } from './approval.js';
+import { processTargetFor } from './process-target.js';
 
 export interface Decision {
   /** Process exit code: 2 blocks/pauses, 0 allows. */
@@ -70,6 +71,9 @@ export function decide(evaluation: Evaluation, options: DecideOptions = {}): Dec
         exitCode: 2,
         stderr:
           `[Aegis ASK requires approval] ${displayReason}\n` +
+          (options.call.tool === 'ProcessInput' && processTargetFor(options.call) === undefined
+            ? 'Approval unavailable: authenticated process target required from the host.\n'
+            : '') +
           `Approval id: ${pending.id}\n` +
           `Approve once: aegis-hook approve ${pending.id}\n` +
           `Then retry the exact same tool call without changing arguments, content, or paths.`,

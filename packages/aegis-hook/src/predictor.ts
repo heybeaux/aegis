@@ -1,3 +1,4 @@
+import { processTargetFor } from './process-target.js';
 import { createHash } from 'node:crypto';
 import { existsSync, mkdirSync, readFileSync, writeFileSync } from 'node:fs';
 import { homedir } from 'node:os';
@@ -137,6 +138,7 @@ export function actionKeyFor(call: ToolCall): string {
     tool: call.tool,
     command: call.command,
     processInputDigest: call.processInputDigest,
+    processTarget: processTargetFor(call),
     contentHash: call.content
       ? createHash('sha256').update(call.content).digest('hex').slice(0, 16)
       : undefined,

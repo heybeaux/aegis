@@ -56,7 +56,10 @@ export interface Rule {
   references?: string[];
   /** Packs may ship disabled rules; overlays can flip. Defaults true. */
   enabled?: boolean;
-  /** Required on an overlay rule that LOWERS a builtin's strictness. Default false. */
+  /** Current overlay must explicitly consent to disable/severity downgrade,
+   * matcher replacement or tool-scope contraction of an enabled effective base.
+   * Regex inclusion is not inferred; flag-order and set-equivalent scope are safe.
+   * Default false; never inherited as consent from the preceding rule. */
   allowDowngrade?: boolean;
 }
 
@@ -68,10 +71,10 @@ export interface RulePack {
   rules: Rule[];
 }
 
-/** A compiled rule owning its validated, editable Rule snapshot (loadPack inputs stay independent). */
+/** A compiled rule owns its validated snapshot. Reload after changing pattern/flags. */
 export interface CompiledRule {
   rule: Rule;
-  /** Present when match.kind === 'regex'. */
+  /** Required for enabled/applicable regex rules; must match declared source and stateless flags. */
   regex?: RegExp;
 }
 
@@ -436,6 +439,8 @@ export interface ToolCall {
   processInputDigest?: string;
   /** File/secret content, for write/secret rules. */
   content?: string;
+  /** Additional independent replacement strings. Never joined across edit boundaries. */
+  contentFragments?: string[];
   /** Paths touched by the call. */
   paths?: string[];
   /** Raw argv, for argv-target rules. */
@@ -476,7 +481,7 @@ export interface RuleHit {
   target: MatchTarget;
 }
 
-/** A predictive contribution (AWM or rule-derived prior). */
+/** A predictive contribution (AWM or rule-derived prior). Both numeric fields must be finite in [0,1]. */
 export interface Prediction {
   pFailure: number;
   confidence: number;
@@ -497,8 +502,8 @@ export interface Evaluation {
 export type SeverityTable = Record<Severity, GateAction>;
 
 export interface PredictionThresholds {
-  /** P(failure) >= this -> deny. */
+  /** Finite [0,1]; must be >= askAtOrAbove. P(failure) >= this -> deny. */
   denyAtOrAbove: number;
-  /** P(failure) >= this -> ask. */
+  /** Finite [0,1]; must be <= denyAtOrAbove. Equality is valid; deny wins. */
   askAtOrAbove: number;
 }

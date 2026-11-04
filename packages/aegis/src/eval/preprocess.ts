@@ -94,11 +94,12 @@ function collectDecodedVariants(command: string, limits?: AdmissionLimits): { va
     return true;
   }
 
-  // Preserve family priority and existing first-only base64 recognition. Exp69's
-  // pending occurrence-completeness change is a separate policy, not included here.
+  // Preserve family priority while admitting every supported occurrence lazily.
   for (const pattern of [BASE64_PIPE_TO_SHELL, BASE64_HERESTRING, BASE64_SUBSHELL_DECODE]) {
-    const match = pattern.exec(command);
-    if (match && !admit(tryBase64Decode(match[1]!))) return { variants, incomplete: true };
+    const occurrences = new RegExp(pattern.source, `${pattern.flags}g`);
+    for (const match of command.matchAll(occurrences)) {
+      if (!admit(tryBase64Decode(match[1]!))) return { variants, incomplete: true };
+    }
   }
 
   // Iterate lazily; command.match() would materialize all matches before admission.

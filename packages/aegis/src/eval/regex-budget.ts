@@ -4,6 +4,8 @@ import { createContext, Script } from 'node:vm';
 const DEFAULT_MATCH_BUDGET_MS = 100;
 const MAX_MATCH_BUDGET_MS = 1000;
 const MAX_CACHED_PATTERNS = 2048;
+const DEFAULT_TOTAL_BUDGET_MS = 250;
+const MAX_TOTAL_BUDGET_MS = 1000;
 
 /**
  * One regex test to run inside the private realm. `rule` identifies the rule (a timeout
@@ -83,13 +85,23 @@ export function regexMatchBudgetMs(value: number | undefined): number {
     : DEFAULT_MATCH_BUDGET_MS;
 }
 
+/** Total native work allowance for one evaluate invocation; never an unbounded opt-out. */
+export function regexTotalBudgetMs(value: number | undefined): number {
+  return typeof value === 'number' && Number.isFinite(value) && value > 0 && value <= MAX_TOTAL_BUDGET_MS
+    ? Math.ceil(value)
+    : DEFAULT_TOTAL_BUDGET_MS;
+}
+
+export type RegexBatchResults = RegexJobResult[] & { cumulativeBudgetExceeded?: boolean };
+
 /**
  * Run jobs in order with per-job budget semantics. A batch call that times out is
  * restarted with the culprit as its first job; only a job that alone exceeds the budget
  * is unknown. Results never fabricate a match; unknown is never a nonmatch.
  */
-export function boundedRegexMatchMany(jobs: readonly RegexJob[], budgetMs: number): RegexJobResult[] {
-  const results: RegexJobResult[] = new Array(jobs.length).fill(undefined);
+export function boundedRegexMatchMany(jobs: readonly RegexJob[], budgetMs: number, totalBudgetMs?: number): RegexBatchResults {
+  const results: RegexBatchResults = new Array(jobs.length).fill(undefined);
+  const deadline = totalBudgetMs === undefined ? Infinity : performance.now() + regexTotalBudgetMs(totalBudgetMs);
   if (jobs.length === 0) return results;
   if (!context) {
     // Unavailable: every job's first evaluated string per rule is unknown.
@@ -106,6 +118,18 @@ export function boundedRegexMatchMany(jobs: readonly RegexJob[], budgetMs: numbe
   const matched: Record<number, boolean> = Object.create(null);
   const bad: Record<number, boolean> = Object.create(null);
   let start = 0;
+  const exhaustTotal = () => {
+    // Keep proven results and first-match group short-circuit semantics. An unrun
+    // rule is unknown, never a nonmatch; one unknown per rule is sufficient.
+    for (let i = start; i < jobs.length; i++) {
+      if (out[i] !== -1 && out[i] !== 4) continue;
+      const j = jobs[i]!;
+      if (matched[j.group] || bad[j.rule]) { out[i] = 2; continue; }
+      out[i] = 3;
+      bad[j.rule] = true;
+      results.cumulativeBudgetExceeded = true;
+    }
+  };
   try {
     while (start < jobs.length) {
       slots.jobs = jobs as RegexJob[];
@@ -113,10 +137,16 @@ export function boundedRegexMatchMany(jobs: readonly RegexJob[], budgetMs: numbe
       slots.matched = matched;
       slots.bad = bad;
       slots.start = start;
+      const remaining = Math.floor(deadline - performance.now());
+      if (remaining < 1) { exhaustTotal(); break; }
+      const timeout = Math.min(budgetMs, remaining);
       try {
-        BATCH.runInContext(context, { timeout: budgetMs });
+        BATCH.runInContext(context, { timeout });
         break;
       } catch {
+        // A retry must not acquire a fresh total budget. Native work, including
+        // work lost to a batch interruption, all consumes this one deadline.
+        if (performance.now() >= deadline || timeout < budgetMs) { exhaustTotal(); break; }
         const culprit = out.findIndex((v, i) => i >= start && v === 4);
         if (culprit < 0) {
           // Realm failure outside any job: everything not yet decided is unknown.

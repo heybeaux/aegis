@@ -4,6 +4,8 @@
  * See docs/aegis-rulepack-spec-2026-06-14.md §2.
  */
 
+import { createContext, Script } from 'node:vm';
+
 import type {
   AllowedFlag,
   CompiledRule,
@@ -35,7 +37,19 @@ const REDOS_PROBES: readonly string[] = [
  * avoid rejecting known-good rulepacks because one probe took 5.1ms. Override
  * with AEGIS_REDOS_BUDGET_MS for tighter local experiments.
  */
-const REDOS_BUDGET_MS = Number(process.env['AEGIS_REDOS_BUDGET_MS'] ?? '25');
+const configuredBudget = Number(process.env['AEGIS_REDOS_BUDGET_MS'] ?? '25');
+// vm requires a positive integer timeout. Invalid operator input must not turn
+// the guard off (NaN/Infinity), reject all packs (zero/negative), or leak a
+// RangeError. Round fractional milliseconds up, keeping the default headroom.
+const REDOS_BUDGET_MS = Number.isFinite(configuredBudget) &&
+  configuredBudget > 0 && configuredBudget <= 2_147_483_647
+  ? Math.ceil(configuredBudget)
+  : 25;
+
+// Fixed source, primitive data only: patterns are never interpolated as code.
+// Construct the RegExp in the timed V8 context so a native backtracking call is
+// interruptible. An elapsed check after a host RegExp.test cannot preempt it.
+const REDOS_PROBE_SCRIPT = new Script('new RegExp(pattern, flags).test(probe)');
 
 export class RulePackError extends Error {
   constructor(
@@ -79,15 +93,19 @@ function compileRegex(pack: RulePack, rule: Rule): RegExp {
 }
 
 function assertNoReDoS(regex: RegExp, pack: RulePack, rule: Rule): void {
+  const context = createContext({ pattern: regex.source, flags: regex.flags, probe: '' });
   for (const probe of REDOS_PROBES) {
-    // Fresh regex each probe — defensive against any residual lastIndex.
-    const r = new RegExp(regex.source, regex.flags);
-    const start = performance.now();
-    r.test(probe);
-    const elapsed = performance.now() - start;
-    if (elapsed > REDOS_BUDGET_MS) {
+    context['probe'] = probe;
+    try {
+      // Fresh context-owned regex each probe: no lastIndex/cache state escapes.
+      REDOS_PROBE_SCRIPT.runInContext(context, { timeout: REDOS_BUDGET_MS });
+    } catch (err) {
+      const timedOut = typeof err === 'object' && err !== null &&
+        'code' in err && err.code === 'ERR_SCRIPT_EXECUTION_TIMEOUT';
       throw new RulePackError(
-        `pattern exceeded ReDoS budget (${elapsed.toFixed(1)}ms > ${REDOS_BUDGET_MS}ms) on a probe — likely catastrophic backtracking`,
+        timedOut
+          ? `pattern exceeded ReDoS budget (${REDOS_BUDGET_MS}ms) on a probe — likely catastrophic backtracking`
+          : 'ReDoS budget probe could not complete safely',
         pack.packId,
         rule.id,
       );

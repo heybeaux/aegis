@@ -44,3 +44,9 @@ Remote CI and final counts are recorded in the integration PR.
   not a verified replacement for the current engine.
 - Old exp57 and closed exp58 branches were superseded by the exp57/58 integration
   already in main. Restoring their snapshots would regress later behavior.
+
+Initial integration CI exposed a separate invalid test assumption: a 1.5ms
+configuration correctly rounds to 2ms but cannot promise safe-probe recovery
+within that deadline on a shared runner. Fractional normalization is now tested
+directly; normal-budget real loader preemption/recovery tests remain unchanged.
+No runtime budget or frozen experiment threshold was relaxed.

@@ -1,3 +1,4 @@
+import { redosProbeBudgetMs } from '../src/rules/probe-budget.js';
 import { execFileSync } from 'node:child_process';
 import { describe, expect, it } from 'vitest';
 
@@ -15,6 +16,10 @@ console.log(JSON.stringify(result));`;
 }
 
 describe('loader probe deadline preemption (public artifact)', () => {
+  // Normalization promises a 2ms deadline, not successful scheduling within 2ms.
+  it('rounds fractional probe budgets without asserting sub-millisecond runner timing', () => {
+    expect(redosProbeBudgetMs('1.5')).toBe(2);
+  });
   for(const [name,pattern] of [['nested-a','^(a+)+b$'],['alternation','^(a|aa)+b$'],['nested-slash','^(/+)+x$']]) {
     it(`interrupts ${name} before parent watchdog and recovers`,()=>{
       const r=run(pattern);expect(r.outcome).toBe('error');expect(r.typed).toBe(true);expect(r.packId).toBe('test');expect(r.ruleId).toBe('guard');expect(r.message).toMatch(/ReDoS.*budget/i);expect(r.recovery).toBe(true);
@@ -22,7 +27,7 @@ describe('loader probe deadline preemption (public artifact)', () => {
   }
   it('still validates disabled regex rules',()=>{expect(run('^(a+)+b$','25',{enabled:false})).toMatchObject({outcome:'error',typed:true,recovery:true});});
   for(const pattern of ['^SAFE+$','(?<=S)A(F)E\\1','^DANGER$']) it(`keeps valid regex ${pattern}`,()=>{expect(run(pattern)).toMatchObject({outcome:'loaded',source:pattern,recovery:true});});
-  for(const budget of ['0','-1','NaN','Infinity','1.5','2147483648','']) it(`normalizes budget ${JSON.stringify(budget)} safely`,()=>{expect(run('^SAFE$',budget)).toMatchObject({outcome:'loaded',recovery:true});});
+  for(const budget of ['0','-1','NaN','Infinity','2147483648','']) it(`normalizes budget ${JSON.stringify(budget)} safely`,()=>{expect(run('^SAFE$',budget)).toMatchObject({outcome:'loaded',recovery:true});});
   it('invalid budget cannot disable preemption',()=>{expect(run('^(a+)+b$','NaN')).toMatchObject({outcome:'error',typed:true,recovery:true});});
   it('preserves compile error identity',()=>{expect(run('[')).toMatchObject({outcome:'error',typed:true,packId:'test',ruleId:'guard',recovery:true});});
   it('preserves disallowed flag rejection',()=>{const r=run('SAFE','25',{match:{kind:'regex',pattern:'SAFE',flags:'g',target:'command'}});expect(r).toMatchObject({outcome:'error',typed:true,recovery:true});expect(r.message).toContain('disallowed regex flag');});

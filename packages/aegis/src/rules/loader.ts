@@ -1,3 +1,4 @@
+import { redosProbeBudgetMs } from './probe-budget.js';
 /**
  * Rule-pack loader: validate -> flag-restrict -> compile -> ReDoS budget.
  * Fail-closed: a pack that violates any guard is rejected wholesale, loudly.
@@ -37,14 +38,7 @@ const REDOS_PROBES: readonly string[] = [
  * avoid rejecting known-good rulepacks because one probe took 5.1ms. Override
  * with AEGIS_REDOS_BUDGET_MS for tighter local experiments.
  */
-const configuredBudget = Number(process.env['AEGIS_REDOS_BUDGET_MS'] ?? '25');
-// vm requires a positive integer timeout. Invalid operator input must not turn
-// the guard off (NaN/Infinity), reject all packs (zero/negative), or leak a
-// RangeError. Round fractional milliseconds up, keeping the default headroom.
-const REDOS_BUDGET_MS = Number.isFinite(configuredBudget) &&
-  configuredBudget > 0 && configuredBudget <= 2_147_483_647
-  ? Math.ceil(configuredBudget)
-  : 25;
+const REDOS_BUDGET_MS = redosProbeBudgetMs(process.env['AEGIS_REDOS_BUDGET_MS']);
 
 // Fixed source, primitive data only: patterns are never interpolated as code.
 // Construct the RegExp in the timed V8 context so a native backtracking call is

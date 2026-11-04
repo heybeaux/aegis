@@ -4,6 +4,8 @@ import { homedir } from 'node:os';
 import { join } from 'node:path';
 import type { Evaluation, ToolCall } from '@heybeaux/lattice-aegis';
 
+import { processTargetFor } from './process-target.js';
+
 const ID_PREFIX = 'aegis_';
 
 export interface ApprovalRecord {
@@ -274,6 +276,7 @@ function signaturePayload(call: ToolCall, evaluation: Evaluation): unknown {
       tool: call.tool,
       command: call.command,
       processInputDigest: call.processInputDigest,
+      processTarget: processTargetFor(call),
       content: call.content,
       paths: call.paths,
       argv: call.argv,
@@ -388,6 +391,9 @@ export function approvePending(id: string, dir?: string): ApprovalRecord {
 }
 
 export function consumeApproval(call: ToolCall, evaluation: Evaluation, dir?: string): boolean {
+  // An approval cannot authorize an unidentified/recycled process lifetime.
+  // Check before touching the receipt, so unavailable host evidence cannot burn it.
+  if (call.tool === 'ProcessInput' && processTargetFor(call) === undefined) return false;
   const id = approvalId(call, evaluation);
   const paths = approvalPaths(id, dir);
   if (!existsSync(paths.approvedPath)) return false;

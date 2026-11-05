@@ -1,4 +1,4 @@
-import { createHash } from 'node:crypto';
+import { createHash, randomUUID } from 'node:crypto';
 import { existsSync, mkdirSync, readFileSync, renameSync, rmSync, writeFileSync } from 'node:fs';
 import { homedir } from 'node:os';
 import { join } from 'node:path';
@@ -432,14 +432,46 @@ export function consumeApproval(call: ToolCall, evaluation: Evaluation, dir?: st
     rmSync(paths.pendingPath, { force: true });
     return false;
   }
+  // Publish a new local issuance generation only after a successful consumption.
+  // Keep it after mint/finalize: retries must resolve to the same spent issuance.
+  const generation = { approvalId: id, signature: expected, nonce: randomUUID() };
+  const temporary = join(paths.dir, `${id}.${generation.nonce}.generation.tmp.json`);
+  try {
+    writeFileSync(temporary, JSON.stringify(generation) + '\n', { encoding: 'utf8', flag: 'wx' });
+    renameSync(temporary, localConsumptionPath(id, dir));
+  } finally {
+    rmSync(temporary, { force: true });
+  }
   rmSync(consumingPath, { force: true });
   rmSync(paths.pendingPath, { force: true });
   return true;
 }
 
 
-function executionPermitId(approvalIdValue: string, signature: string): string {
-  return `permit_${createHash('sha256').update(`${approvalIdValue}:${signature}`).digest('hex').slice(0, 24)}`;
+function localConsumptionPath(id: string, dir?: string): string {
+  return join(approvalPaths(id, dir).dir, `${id}.consumption.json`);
+}
+
+function localConsumptionNonce(id: string, signature: string, dir?: string): string | undefined {
+  const path = localConsumptionPath(id, dir);
+  // Compatibility for legacy direct callers. Once present, malformed history must
+  // never silently downgrade to the deterministic legacy issuance.
+  if (!existsSync(path)) return undefined;
+  const value: unknown = JSON.parse(readFileSync(path, 'utf8'));
+  if (value === null || typeof value !== 'object' || Array.isArray(value)) {
+    throw new Error('invalid local approval consumption generation');
+  }
+  const record = value as Record<string, unknown>;
+  if (record['approvalId'] !== id || record['signature'] !== signature ||
+      typeof record['nonce'] !== 'string' || !/^[a-f0-9]{8}-[a-f0-9]{4}-4[a-f0-9]{3}-[89ab][a-f0-9]{3}-[a-f0-9]{12}$/.test(record['nonce'])) {
+    throw new Error('invalid local approval consumption generation');
+  }
+  return record['nonce'];
+}
+
+function executionPermitId(approvalIdValue: string, signature: string, nonce?: string): string {
+  const identity = `${approvalIdValue}:${signature}${nonce === undefined ? '' : `:${nonce}`}`;
+  return `permit_${createHash('sha256').update(identity).digest('hex').slice(0, 24)}`;
 }
 
 function executionPermitPath(id: string, dir?: string): string {
@@ -484,6 +516,8 @@ function executionPermitRecord(
 /**
  * Create a host-finalized execution permit after a successful approval consumption.
  * The caller must pass the exact call/evaluation that produced the consumed decision.
+ * Local consumption generations and issuance markers must be retained. A failed
+ * publication after claiming issuance burns it; obtain a fresh approval to retry.
  */
 export function createExecutionPermit(
   call: ToolCall,
@@ -492,9 +526,15 @@ export function createExecutionPermit(
   dir?: string,
 ): ApprovalExecutionPermit {
   const record = executionPermitRecord(call, evaluation, approvalIdValue);
+  record.id = executionPermitId(record.approvalId, record.signature,
+    localConsumptionNonce(record.approvalId, record.signature, dir));
   mkdirSync(approvalDir(dir), { recursive: true });
   const path = executionPermitPath(record.id, dir);
   if (existsSync(path)) throw new Error(`execution permit already exists for ${approvalIdValue}`);
+  // Atomic create-once, independent of the destructively consumed ready record.
+  // Never remove the marker on finalization, invalid use, or publication failure.
+  const issued = join(approvalDir(dir), `${record.id}.issued.json`);
+  writeFileSync(issued, JSON.stringify({ id: record.id, approvalId: record.approvalId }) + '\n', { encoding: 'utf8', flag: 'wx' });
   writeFileSync(path, JSON.stringify(record, null, 2) + '\n', { encoding: 'utf8', flag: 'wx' });
   return { id: record.id, approvalId: approvalIdValue };
 }

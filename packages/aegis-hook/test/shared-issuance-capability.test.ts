@@ -1,0 +1,29 @@
+import {describe,expect,it} from 'vitest';
+import {evaluate,loadPack,type ToolCall} from '@heybeaux/lattice-aegis';
+import {approvalId,createExecutionPermitWithStore,finalizeExecutionPermitWithStore,type ApprovalExecutionPermitRecord,type ApprovalExecutionPermitStore} from '../src/approval.js';
+const rules=loadPack({packId:'test',version:'1',rules:[{id:'test.ask',category:'secrets',severity:'high',description:'review',appliesTo:['*'],match:{kind:'substring',target:'content',pattern:'REVIEW'}}]});
+function fixture(){
+ const call:ToolCall={tool:'Bash',command:'pwd',content:'REVIEW',approvalProvenance:{actorId:'root',authorizationDigest:'epoch1'},approvalDelegation:{effectiveConsumerId:'root',declaredScope:'none',maxDepth:0,links:[{actorId:'root',authorityLevel:1,verified:true}],revoked:false,revocationChecked:true,structurallyValid:true}};
+ const evaluation=evaluate(call,rules),id=approvalId(call,evaluation);
+ const current={approvalId:id,authorizationDigest:'epoch1',effectiveConsumerId:'root',links:call.approvalDelegation!.links,revoked:false,revocationChecked:true,structurallyValid:true};
+ const ready=new Map<string,ApprovalExecutionPermitRecord>(),issued=new Set<string>();let legacyCalls=0,onceCalls=0,fault:''|'before'|'after'='';
+ const adapter=()=>({
+  async create(r:ApprovalExecutionPermitRecord){legacyCalls++;if(ready.has(r.id))return false;ready.set(r.id,structuredClone(r));return true;},
+  async createOnce(r:ApprovalExecutionPermitRecord){onceCalls++;if(fault==='before')throw Error('before commit');if(issued.has(r.id)||ready.has(r.id))return false;issued.add(r.id);ready.set(r.id,structuredClone(r));if(fault==='after')throw Error('ack lost');return true;},
+  async take(key:string){const r=ready.get(key);ready.delete(key);return r;}
+ });
+ const mint=(store:ApprovalExecutionPermitStore,issuanceId='grant-1')=>createExecutionPermitWithStore(call,evaluation,id,store,{issuanceId});
+ return {call,evaluation,id,current,ready,issued,adapter,mint,counts:()=>({legacyCalls,onceCalls}),fault:(value:typeof fault)=>{fault=value;}};
+}
+describe('shared issuance capability',()=>{
+ it.each([false,true])('spent grant cannot be recreated by another adapter (revoked=%s)',async revoked=>{const f=fixture(),a=f.adapter(),b=f.adapter(),p=await f.mint(a);expect(await finalizeExecutionPermitWithStore(p,{...f.current,revoked},b)).toBe(!revoked);await expect(f.mint(f.adapter())).rejects.toThrow();expect(f.issued.size).toBe(1);expect(f.counts().legacyCalls).toBe(0);});
+ it.each([false,true])('fresh identity isolates stale handle (revoked=%s)',async revoked=>{const f=fixture(),a=f.adapter(),p=await f.mint(a);await finalizeExecutionPermitWithStore(p,{...f.current,revoked},a);const q=await f.mint(f.adapter(),'grant-2');expect(q.id).not.toBe(p.id);expect(await finalizeExecutionPermitWithStore(p,f.current,a)).toBe(false);expect(await finalizeExecutionPermitWithStore(q,f.current,a)).toBe(true);});
+ it('one winner across initial and spent concurrent claims',async()=>{const f=fixture(),a=f.adapter(),b=f.adapter();const results=await Promise.allSettled([f.mint(a),f.mint(b)]);expect(results.filter(r=>r.status==='fulfilled')).toHaveLength(1);const winner=results.find(r=>r.status==='fulfilled')!;if(winner.status==='fulfilled')expect(await finalizeExecutionPermitWithStore(winner.value,f.current,a)).toBe(true);expect((await Promise.allSettled([f.mint(a),f.mint(b)])).every(r=>r.status==='rejected')).toBe(true);});
+ it('rejects absent capability without legacy storage effects',async()=>{const f=fixture(),a=f.adapter();await expect(f.mint({create:a.create,take:a.take})).rejects.toThrow(/capability/);expect(f.counts()).toEqual({legacyCalls:0,onceCalls:0});});
+ it.each([{}, {issuanceId:''},{issuanceId:'   '},{issuanceId:7},{issuanceId:'x'.repeat(257)},null,[]])('rejects malformed strict options %j',async value=>{const f=fixture();await expect(createExecutionPermitWithStore(f.call,f.evaluation,f.id,f.adapter(),value as {issuanceId:string})).rejects.toThrow();expect(f.counts()).toEqual({legacyCalls:0,onceCalls:0});});
+ it('allows recovery only when failed create had no committed issuance',async()=>{const f=fixture(),a=f.adapter();f.fault('before');await expect(f.mint(a)).rejects.toThrow(/unavailable/);expect(f.issued.size).toBe(0);f.fault('');expect(await finalizeExecutionPermitWithStore(await f.mint(a),f.current,a)).toBe(true);});
+ it('ack loss after commit never falls back or reissues',async()=>{const f=fixture(),a=f.adapter();f.fault('after');await expect(f.mint(a)).rejects.toThrow(/unavailable/);expect(f.issued.size).toBe(1);f.fault('');await expect(f.mint(f.adapter())).rejects.toThrow();expect(f.counts().legacyCalls).toBe(0);});
+ it.each([undefined,1,'true',{}])('requires literal true from createOnce (%j)',async value=>{const f=fixture(),a=f.adapter();a.createOnce=(async()=>value) as typeof a.createOnce;await expect(f.mint(a)).rejects.toThrow();});
+ it('keeps legacy call compatible and strict namespace disjoint',async()=>{const f=fixture(),a=f.adapter();const p=await createExecutionPermitWithStore(f.call,f.evaluation,f.id,a);const q=await f.mint(a);expect(p.id).not.toBe(q.id);expect(await finalizeExecutionPermitWithStore(p,f.current,a)).toBe(true);expect(await finalizeExecutionPermitWithStore(q,f.current,a)).toBe(true);expect(f.counts()).toEqual({legacyCalls:1,onceCalls:1});});
+ it('captures options before await and does not modify producer data',async()=>{const f=fixture(),a=f.adapter(),opts={issuanceId:'grant-1'},original=structuredClone(f.call);const pending=createExecutionPermitWithStore(f.call,f.evaluation,f.id,a,opts);opts.issuanceId='grant-2';const p=await pending;expect(f.call).toEqual(original);await finalizeExecutionPermitWithStore(p,f.current,a);await expect(f.mint(a,'grant-1')).rejects.toThrow();expect((await f.mint(a,'grant-2')).id).not.toBe(p.id);});
+});

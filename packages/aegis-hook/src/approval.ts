@@ -59,8 +59,21 @@ export interface ApprovalExecutionPermitRecord {
  * return and delete at most one record across every participating host.
  */
 export interface ApprovalExecutionPermitStore {
+  /**
+   * Optional strict issuance capability. Atomically retain a permanent issued
+   * marker AND publish the record only if its id has never been issued. `take`
+   * must not delete the marker. Return literal true only for a new issuance.
+   * Markers and ready records must share the same durable transaction boundary
+   * across all hosts; acknowledgement loss must never erase an issued marker.
+   */
+  createOnce?(record: ApprovalExecutionPermitRecord): Promise<boolean>;
   create(record: ApprovalExecutionPermitRecord): Promise<boolean>;
   take(id: string): Promise<ApprovalExecutionPermitRecord | undefined>;
+}
+
+/** Trusted host identity of one successful approval consumption; never a retry ID. */
+export interface ApprovalExecutionIssuanceOptions {
+  issuanceId: string;
 }
 
 export interface ApprovalPaths {
@@ -542,22 +555,47 @@ export function createExecutionPermit(
 /**
  * Create a globally one-shot permit in a host-provided transactional store.
  * Store failure and duplicate creation fail closed by rejecting the operation.
+ * Passing issuance options requires createOnce and binds the host's stable
+ * per-consumption identity. An incapable store is rejected, never downgraded.
+ * Omitted options retain legacy create/take behavior, which does not prevent
+ * reissuance after take. Hosts must migrate/drain old grants before opting in.
  */
 export async function createExecutionPermitWithStore(
   call: ToolCall,
   evaluation: Evaluation,
   approvalIdValue: string,
   store: ApprovalExecutionPermitStore,
+  options?: ApprovalExecutionIssuanceOptions,
 ): Promise<ApprovalExecutionPermit> {
   const record = executionPermitRecord(call, evaluation, approvalIdValue);
+  const strict = options !== undefined;
+  let create = store.create;
+  if (strict) {
+    if (options === null || typeof options !== 'object' || Array.isArray(options) ||
+        typeof options.issuanceId !== 'string' || options.issuanceId.trim().length === 0 ||
+        options.issuanceId.length > 256) {
+      throw new Error('invalid execution permit issuance identity');
+    }
+    if (typeof store.createOnce !== 'function') {
+      throw new Error('execution permit store lacks durable issuance capability');
+    }
+    // Structured domain separation keeps strict handles distinct from legacy and
+    // local-generation handles. Read the identity before the first async boundary.
+    const identity = JSON.stringify(['shared-issuance-v1', record.approvalId, record.signature, options.issuanceId]);
+    record.id = `permit_${createHash('sha256').update(identity).digest('hex').slice(0, 24)}`;
+    create = store.createOnce;
+  }
+  const permit = { id: record.id, approvalId: record.approvalId };
   let created = false;
   try {
-    created = await store.create(record);
+    created = await create.call(store, record);
   } catch (error) {
     throw new Error('execution permit store unavailable during create', { cause: error });
   }
-  if (!created) throw new Error(`execution permit already exists for ${approvalIdValue}`);
-  return { id: record.id, approvalId: record.approvalId };
+  if (strict ? created !== true : !created) {
+    throw new Error(`execution permit already exists or was not issued for ${approvalIdValue}`);
+  }
+  return permit;
 }
 
 function executionSnapshotValid(

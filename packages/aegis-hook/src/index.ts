@@ -79,6 +79,7 @@ export {
   type ApprovalExecutionPermit,
   type ApprovalExecutionPermitRecord,
   type ApprovalExecutionPermitStore,
+  type ApprovalExecutionIssuanceOptions,
   type ReconciledApprovalExecutionPermitStore,
   type JournaledApprovalExecutionPermitStore,
   type RevisionedApprovalExecutionPermitStore,

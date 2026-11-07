@@ -31,10 +31,9 @@ implementation; a process-local Set is insufficient for production durability.
 Aegis supplies the contract and refusal behavior, not a database adapter.
 
 Strict requests reject malformed identity, absent capability, false/nonboolean
-success and storage exceptions. There is no fallback to legacy `create`. If the
-store committed but lost its creation acknowledgement, retry remains blocked;
-lost-handle recovery is not implemented. This sacrifices availability to avoid
-reissuing authority. If the store failed before commit, retry may succeed.
+success and storage exceptions. There is no fallback to legacy `create`. By default, if the
+store committed but lost its creation acknowledgement, retry remains blocked.
+Optional exact readback recovery is described below; it never reissues authority. If the store failed before commit, retry may succeed.
 Snapshot checks and one-shot finalization remain in force.
 
 Four-argument callers keep legacy behavior. They have NO protection against
@@ -52,3 +51,48 @@ objects sharing a deterministic transactional storage fixture. Baseline2c3a68d:
 controls and 6/6 refusals; all28 cases pass. Twenty-one new unit tests cover the
 contract, malformed options, acknowledgement loss and nonboolean store results.
 No real database durability, external side effects or deployment was tested.
+
+
+## Optional lost-handle recovery (SwarmLab RT-67)
+
+```ts
+const permit = await createExecutionPermitWithStore(
+  call, evaluation, consumedApprovalId, store,
+  { issuanceId: consumedGrantIdentity, recoverExisting: true },
+);
+// This is only a handle. Obtain a fresh trusted snapshot and finalize before execution.
+const execute = await finalizeExecutionPermitWithStore(permit, freshSnapshot, store);
+```
+
+Recovery requires both `createOnce` and `readIssuedPermit(id)` BEFORE any store
+mutation. The latter must return a detached ready record only when the permanent
+issuance marker AND the ready record exist in a coherent shared-store view.
+It must never recreate a record, return a previously taken record, consume the
+permit or remove the issuance marker. Absence and read errors reject recovery.
+
+When creation returns literal false or throws, Aegis reads the existing issued
+record and requires exact structural equality with the requested record,
+including signature, approval, authority, delegation and process lifetime.
+Aegis captures the expected binding, recovery mode and read method before awaiting
+storage. Unknown/nonboolean creation acknowledgements cannot trigger recovery.
+A successful new creation returns its handle normally. Omitted/false recovery
+keeps the strict duplicate-rejection contract from RT-66.
+
+Recovery can return the SAME handle to multiple hosts. Possessing it is not an
+execution decision: atomic destructive `take` and fresh authority validation
+still arbitrate exactly one finalization. Revoked snapshots burn the ready record;
+spent records cannot recover. A fresh successful approval consumption must use a
+fresh issuance identity, and old handles cannot take its permit. Storage and host
+integrations must implement these contracts; no built-in database adapter or
+host deployment is supplied. Readback unavailable means rejection, not evidence
+that creation never committed. Retry with the SAME consumed-grant identity.
+
+Exp77's pre-registered28-case actual-package experiment found recovery0/10 and
+capability refusal0/2 on340cc77; runtime103e343 gives10/10 and2/2, all28 cases
+pass. Duplicate execution and unsafe readback acceptance remain zero. Two red
+runs have identical raw observations.24 focused new tests include async ownership,
+corrupt fields and malformed mode. Full release1514tests and58historical gates
+pass; that static catalogue is not a live execution of RT-67. The SwarmLab CI
+runs the pinned real package and verifies content-addressed raw observations.
+This is deterministic storage-contract evidence, not database durability,
+external side-effect exactly-once, crash-after-take recovery or production proof.

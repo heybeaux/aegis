@@ -67,6 +67,12 @@ export interface ApprovalExecutionPermitStore {
    * across all hosts; acknowledgement loss must never erase an issued marker.
    */
   createOnce?(record: ApprovalExecutionPermitRecord): Promise<boolean>;
+  /**
+   * Optional recovery capability: coherent, non-destructive read of the ready
+   * record only if its permanent issuance marker also exists. Never restore a
+   * taken record. Return a detached value; hosts still arbitrate execution by take.
+   */
+  readIssuedPermit?(id: string): Promise<ApprovalExecutionPermitRecord | undefined>;
   create(record: ApprovalExecutionPermitRecord): Promise<boolean>;
   take(id: string): Promise<ApprovalExecutionPermitRecord | undefined>;
 }
@@ -74,6 +80,8 @@ export interface ApprovalExecutionPermitStore {
 /** Trusted host identity of one successful approval consumption; never a retry ID. */
 export interface ApprovalExecutionIssuanceOptions {
   issuanceId: string;
+  /** Recover the existing handle after exact readback; never creates new authority. */
+  recoverExisting?: boolean;
 }
 
 export interface ApprovalPaths {
@@ -570,11 +578,21 @@ export async function createExecutionPermitWithStore(
   const record = executionPermitRecord(call, evaluation, approvalIdValue);
   const strict = options !== undefined;
   let create = store.create;
+  let recover = false;
+  let readIssued: ApprovalExecutionPermitStore['readIssuedPermit'];
   if (strict) {
     if (options === null || typeof options !== 'object' || Array.isArray(options) ||
         typeof options.issuanceId !== 'string' || options.issuanceId.trim().length === 0 ||
         options.issuanceId.length > 256) {
       throw new Error('invalid execution permit issuance identity');
+    }
+    if (options.recoverExisting !== undefined && typeof options.recoverExisting !== 'boolean') {
+      throw new Error('invalid execution permit recovery mode');
+    }
+    recover = options.recoverExisting === true;
+    readIssued = store.readIssuedPermit;
+    if (recover && typeof readIssued !== 'function') {
+      throw new Error('execution permit store lacks issuance readback capability');
     }
     if (typeof store.createOnce !== 'function') {
       throw new Error('execution permit store lacks durable issuance capability');
@@ -586,13 +604,28 @@ export async function createExecutionPermitWithStore(
     create = store.createOnce;
   }
   const permit = { id: record.id, approvalId: record.approvalId };
+  // Freeze expected binding before handing mutable record ownership to storage.
+  // Readback cannot redefine the requested authority while create is suspended.
+  const expected = stable(record);
   let created = false;
+  let createFailed = false;
   try {
     created = await create.call(store, record);
   } catch (error) {
-    throw new Error('execution permit store unavailable during create', { cause: error });
+    if (!recover) throw new Error('execution permit store unavailable during create', { cause: error });
+    createFailed = true;
   }
   if (strict ? created !== true : !created) {
+    // Only a definite duplicate/refusal or transport exception can be reconciled.
+    // Malformed acknowledgements are not interpreted as a recovery invitation.
+    if (recover && readIssued !== undefined && (createFailed || created === false)) {
+      try {
+        const existing = await readIssued.call(store, permit.id);
+        if (existing !== undefined && stable(existing) === expected) return permit;
+      } catch (error) {
+        throw new Error('execution permit store unavailable during issuance readback', { cause: error });
+      }
+    }
     throw new Error(`execution permit already exists or was not issued for ${approvalIdValue}`);
   }
   return permit;

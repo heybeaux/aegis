@@ -2,6 +2,7 @@ import { createHash, randomUUID } from 'node:crypto';
 import { existsSync, mkdirSync, readFileSync, renameSync, rmSync, writeFileSync } from 'node:fs';
 import { homedir } from 'node:os';
 import { join } from 'node:path';
+import { isDeepStrictEqual } from 'node:util';
 import type { Evaluation, ToolCall } from '@heybeaux/lattice-aegis';
 
 import { processTarget, processTargetFor } from './process-target.js';
@@ -702,6 +703,34 @@ export function finalizeExecutionPermit(
   }
 }
 
+type FinalizationInputs = { permit: ApprovalExecutionPermit; current: ApprovalExecutionSnapshot };
+
+// Shared finalization may suspend after reading caller-owned authority. Retain a
+// private plain-data binding; repairing invalid authority requires a new request.
+function captureFinalizationInputs(
+  permit: ApprovalExecutionPermit,
+  current: ApprovalExecutionSnapshot,
+): FinalizationInputs | undefined {
+  try {
+    if (!presentObject(permit) || !presentObject(current)) return undefined;
+    const entry: FinalizationInputs = structuredClone({ permit, current });
+    if (!/^permit_[a-f0-9]{24}$/.test(entry.permit.id) ||
+        !/^aegis_[a-f0-9]{16}$/.test(entry.permit.approvalId) ||
+        entry.permit.approvalId !== entry.current.approvalId) return undefined;
+    return entry;
+  } catch {
+    return undefined;
+  }
+}
+
+function finalizationInputsUnchanged(
+  entry: FinalizationInputs,
+  permit: ApprovalExecutionPermit,
+  current: ApprovalExecutionSnapshot,
+): boolean {
+  try { return isDeepStrictEqual(entry, { permit, current }); } catch { return false; }
+}
+
 /**
  * Atomically take and burn a permit from shared storage before validating the latest snapshot.
  * Missing, malformed, replayed, or unavailable store results fail closed. Store errors are
@@ -712,18 +741,18 @@ export async function finalizeExecutionPermitWithStore(
   current: ApprovalExecutionSnapshot,
   store: ApprovalExecutionPermitStore,
 ): Promise<boolean> {
-  if (!/^permit_[a-f0-9]{24}$/.test(permit.id)) return false;
-  if (!/^aegis_[a-f0-9]{16}$/.test(permit.approvalId)) return false;
-  if (permit.approvalId !== current.approvalId) return false;
+  const entry = captureFinalizationInputs(permit, current);
+  if (entry === undefined) return false;
   let record: ApprovalExecutionPermitRecord | undefined;
   try {
-    record = await store.take(permit.id);
+    record = await store.take(entry.permit.id);
   } catch {
     return false;
   }
-  return record?.id === permit.id &&
-    record.approvalId === permit.approvalId &&
-    executionSnapshotValid(record, current);
+  return finalizationInputsUnchanged(entry, permit, current) &&
+    record?.id === entry.permit.id &&
+    record.approvalId === entry.permit.approvalId &&
+    executionSnapshotValid(record, entry.current);
 }
 
 export type ApprovalExecutionFinalizationStatus = 'execute' | 'blocked' | 'indeterminate';
@@ -768,18 +797,20 @@ export async function finalizeExecutionPermitWithReconciliation(
     reason: NonNullable<ApprovalExecutionFinalizationResult['reason']>,
     retryable = false,
   ): ApprovalExecutionFinalizationResult => ({ status: 'blocked', retryable, reason });
-  if (!/^permit_[a-f0-9]{24}$/.test(permit.id)) return blocked('invalid_snapshot');
-  if (!/^aegis_[a-f0-9]{16}$/.test(permit.approvalId)) return blocked('invalid_snapshot');
-  if (permit.approvalId !== current.approvalId) return blocked('invalid_snapshot');
+  const entry = captureFinalizationInputs(permit, current);
+  if (entry === undefined) return blocked('invalid_snapshot');
   if (!validExecutionOperationId(operationId)) return blocked('invalid_snapshot');
 
   try {
-    const prepared = await store.prepareTake(permit.id, operationId);
+    const prepared = await store.prepareTake(entry.permit.id, operationId);
     if (!prepared) return blocked('not_taken', true);
   } catch {
     // Outcome is unknown: reconcile the operation journal below rather than guessing.
   }
 
+  // Still claim/burn a prepared record after drift; returning early would leave
+  // a reusable prepared grant. Keep drift observed at either async boundary.
+  const unchangedAfterPrepare = finalizationInputsUnchanged(entry, permit, current);
   let record: ApprovalExecutionPermitRecord | undefined;
   try {
     record = await store.claimPreparedTake(operationId);
@@ -788,9 +819,11 @@ export async function finalizeExecutionPermitWithReconciliation(
   }
   if (record === undefined) return blocked('not_taken', true);
   if (
-    record.id !== permit.id ||
-    record.approvalId !== permit.approvalId ||
-    !executionSnapshotValid(record, current)
+    !unchangedAfterPrepare ||
+    !finalizationInputsUnchanged(entry, permit, current) ||
+    record.id !== entry.permit.id ||
+    record.approvalId !== entry.permit.approvalId ||
+    !executionSnapshotValid(record, entry.current)
   ) return blocked('invalid_snapshot');
   return { status: 'execute', retryable: false };
 }

@@ -28,3 +28,6 @@ pass before/after. Two baseline runs have identical raw observations.21new tests
 Exp77 compatibility28/28passes. SwarmLab keeps raw red-red-green traces and exact
 source/dist hashes; its dedicated CI tests the pinned built package. The58-case
 historical catalogue is not execution of RT68. Holdout remains unused.
+
+Journal finalization is separately covered by [RT-69](journal-authorization-drift.md),
+including retained-state invalidation and clean-snapshot resume checks.

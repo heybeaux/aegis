@@ -1105,21 +1105,23 @@ export async function finalizeExecutionPermitWithEffectJournal(
     reason: NonNullable<ApprovalExecutionFinalizationResult['reason']>,
     retryable = false,
   ): ApprovalExecutionFinalizationResult => ({ status: 'blocked', retryable, reason });
-  if (!presentObject(permit) || !presentObject(current)) return blocked('invalid_snapshot');
-  if (!/^permit_[a-f0-9]{24}$/.test(permit.id)) return blocked('invalid_snapshot');
-  if (!/^aegis_[a-f0-9]{16}$/.test(permit.approvalId)) return blocked('invalid_snapshot');
-  if (permit.approvalId !== current.approvalId) return blocked('invalid_snapshot');
+  const entry = captureFinalizationInputs(permit, current);
+  if (entry === undefined) return blocked('invalid_snapshot');
   if (!validExecutionOperationId(operationId)) return blocked('invalid_snapshot');
 
   let prepared: boolean | undefined;
   try {
-    prepared = await store.prepareEffect(permit.id, operationId);
+    prepared = await store.prepareEffect(entry.permit.id, operationId);
   } catch {
     // The atomic prepare may have committed before its acknowledgement was lost. Reconcile the
     // retained claim below instead of orphaning it or claiming a definitive store failure.
   }
   if (prepared === false) return blocked('not_taken', true);
 
+  // Retained authorization must be durably burned after observed drift, even
+  // when the caller restores its input before claim returns. Still claim the
+  // prepared operation so a later caller cannot recover the invalid grant.
+  const unchangedAfterPrepare = finalizationInputsUnchanged(entry, permit, current);
   let record: unknown;
   try {
     record = await store.claimPreparedEffect(operationId);
@@ -1128,8 +1130,10 @@ export async function finalizeExecutionPermitWithEffectJournal(
   }
   if (record === undefined) return blocked('not_taken', prepared === undefined);
   if (
-    !permitRecordMatches(record, permit) ||
-    !executionSnapshotValid(record, current)
+    !unchangedAfterPrepare ||
+    !finalizationInputsUnchanged(entry, permit, current) ||
+    !permitRecordMatches(record, entry.permit) ||
+    !executionSnapshotValid(record, entry.current)
   ) {
     try {
       const burned = await store.burnEffect(operationId);

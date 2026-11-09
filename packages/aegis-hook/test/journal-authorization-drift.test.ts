@@ -77,7 +77,14 @@ describe('journal finalization durable invalidation', () => {
   for (const ackLost of [false, true]) it(`remembers prepare drift restored during claim (ack lost ${ackLost})`, async () => {
     const f = await fixture(); f.prepare(() => { f.current.revoked = true; });
     f.claim(() => { f.current.revoked = false; });
-    if (ackLost) { const prepare = f.store.prepareEffect; f.store.prepareEffect = async (...args) => { await prepare(...args); throw Error('ack lost'); }; }
+    if (ackLost) {
+      const prepare = f.store.prepareEffect; let lost = false;
+      f.store.prepareEffect = async (...args) => {
+        const prepared = await prepare(...args);
+        if (!lost) { lost = true; throw Error('ack lost'); }
+        return prepared;
+      };
+    }
     await expectBurned(f);
   });
   it('burns a mutated handle using the original binding', async () => {

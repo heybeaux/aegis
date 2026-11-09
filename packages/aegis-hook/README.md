@@ -150,3 +150,6 @@ into a detached digest included in approval and predictor identity. Plain valida
 JSON is the host contract. No terminal emulation, safe-fragment authorization,
 buffer-state authentication, automatic plugin deployment or production certification
 is claimed. Shadow mode remains observation-only; enforcement asks for approval.
+
+Journal finalization retains entry authority through prepare/claim and durably burns
+observed drift. See [authority integrity and host limits](../../docs/journal-authorization-drift.md).

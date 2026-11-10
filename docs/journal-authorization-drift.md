@@ -18,11 +18,11 @@ nested data is accepted; caller objects are neither frozen nor rewritten.
 Unsnapshotable inputs are rejected before storage. Host adapters still own durable
 atomic prepare, single claim, burn, and effect-start transitions.
 
-This evidence uses the legacy four-argument issuance API in isolated stores. The
-strict shared issuance namespace is currently incompatible with the journal's
-legacy permit ID validation. Do not infer journal compatibility from strict
-simple-take tests. This independent shortfall was discovered by failed setup
-controls and is reserved for a separate experiment, not patched here.
+This evidence uses the legacy four-argument issuance API in isolated stores. At the
+time of this experiment, strict shared issuance was incompatible with the
+journal's legacy permit ID validation. That independent shortfall is addressed
+by [RT-70](strict-issuance-journal.md), with separate pre-registered evidence and
+an explicit upgrade boundary. RT-69 remains legacy-issuance evidence.
 
 SwarmLab Spec85/exp79 pre-registered 29 fixed Bash/ProcessInput cases. Two identical
 baseline runs on104113f left13/13 repaired/drifting authorizations resumable and

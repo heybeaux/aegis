@@ -42,6 +42,8 @@ export interface ApprovalExecutionSnapshot {
 
 export interface ApprovalExecutionPermitRecord {
   id: string;
+  /** Strict shared issuance derivation, retained unchanged through journal transitions. */
+  issuanceId?: string;
   approvalId: string;
   signature: string;
   /** ProcessInput records bind target lifetime through finalization and resume. */
@@ -496,6 +498,15 @@ function executionPermitId(approvalIdValue: string, signature: string, nonce?: s
   return `permit_${createHash('sha256').update(identity).digest('hex').slice(0, 24)}`;
 }
 
+function validIssuanceId(value: unknown): value is string {
+  return typeof value === 'string' && value.trim().length > 0 && value.length <= 256;
+}
+
+function sharedExecutionPermitId(approvalIdValue: string, signature: string, issuanceId: string): string {
+  const identity = JSON.stringify(['shared-issuance-v1', approvalIdValue, signature, issuanceId]);
+  return `permit_${createHash('sha256').update(identity).digest('hex').slice(0, 24)}`;
+}
+
 function executionPermitPath(id: string, dir?: string): string {
   if (!/^permit_[a-f0-9]{24}$/.test(id)) throw new Error(`invalid execution permit id: ${id}`);
   return join(approvalDir(dir), `${id}.ready.json`);
@@ -583,8 +594,7 @@ export async function createExecutionPermitWithStore(
   let readIssued: ApprovalExecutionPermitStore['readIssuedPermit'];
   if (strict) {
     if (options === null || typeof options !== 'object' || Array.isArray(options) ||
-        typeof options.issuanceId !== 'string' || options.issuanceId.trim().length === 0 ||
-        options.issuanceId.length > 256) {
+        !validIssuanceId(options.issuanceId)) {
       throw new Error('invalid execution permit issuance identity');
     }
     if (options.recoverExisting !== undefined && typeof options.recoverExisting !== 'boolean') {
@@ -600,8 +610,8 @@ export async function createExecutionPermitWithStore(
     }
     // Structured domain separation keeps strict handles distinct from legacy and
     // local-generation handles. Read the identity before the first async boundary.
-    const identity = JSON.stringify(['shared-issuance-v1', record.approvalId, record.signature, options.issuanceId]);
-    record.id = `permit_${createHash('sha256').update(identity).digest('hex').slice(0, 24)}`;
+    record.issuanceId = options.issuanceId;
+    record.id = sharedExecutionPermitId(record.approvalId, record.signature, record.issuanceId);
     create = store.createOnce;
   }
   const permit = { id: record.id, approvalId: record.approvalId };
@@ -874,6 +884,13 @@ function permitRecordMatches(
     typeof record.signature !== 'string' ||
     record.signature.length === 0
   ) return false;
+  // Strict records retain their derivation; equal opaque IDs alone are not proof
+  // that the stored signature belongs to this issuance. Never downgrade malformed
+  // strict metadata to the legacy namespace.
+  if ('issuanceId' in record) {
+    return validIssuanceId(record.issuanceId) &&
+      sharedExecutionPermitId(record.approvalId, record.signature, record.issuanceId) === record.id;
+  }
   return executionPermitId(record.approvalId, record.signature) === record.id;
 }
 

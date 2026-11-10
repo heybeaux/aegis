@@ -96,3 +96,11 @@ pass; that static catalogue is not a live execution of RT-67. The SwarmLab CI
 runs the pinned real package and verifies content-addressed raw observations.
 This is deterministic storage-contract evidence, not database durability,
 external side-effect exactly-once, crash-after-take recovery or production proof.
+
+## Effect journal interoperability (RT-70)
+
+New strict records retain `issuanceId` so journal boundaries can recompute the
+strict binding. Preserve this field through every storage transition. Read
+[strict issuance journal](strict-issuance-journal.md) before upgrading: older
+strict records lack this metadata and cannot be recovered or journal-validated
+by the new contract; drain or reapprove, never silently downgrade.

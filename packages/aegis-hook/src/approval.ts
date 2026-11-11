@@ -1504,15 +1504,10 @@ export async function resolveExecutionEffect(
   const indeterminate = (
     reason: NonNullable<ApprovalExecutionEffectResolutionResult['reason']>,
   ): ApprovalExecutionEffectResolutionResult => ({ status: 'indeterminate', retryable: false, reason });
-  if (!presentObject(permit) || !presentObject(current)) {
+  const entry = captureFinalizationInputs(permit, current);
+  if (entry === undefined || !validExecutionOperationId(operationId)) {
     return { status: 'not_executed', retryable: false, reason: 'invalid_snapshot' };
   }
-  if (
-    !/^permit_[a-f0-9]{24}$/.test(permit.id) ||
-    !/^aegis_[a-f0-9]{16}$/.test(permit.approvalId) ||
-    permit.approvalId !== current.approvalId ||
-    !validExecutionOperationId(operationId)
-  ) return { status: 'not_executed', retryable: false, reason: 'invalid_snapshot' };
 
   let effect: unknown;
   try {
@@ -1526,16 +1521,16 @@ export async function resolveExecutionEffect(
   if (checkpointIntegrity === 'inconsistent') return indeterminate('journal_inconsistent');
   if (checkpointIntegrity === 'stale') return indeterminate('journal_stale');
   if (effect === undefined && compactionProofCapableStore(store)) {
-    const compacted = compactedResolution(await compactedTerminalTruth(permit, operationId, store));
+    const compacted = compactedResolution(await compactedTerminalTruth(entry.permit, operationId, store));
     if (compacted !== undefined) return compacted;
   }
   if (revisionIntegrity === 'stale') {
-    const compacted = compactedResolution(await compactedTerminalTruth(permit, operationId, store));
+    const compacted = compactedResolution(await compactedTerminalTruth(entry.permit, operationId, store));
     return compacted ?? indeterminate('journal_stale');
   }
   if (revisionIntegrity === 'inconsistent') return indeterminate('journal_inconsistent');
-  if (!effectRecordMatches(effect, permit, operationId)) return indeterminate('journal_missing');
-  if (!effectJournalCoherent(effect, permit, operationId, receiptCapableStore(store))) {
+  if (!effectRecordMatches(effect, entry.permit, operationId)) return indeterminate('journal_missing');
+  if (!effectJournalCoherent(effect, entry.permit, operationId, receiptCapableStore(store))) {
     return indeterminate('journal_inconsistent');
   }
 
@@ -1551,7 +1546,8 @@ export async function resolveExecutionEffect(
   }
   if (effect.state !== 'authorized' || !effect.claimed) return indeterminate('journal_missing');
 
-  if (!executionSnapshotValid(effect.permit, current)) {
+  if (!finalizationInputsUnchanged(entry, permit, current) ||
+      !executionSnapshotValid(effect.permit, entry.current)) {
     try { await store.burnEffect(operationId); } catch { return indeterminate('journal_unavailable'); }
     return { status: 'not_executed', retryable: false, reason: 'invalid_snapshot' };
   }
@@ -2249,13 +2245,8 @@ export async function beginExecutionEffect(
   const blocked = (
     reason: NonNullable<ApprovalExecutionFinalizationResult['reason']>,
   ): ApprovalExecutionFinalizationResult => ({ status: 'blocked', retryable: false, reason });
-  if (!presentObject(permit) || !presentObject(current)) return blocked('invalid_snapshot');
-  if (
-    !/^permit_[a-f0-9]{24}$/.test(permit.id) ||
-    !/^aegis_[a-f0-9]{16}$/.test(permit.approvalId) ||
-    permit.approvalId !== current.approvalId ||
-    !validExecutionOperationId(operationId)
-  ) return blocked('invalid_snapshot');
+  const entry = captureFinalizationInputs(permit, current);
+  if (entry === undefined || !validExecutionOperationId(operationId)) return blocked('invalid_snapshot');
 
   let effect: unknown;
   try {
@@ -2271,7 +2262,7 @@ export async function beginExecutionEffect(
   if (checkpointIntegrity === 'inconsistent') return blocked('journal_inconsistent');
   if (checkpointIntegrity === 'stale') return blocked('journal_stale');
   if (effect === undefined && compactionProofCapableStore(store)) {
-    const compacted = await compactedTerminalTruth(permit, operationId, store);
+    const compacted = await compactedTerminalTruth(entry.permit, operationId, store);
     if (compacted.status === 'committed') return blocked('effect_committed');
     if (compacted.status === 'failed') return blocked('effect_failed');
     if (compacted.status === 'unavailable') {
@@ -2281,7 +2272,7 @@ export async function beginExecutionEffect(
     if (compacted.status === 'stale') return blocked('journal_stale');
   }
   if (revisionIntegrity === 'stale') {
-    const compacted = await compactedTerminalTruth(permit, operationId, store);
+    const compacted = await compactedTerminalTruth(entry.permit, operationId, store);
     if (compacted.status === 'committed') return blocked('effect_committed');
     if (compacted.status === 'failed') return blocked('effect_failed');
     if (compacted.status === 'unavailable') {
@@ -2291,15 +2282,16 @@ export async function beginExecutionEffect(
     return blocked('journal_stale');
   }
   if (revisionIntegrity === 'inconsistent') return blocked('journal_inconsistent');
-  if (!effectRecordMatches(effect, permit, operationId)) return blocked('journal_missing');
-  if (!effectJournalCoherent(effect, permit, operationId, receiptCapableStore(store))) return blocked('journal_inconsistent');
+  if (!effectRecordMatches(effect, entry.permit, operationId)) return blocked('journal_missing');
+  if (!effectJournalCoherent(effect, entry.permit, operationId, receiptCapableStore(store))) return blocked('journal_inconsistent');
   if (effect.state === 'committed') return blocked('effect_committed');
   if (effect.state === 'failed') return blocked('effect_failed');
   if (effect.state === 'started') return blocked('effect_started');
   if (effect.state === 'burned') return blocked('authorization_burned');
   if (effect.state !== 'authorized' || !effect.claimed) return blocked('journal_missing');
 
-  if (!executionSnapshotValid(effect.permit, current)) {
+  if (!finalizationInputsUnchanged(entry, permit, current) ||
+      !executionSnapshotValid(effect.permit, entry.current)) {
     try { await store.burnEffect(operationId); } catch {
       return { status: 'indeterminate', retryable: false, reason: 'status_unavailable' };
     }
@@ -2313,6 +2305,7 @@ export async function beginExecutionEffect(
     return { status: 'indeterminate', retryable: false, reason: 'status_unavailable' };
   }
   if (started) {
+    const unchangedAfterStart = finalizationInputsUnchanged(entry, permit, current);
     // The successful CAS is not sufficient if the independent authority plane changed while the
     // host performed it. Re-read both truths and refuse execution on any post-CAS rollback.
     let latest: unknown;
@@ -2332,14 +2325,18 @@ export async function beginExecutionEffect(
     if (latestCheckpointIntegrity === 'stale' || latestRevisionIntegrity === 'stale') {
       return blocked('journal_stale');
     }
-    if (!effectRecordMatches(latest, permit, operationId)) return blocked('journal_missing');
-    if (!effectJournalCoherent(latest, permit, operationId, receiptCapableStore(store))) {
+    if (!effectRecordMatches(latest, entry.permit, operationId)) return blocked('journal_missing');
+    if (!effectJournalCoherent(latest, entry.permit, operationId, receiptCapableStore(store))) {
       return blocked('journal_inconsistent');
     }
     if (latest.state === 'committed') return blocked('effect_committed');
     if (latest.state === 'failed') return blocked('effect_failed');
     if (latest.state === 'burned') return blocked('authorization_burned');
     if (latest.state !== 'started') return blocked('journal_inconsistent');
+    // Keep the started fence: rolling it back could authorize a duplicate effect.
+    // Drift at either observed boundary cannot be repaired within this invocation.
+    if (!unchangedAfterStart || !finalizationInputsUnchanged(entry, permit, current) ||
+        !executionSnapshotValid(latest.permit, entry.current)) return blocked('invalid_snapshot');
     return { status: 'execute', retryable: false };
   }
   if (!started) {
@@ -2354,7 +2351,7 @@ export async function beginExecutionEffect(
       if (latestCheckpointIntegrity === 'inconsistent') return blocked('journal_inconsistent');
       if (latestCheckpointIntegrity === 'stale') return blocked('journal_stale');
       if (latest === undefined && compactionProofCapableStore(store)) {
-        const compacted = await compactedTerminalTruth(permit, operationId, store);
+        const compacted = await compactedTerminalTruth(entry.permit, operationId, store);
         if (compacted.status === 'committed') return blocked('effect_committed');
         if (compacted.status === 'failed') return blocked('effect_failed');
         if (compacted.status === 'unavailable') {
@@ -2364,7 +2361,7 @@ export async function beginExecutionEffect(
         if (compacted.status === 'stale') return blocked('journal_stale');
       }
       if (latestRevisionIntegrity === 'stale') {
-        const compacted = await compactedTerminalTruth(permit, operationId, store);
+        const compacted = await compactedTerminalTruth(entry.permit, operationId, store);
         if (compacted.status === 'committed') return blocked('effect_committed');
         if (compacted.status === 'failed') return blocked('effect_failed');
         if (compacted.status === 'unavailable') {
@@ -2374,8 +2371,8 @@ export async function beginExecutionEffect(
         return blocked('journal_stale');
       }
       if (latestRevisionIntegrity === 'inconsistent') return blocked('journal_inconsistent');
-      if (!effectRecordMatches(latest, permit, operationId)) return blocked('journal_missing');
-      if (!effectJournalCoherent(latest, permit, operationId, receiptCapableStore(store))) {
+      if (!effectRecordMatches(latest, entry.permit, operationId)) return blocked('journal_missing');
+      if (!effectJournalCoherent(latest, entry.permit, operationId, receiptCapableStore(store))) {
         return blocked('journal_inconsistent');
       }
       if (latest.state === 'committed') return blocked('effect_committed');

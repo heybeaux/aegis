@@ -48,3 +48,5 @@ expiry and strict-wrapper preflight windows are unproven. Holdout reserved unuse
 source .acr unchanged. Store burn-failure behavior was not tested or patched here.
 Next hypothesis: can a false burn acknowledgement leave a supposedly invalidated
 operation startable through clean authority? Deduplicate before preregistration.
+
+The subsequent [RT-72 experiment](resume-burn-ack.md) covers failed burn acknowledgements at resume/start.

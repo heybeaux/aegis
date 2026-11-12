@@ -153,3 +153,5 @@ is claimed. Shadow mode remains observation-only; enforcement asks for approval.
 
 Journal finalization retains entry authority through prepare/claim and durably burns
 observed drift. See [authority integrity and host limits](../../docs/journal-authorization-drift.md).
+
+For unconfirmed resume/start invalidation, see [RT-72 burn acknowledgement semantics](../../docs/resume-burn-ack.md). A false or throwing burn returns indeterminate; hosts must quarantine and reconcile.

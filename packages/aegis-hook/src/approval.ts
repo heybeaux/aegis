@@ -902,7 +902,8 @@ function permitRecordMatches(
  * `claimPreparedEffect` MUST authorize at most one initial caller while retaining the record.
  * `beginEffect` is written immediately before invoking the external effect, `commitEffect`
  * immediately after successful completion, and `readEffect` MUST be a durable cross-host read.
- * `burnEffect` permanently invalidates an uncommitted authorization.
+ * `burnEffect` returns true only after permanently invalidating the authorization.
+ * False or a rejection does not confirm invalidation; hosts must quarantine and reconcile.
  */
 export interface JournaledApprovalExecutionPermitStore extends ApprovalExecutionPermitStore {
   prepareEffect(id: string, operationId: string): Promise<boolean>;
@@ -1548,7 +1549,9 @@ export async function resolveExecutionEffect(
 
   if (!finalizationInputsUnchanged(entry, permit, current) ||
       !executionSnapshotValid(effect.permit, entry.current)) {
-    try { await store.burnEffect(operationId); } catch { return indeterminate('journal_unavailable'); }
+    try {
+      if (!await store.burnEffect(operationId)) return indeterminate('journal_unavailable');
+    } catch { return indeterminate('journal_unavailable'); }
     return { status: 'not_executed', retryable: false, reason: 'invalid_snapshot' };
   }
   return { status: 'not_executed', retryable: true, reason: 'not_started' };
@@ -2292,7 +2295,11 @@ export async function beginExecutionEffect(
 
   if (!finalizationInputsUnchanged(entry, permit, current) ||
       !executionSnapshotValid(effect.permit, entry.current)) {
-    try { await store.burnEffect(operationId); } catch {
+    try {
+      if (!await store.burnEffect(operationId)) {
+        return { status: 'indeterminate', retryable: false, reason: 'status_unavailable' };
+      }
+    } catch {
       return { status: 'indeterminate', retryable: false, reason: 'status_unavailable' };
     }
     return blocked('invalid_snapshot');

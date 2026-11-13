@@ -1140,10 +1140,24 @@ export async function finalizeExecutionPermitWithEffectJournal(
   // when the caller restores its input before claim returns. Still claim the
   // prepared operation so a later caller cannot recover the invalid grant.
   const unchangedAfterPrepare = finalizationInputsUnchanged(entry, permit, current);
+  const invalidate = async (): Promise<ApprovalExecutionFinalizationResult> => {
+    try {
+      if (await store.burnEffect(operationId)) return blocked('invalid_snapshot');
+    } catch {
+      // Invalidation may have committed, but durable acknowledgement is unavailable.
+    }
+    return { status: 'indeterminate', retryable: false, reason: 'status_unavailable' };
+  };
   let record: unknown;
   try {
     record = await store.claimPreparedEffect(operationId);
   } catch {
+    // A failed claim may already have committed. Do not let transport failure
+    // discard drift observed after prepare or while awaiting the claim: a clean
+    // resumer could otherwise start the retained, disqualified authorization.
+    if (!unchangedAfterPrepare || !finalizationInputsUnchanged(entry, permit, current)) {
+      return invalidate();
+    }
     return { status: 'indeterminate', retryable: false, reason: 'status_unavailable' };
   }
   if (record === undefined) return blocked('not_taken', prepared === undefined);
@@ -1153,13 +1167,7 @@ export async function finalizeExecutionPermitWithEffectJournal(
     !permitRecordMatches(record, entry.permit) ||
     !executionSnapshotValid(record, entry.current)
   ) {
-    try {
-      const burned = await store.burnEffect(operationId);
-      if (!burned) return { status: 'indeterminate', retryable: false, reason: 'status_unavailable' };
-    } catch {
-      return { status: 'indeterminate', retryable: false, reason: 'status_unavailable' };
-    }
-    return blocked('invalid_snapshot');
+    return invalidate();
   }
   return { status: 'execute', retryable: false };
 }

@@ -57,13 +57,16 @@ const mutations: [string, (s: ApprovalExecutionSnapshot) => void][] = [
   ['digest', s => { s.authorizationDigest = 'wrong'; }],
   ['link', s => { s.links![0]!.revoked = true; }],
 ];
-async function expectBurned(f: Awaited<ReturnType<typeof fixture>>) {
+async function expectBurned(
+  f: Awaited<ReturnType<typeof fixture>>,
+  replay = { status: 'blocked', retryable: false, reason: 'not_taken' },
+) {
   expect(await f.finish()).toEqual(blocked);
   expect(f.state().record).toBeUndefined();
   expect(f.state().effect).toMatchObject({ state: 'burned', claimed: true });
   expect(await f.resolve()).toEqual({ status: 'not_executed', retryable: false, reason: 'authorization_burned' });
   expect(await f.begin()).toEqual({ status: 'blocked', retryable: false, reason: 'authorization_burned' });
-  expect(await f.finish()).toEqual({ status: 'blocked', retryable: false, reason: 'not_taken' });
+  expect(await f.finish()).toEqual(replay);
 }
 describe('journal finalization durable invalidation', () => {
   for (const stage of ['prepare', 'claim'] as const) {
@@ -85,7 +88,12 @@ describe('journal finalization durable invalidation', () => {
         return prepared;
       };
     }
-    await expectBurned(f);
+    // The callbacks introduce fresh drift on every attempt, including a losing
+    // claim. RT-74 now preserves that invalidation instead of returning not_taken.
+    await expectBurned(f, blocked);
+    f.prepare(() => {});
+    f.claim(() => {});
+    expect(await f.finish()).toEqual({ status: 'blocked', retryable: false, reason: 'not_taken' });
   });
   it('burns a mutated handle using the original binding', async () => {
     const f = await fixture(); f.claim(() => { f.permit.id = 'permit_000000000000000000000000'; });

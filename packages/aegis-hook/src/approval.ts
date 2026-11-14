@@ -1160,13 +1160,14 @@ export async function finalizeExecutionPermitWithEffectJournal(
     }
     return { status: 'indeterminate', retryable: false, reason: 'status_unavailable' };
   }
+  // A competing claimant can retain this authorization even when our claim
+  // returns nothing. Observed drift must still invalidate it; a competing start
+  // makes burn unconfirmed and must remain indeterminate, never rolled back.
+  if (!unchangedAfterPrepare || !finalizationInputsUnchanged(entry, permit, current)) {
+    return invalidate();
+  }
   if (record === undefined) return blocked('not_taken', prepared === undefined);
-  if (
-    !unchangedAfterPrepare ||
-    !finalizationInputsUnchanged(entry, permit, current) ||
-    !permitRecordMatches(record, entry.permit) ||
-    !executionSnapshotValid(record, entry.current)
-  ) {
+  if (!permitRecordMatches(record, entry.permit) || !executionSnapshotValid(record, entry.current)) {
     return invalidate();
   }
   return { status: 'execute', retryable: false };

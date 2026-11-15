@@ -1139,7 +1139,29 @@ export async function finalizeExecutionPermitWithEffectJournal(
   // Retained authorization must be durably burned after observed drift, even
   // when the caller restores its input before claim returns. Still claim the
   // prepared operation so a later caller cannot recover the invalid grant.
-  const unchangedAfterPrepare = finalizationInputsUnchanged(entry, permit, current);
+  let unchangedAfterPrepare = finalizationInputsUnchanged(entry, permit, current);
+  if (prepared === undefined) {
+    // A lost response may hide a rejected prepare, not just a successful one.
+    // Establish ownership before claiming or burning: the operation key may
+    // belong to a different approval or a different issuance of this approval.
+    // Hosts must retain the immutable operation-to-permit binding across this
+    // read and the subsequent claim/burn; missing or unreadable ownership never
+    // authorizes a mutation of that operation.
+    let effect: ApprovalExecutionEffectRecord | undefined;
+    try {
+      effect = await store.readEffect(operationId);
+    } catch {
+      return { status: 'indeterminate', retryable: false, reason: 'status_unavailable' };
+    }
+    if (effect === undefined) return blocked('not_taken', true);
+    if (!effectRecordMatches(effect, effect?.permit, operationId)) {
+      return { status: 'indeterminate', retryable: false, reason: 'status_unavailable' };
+    }
+    if (effect.permit.id !== entry.permit.id || effect.permit.approvalId !== entry.permit.approvalId) {
+      return blocked('not_taken', true);
+    }
+    unchangedAfterPrepare &&= finalizationInputsUnchanged(entry, permit, current);
+  }
   const invalidate = async (): Promise<ApprovalExecutionFinalizationResult> => {
     try {
       if (await store.burnEffect(operationId)) return blocked('invalid_snapshot');

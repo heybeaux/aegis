@@ -569,7 +569,7 @@ describe('journaled approval execution effects', () => {
     await expect(invalid.resolveExecutionEffect(invalid.permit, invalid.current, 'op_missing', invalid.store)).resolves.toEqual({ status: 'indeterminate', retryable: false, reason: 'journal_missing' });
   });
 
-  it('reconciles lost prepare acknowledgements without requiring a pre-claim journal read', async () => {
+  it('requires ownership readback after lost prepare acknowledgements and recovers when available', async () => {
     const f = await fixture();
     const originalPrepare = f.store.prepareEffect;
     f.store.prepareEffect = async (id: string, operationId: string) => {
@@ -577,6 +577,8 @@ describe('journaled approval execution effects', () => {
       throw new Error('acknowledgement lost after commit');
     };
     f.failRead();
+    await expect(f.finalizeExecutionPermitWithEffectJournal(f.permit, f.current, 'op_ack_lost', f.store)).resolves.toEqual({ status: 'indeterminate', retryable: false, reason: 'status_unavailable' });
+    expect(f.effects.get('op_ack_lost')?.claimed).toBe(false);
     await expect(f.finalizeExecutionPermitWithEffectJournal(f.permit, f.current, 'op_ack_lost', f.store)).resolves.toEqual({ status: 'execute', retryable: false });
   });
 

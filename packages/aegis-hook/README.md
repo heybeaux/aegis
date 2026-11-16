@@ -155,3 +155,18 @@ Journal finalization retains entry authority through prepare/claim and durably b
 observed drift. See [authority integrity and host limits](../../docs/journal-authorization-drift.md).
 
 For unconfirmed resume/start invalidation, see [RT-72 burn acknowledgement semantics](../../docs/resume-burn-ack.md). A false or throwing burn returns indeterminate; hosts must quarantine and reconcile.
+
+### Authority across strict wrapper checks
+
+Durable strict resolve/begin and strict continuity begin retain one private entry
+snapshot across preflight, the inner journal operation, and postflight. Observed
+authority or handle drift remains invalid even if a later callback restores it.
+Preflight invalidation uses the journal's checked burn path; failed burns remain
+indeterminate. Postflight drift refuses execution while preserving the started
+fence. A blocked result after start does not prove that an external effect was
+cancelled; hosts must reconcile it. Equivalent plain-data replacements remain
+valid. Hosts still own authentic fresh inputs, atomic durable stores and actual
+effect invocation. No protection is claimed for mutations after the API returns.
+
+SwarmLab Spec92 / exp86 covers this wrapper composition; exp81 covers the inner
+resume/start boundary.

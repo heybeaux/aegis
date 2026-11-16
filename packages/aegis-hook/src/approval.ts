@@ -741,6 +741,28 @@ function finalizationInputsUnchanged(
   try { return isDeepStrictEqual(entry, { permit, current }); } catch { return false; }
 }
 
+/** One authority binding for the entire public invocation, including wrapper I/O. */
+interface FinalizationBinding {
+  entry: FinalizationInputs | undefined;
+  unchanged(): boolean;
+}
+
+function captureFinalizationBinding(
+  permit: ApprovalExecutionPermit,
+  current: ApprovalExecutionSnapshot,
+): FinalizationBinding {
+  const entry = captureFinalizationInputs(permit, current);
+  let unchanged = entry !== undefined;
+  return {
+    entry,
+    unchanged() {
+      // Once observed, drift cannot be repaired by a later asynchronous callback.
+      unchanged = unchanged && entry !== undefined && finalizationInputsUnchanged(entry, permit, current);
+      return unchanged;
+    },
+  };
+}
+
 /**
  * Atomically take and burn a permit from shared storage before validating the latest snapshot.
  * Missing, malformed, replayed, or unavailable store results fail closed. Store errors are
@@ -1533,10 +1555,18 @@ export async function resolveExecutionEffect(
   operationId: string,
   store: JournaledApprovalExecutionPermitStore,
 ): Promise<ApprovalExecutionEffectResolutionResult> {
+  return resolveExecutionEffectBound(operationId, store, captureFinalizationBinding(permit, current));
+}
+
+async function resolveExecutionEffectBound(
+  operationId: string,
+  store: JournaledApprovalExecutionPermitStore,
+  binding: FinalizationBinding,
+): Promise<ApprovalExecutionEffectResolutionResult> {
   const indeterminate = (
     reason: NonNullable<ApprovalExecutionEffectResolutionResult['reason']>,
   ): ApprovalExecutionEffectResolutionResult => ({ status: 'indeterminate', retryable: false, reason });
-  const entry = captureFinalizationInputs(permit, current);
+  const entry = binding.entry;
   if (entry === undefined || !validExecutionOperationId(operationId)) {
     return { status: 'not_executed', retryable: false, reason: 'invalid_snapshot' };
   }
@@ -1578,7 +1608,7 @@ export async function resolveExecutionEffect(
   }
   if (effect.state !== 'authorized' || !effect.claimed) return indeterminate('journal_missing');
 
-  if (!finalizationInputsUnchanged(entry, permit, current) ||
+  if (!binding.unchanged() ||
       !executionSnapshotValid(effect.permit, entry.current)) {
     try {
       if (!await store.burnEffect(operationId)) return indeterminate('journal_unavailable');
@@ -1759,26 +1789,22 @@ export async function resolveDurableStrictRosterPolicyExecutionEffect(
   store: JournaledApprovalExecutionPermitStore,
   policyStore: DurableStrictRosterPolicyStore,
 ): Promise<ApprovalExecutionEffectResolutionResult> {
-  if (!presentObject(permit) || !presentObject(current)) {
+  const binding = captureFinalizationBinding(permit, current);
+  if (binding.entry === undefined || !validExecutionOperationId(operationId)) {
     return { status: 'not_executed', retryable: false, reason: 'invalid_snapshot' };
   }
-  if (
-    !/^permit_[a-f0-9]{24}$/.test(permit.id) ||
-    !/^aegis_[a-f0-9]{16}$/.test(permit.approvalId) ||
-    permit.approvalId !== current.approvalId ||
-    !validExecutionOperationId(operationId)
-  ) return { status: 'not_executed', retryable: false, reason: 'invalid_snapshot' };
-
-  const markerIntegrity = await durableStrictRosterPolicyIntegrity(permit, operationId, policyStore);
+  const markerIntegrity = await durableStrictRosterPolicyIntegrity(binding.entry.permit, operationId, policyStore);
+  binding.unchanged();
   if (markerIntegrity !== 'current') return durableStrictRosterResolutionFailure(markerIntegrity);
   const rosterIntegrity = await strictRosterIntegrity(operationId, store);
+  binding.unchanged();
   if (rosterIntegrity === 'unavailable' || rosterIntegrity === 'inconsistent') {
     return { status: 'indeterminate', retryable: false, reason: 'journal_inconsistent' };
   }
   if (rosterIntegrity === 'stale') {
     return { status: 'indeterminate', retryable: false, reason: 'journal_stale' };
   }
-  return resolveExecutionEffect(permit, current, operationId, store);
+  return resolveExecutionEffectBound(operationId, store, binding);
 }
 
 function validDurableStrictRosterPolicyRetirement(
@@ -2276,10 +2302,18 @@ export async function beginExecutionEffect(
   operationId: string,
   store: JournaledApprovalExecutionPermitStore,
 ): Promise<ApprovalExecutionFinalizationResult> {
+  return beginExecutionEffectBound(operationId, store, captureFinalizationBinding(permit, current));
+}
+
+async function beginExecutionEffectBound(
+  operationId: string,
+  store: JournaledApprovalExecutionPermitStore,
+  binding: FinalizationBinding,
+): Promise<ApprovalExecutionFinalizationResult> {
   const blocked = (
     reason: NonNullable<ApprovalExecutionFinalizationResult['reason']>,
   ): ApprovalExecutionFinalizationResult => ({ status: 'blocked', retryable: false, reason });
-  const entry = captureFinalizationInputs(permit, current);
+  const entry = binding.entry;
   if (entry === undefined || !validExecutionOperationId(operationId)) return blocked('invalid_snapshot');
 
   let effect: unknown;
@@ -2324,7 +2358,7 @@ export async function beginExecutionEffect(
   if (effect.state === 'burned') return blocked('authorization_burned');
   if (effect.state !== 'authorized' || !effect.claimed) return blocked('journal_missing');
 
-  if (!finalizationInputsUnchanged(entry, permit, current) ||
+  if (!binding.unchanged() ||
       !executionSnapshotValid(effect.permit, entry.current)) {
     try {
       if (!await store.burnEffect(operationId)) {
@@ -2343,7 +2377,7 @@ export async function beginExecutionEffect(
     return { status: 'indeterminate', retryable: false, reason: 'status_unavailable' };
   }
   if (started) {
-    const unchangedAfterStart = finalizationInputsUnchanged(entry, permit, current);
+    const unchangedAfterStart = binding.unchanged();
     // The successful CAS is not sufficient if the independent authority plane changed while the
     // host performed it. Re-read both truths and refuse execution on any post-CAS rollback.
     let latest: unknown;
@@ -2373,7 +2407,7 @@ export async function beginExecutionEffect(
     if (latest.state !== 'started') return blocked('journal_inconsistent');
     // Keep the started fence: rolling it back could authorize a duplicate effect.
     // Drift at either observed boundary cannot be repaired within this invocation.
-    if (!unchangedAfterStart || !finalizationInputsUnchanged(entry, permit, current) ||
+    if (!unchangedAfterStart || !binding.unchanged() ||
         !executionSnapshotValid(latest.permit, entry.current)) return blocked('invalid_snapshot');
     return { status: 'execute', retryable: false };
   }
@@ -2437,10 +2471,15 @@ export async function beginStrictRosterContinuityExecutionEffect(
   store: JournaledApprovalExecutionPermitStore,
   continuity?: StrictRosterContinuityContext,
 ): Promise<ApprovalExecutionFinalizationResult> {
+  const binding = captureFinalizationBinding(permit, current);
+  if (binding.entry === undefined || !validExecutionOperationId(operationId)) {
+    return { status: 'blocked', retryable: false, reason: 'invalid_snapshot' };
+  }
   if (!witnessRosterAnchoredStore(store)) {
     return { status: 'blocked', retryable: false, reason: 'journal_inconsistent' };
   }
   const preIntegrity = await strictRosterIntegrity(operationId, store);
+  binding.unchanged();
   if (preIntegrity === 'unavailable' || preIntegrity === 'inconsistent') {
     // At the pre-effect boundary, any missing strict roster truth is contradictory to granting
     // execute authority. Resolve calls retain the finer unavailable/inconsistent distinction.
@@ -2450,16 +2489,19 @@ export async function beginStrictRosterContinuityExecutionEffect(
     return { status: 'blocked', retryable: false, reason: 'journal_stale' };
   }
 
-  const result = await beginExecutionEffect(permit, current, operationId, store);
+  const result = await beginExecutionEffectBound(operationId, store, binding);
   if (result.status !== 'execute') return result;
 
   const postIntegrity = await strictRosterIntegrity(operationId, store);
+  binding.unchanged();
   if (postIntegrity === 'unavailable' || postIntegrity === 'inconsistent') {
     return { status: 'blocked', retryable: false, reason: 'journal_inconsistent' };
   }
   if (postIntegrity === 'stale') {
     return { status: 'blocked', retryable: false, reason: 'journal_stale' };
   }
+  // Keep the started fence; refusing permission does not undo a completed CAS.
+  if (!binding.unchanged()) return { status: 'blocked', retryable: false, reason: 'invalid_snapshot' };
   strictRosterContinuitySelection(continuity)?.add(operationId);
   return result;
 }
@@ -2475,34 +2517,34 @@ export async function beginDurableStrictRosterPolicyExecutionEffect(
   store: JournaledApprovalExecutionPermitStore,
   policyStore: DurableStrictRosterPolicyStore,
 ): Promise<ApprovalExecutionFinalizationResult> {
-  if (!presentObject(permit) || !presentObject(current)) {
+  const binding = captureFinalizationBinding(permit, current);
+  if (binding.entry === undefined || !validExecutionOperationId(operationId)) {
     return { status: 'blocked', retryable: false, reason: 'invalid_snapshot' };
   }
-  if (
-    !/^permit_[a-f0-9]{24}$/.test(permit.id) ||
-    !/^aegis_[a-f0-9]{16}$/.test(permit.approvalId) ||
-    permit.approvalId !== current.approvalId ||
-    !validExecutionOperationId(operationId)
-  ) return { status: 'blocked', retryable: false, reason: 'invalid_snapshot' };
-
-  const preMarker = await durableStrictRosterPolicyIntegrity(permit, operationId, policyStore);
+  const preMarker = await durableStrictRosterPolicyIntegrity(binding.entry.permit, operationId, policyStore);
+  binding.unchanged();
   if (preMarker !== 'current') return durableStrictRosterBeginFailure(preMarker);
   const preRoster = await strictRosterIntegrity(operationId, store);
+  binding.unchanged();
   if (preRoster === 'unavailable' || preRoster === 'inconsistent') {
     return { status: 'blocked', retryable: false, reason: 'journal_inconsistent' };
   }
   if (preRoster === 'stale') return { status: 'blocked', retryable: false, reason: 'journal_stale' };
 
-  const result = await beginExecutionEffect(permit, current, operationId, store);
+  const result = await beginExecutionEffectBound(operationId, store, binding);
   if (result.status !== 'execute') return result;
 
-  const postMarker = await durableStrictRosterPolicyIntegrity(permit, operationId, policyStore);
+  const postMarker = await durableStrictRosterPolicyIntegrity(binding.entry.permit, operationId, policyStore);
+  binding.unchanged();
   if (postMarker !== 'current') return durableStrictRosterBeginFailure(postMarker);
   const postRoster = await strictRosterIntegrity(operationId, store);
+  binding.unchanged();
   if (postRoster === 'unavailable' || postRoster === 'inconsistent') {
     return { status: 'blocked', retryable: false, reason: 'journal_inconsistent' };
   }
   if (postRoster === 'stale') return { status: 'blocked', retryable: false, reason: 'journal_stale' };
+  // Keep the started fence; refusing permission does not undo a completed CAS.
+  if (!binding.unchanged()) return { status: 'blocked', retryable: false, reason: 'invalid_snapshot' };
   return result;
 }
 

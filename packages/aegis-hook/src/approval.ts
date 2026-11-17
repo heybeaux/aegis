@@ -1705,7 +1705,8 @@ function durableStrictRosterBeginFailure(
  * Atomically select durable strict-roster policy for one exact permit/operation. The host owns
  * durability and create-if-absent atomicity; Aegis attests the resulting marker by readback. Exact
  * reselection is idempotent, while conflicts, malformed records, and unavailable storage return
- * no selection and never overwrite the existing marker.
+ * no selection and never overwrite the existing marker. Identity must remain unchanged across
+ * storage awaits; a rejected attestation does not undo an already persisted selection.
  */
 export async function selectDurableStrictRosterPolicy(
   permit: ApprovalExecutionPermit,
@@ -1725,10 +1726,15 @@ export async function selectDurableStrictRosterPolicy(
     permitId: permit.id,
     approvalId: permit.approvalId,
   };
+  const entryPermit = { id: marker.permitId, approvalId: marker.approvalId };
+  const identityUnchanged = () => permit.id === entryPermit.id &&
+    permit.approvalId === entryPermit.approvalId && current.approvalId === entryPermit.approvalId;
   try {
-    await store.bindStrictRosterPolicy(operationId, marker);
+    await store.bindStrictRosterPolicy(operationId, { ...marker });
+    if (!identityUnchanged()) return undefined;
     const retained: unknown = await store.readStrictRosterPolicy(operationId);
-    return validDurableStrictRosterPolicyMarker(retained, operationId, permit) ? marker : undefined;
+    if (!identityUnchanged()) return undefined;
+    return validDurableStrictRosterPolicyMarker(retained, operationId, entryPermit) ? marker : undefined;
   } catch {
     return undefined;
   }

@@ -1894,19 +1894,26 @@ export async function retireDurableStrictRosterPolicy(
   journal: JournaledApprovalExecutionPermitStore,
 ): Promise<DurableStrictRosterPolicyLifecycleResult> {
   const blocked = (): DurableStrictRosterPolicyLifecycleResult => ({ status: 'blocked', retryable: false, reason: 'policy_lifecycle_inconsistent' });
-  if (!presentObject(permit) || !validExecutionOperationId(operationId) || !['committed', 'failed'].includes(outcome) || !validReceiptDigest(receiptDigest) || !Number.isSafeInteger(terminalRevision) || terminalRevision <= 0) return blocked();
+  if (!presentObject(permit) || !/^permit_[a-f0-9]{24}$/.test(permit.id) || !/^aegis_[a-f0-9]{16}$/.test(permit.approvalId) || !validExecutionOperationId(operationId) || !['committed', 'failed'].includes(outcome) || !validReceiptDigest(receiptDigest) || !Number.isSafeInteger(terminalRevision) || terminalRevision <= 0) return blocked();
+  // The caller owns this mutable handle. Terminal truth and CAS readback must
+  // describe its entry identity even when another task changes it during an await.
+  const entry: ApprovalExecutionPermit = { id: permit.id, approvalId: permit.approvalId };
+  const unchanged = () => permit.id === entry.id && permit.approvalId === entry.approvalId;
   let effect: ApprovalExecutionEffectRecord | undefined;
   try { effect = await journal.readEffect(operationId); } catch { return { status: 'indeterminate', retryable: false, reason: 'policy_unavailable' }; }
-  if (!effectRecordMatches(effect, permit, operationId) || effect.revision !== terminalRevision || effect.state !== outcome) return blocked();
+  if (!unchanged()) return blocked();
+  if (!effectRecordMatches(effect, entry, operationId) || effect.revision !== terminalRevision || effect.state !== outcome) return blocked();
   if (outcome === 'committed') {
-    if (!validStoredSuccessReceipt(effect.successReceipt, permit, operationId) || effect.successReceipt.receiptDigest !== receiptDigest || effect.failureReceipt !== undefined) return blocked();
-  } else if (!validStoredFailureReceipt(effect.failureReceipt, permit, operationId) || effect.failureReceipt.receiptDigest !== receiptDigest || effect.successReceipt !== undefined) return blocked();
-  const expectedActive: DurableStrictRosterPolicyMarker = { operationId, permitId: permit.id, approvalId: permit.approvalId };
+    if (!validStoredSuccessReceipt(effect.successReceipt, entry, operationId) || effect.successReceipt.receiptDigest !== receiptDigest || effect.failureReceipt !== undefined) return blocked();
+  } else if (!validStoredFailureReceipt(effect.failureReceipt, entry, operationId) || effect.failureReceipt.receiptDigest !== receiptDigest || effect.successReceipt !== undefined) return blocked();
+  const expectedActive: DurableStrictRosterPolicyMarker = { operationId, permitId: entry.id, approvalId: entry.approvalId };
   const retirement: DurableStrictRosterPolicyRetirement = { ...expectedActive, status: 'retired', outcome, receiptDigest, terminalRevision };
   try {
     await store.retireStrictRosterPolicy(operationId, expectedActive, retirement);
+    if (!unchanged()) return blocked();
     const retained: unknown = await store.readStrictRosterPolicy(operationId);
-    return validDurableStrictRosterPolicyRetirement(retained, operationId, permit) && retained.outcome === outcome && retained.receiptDigest === receiptDigest && retained.terminalRevision === terminalRevision
+    if (!unchanged()) return blocked();
+    return validDurableStrictRosterPolicyRetirement(retained, operationId, entry) && retained.outcome === outcome && retained.receiptDigest === receiptDigest && retained.terminalRevision === terminalRevision
       ? { status: 'retired', retryable: false, reason: 'policy_retired' }
       : blocked();
   } catch { return { status: 'indeterminate', retryable: false, reason: 'policy_unavailable' }; }
@@ -1938,10 +1945,12 @@ export async function compactDurableStrictRosterPolicyRetirement(
     terminalRevision <= 0
   ) return blocked();
 
+  const entry: ApprovalExecutionPermit = { id: permit.id, approvalId: permit.approvalId };
+  const unchanged = () => permit.id === entry.id && permit.approvalId === entry.approvalId;
   const expectedRetired: DurableStrictRosterPolicyRetirement = {
     operationId,
-    permitId: permit.id,
-    approvalId: permit.approvalId,
+    permitId: entry.id,
+    approvalId: entry.approvalId,
     status: 'retired',
     outcome,
     receiptDigest,
@@ -1954,15 +1963,17 @@ export async function compactDurableStrictRosterPolicyRetirement(
     receiptDigest,
     terminalRevision,
     checkpointDigest: durableStrictRosterRetirementCheckpointDigest(
-      operationId, permit.id, permit.approvalId, outcome, receiptDigest, terminalRevision,
+      operationId, entry.id, entry.approvalId, outcome, receiptDigest, terminalRevision,
     ),
     // Aegis proposes deterministic proof content; only the host may authenticate retained truth.
     verified: false,
   };
   try {
     await store.compactStrictRosterPolicyRetirement(operationId, expectedRetired, checkpoint);
+    if (!unchanged()) return blocked();
     const retained: unknown = await store.readStrictRosterPolicy(operationId);
-    return validDurableStrictRosterPolicyRetirementCheckpoint(retained, operationId, permit) &&
+    if (!unchanged()) return blocked();
+    return validDurableStrictRosterPolicyRetirementCheckpoint(retained, operationId, entry) &&
       retained.outcome === outcome &&
       retained.receiptDigest === receiptDigest &&
       retained.terminalRevision === terminalRevision

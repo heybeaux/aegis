@@ -155,3 +155,18 @@ Journal finalization retains entry authority through prepare/claim and durably b
 observed drift. See [authority integrity and host limits](../../docs/journal-authorization-drift.md).
 
 For unconfirmed resume/start invalidation, see [RT-72 burn acknowledgement semantics](../../docs/resume-burn-ack.md). A false or throwing burn returns indeterminate; hosts must quarantine and reconcile.
+
+### Lifecycle transition identity
+
+`retireDurableStrictRosterPolicy()` and `compactDurableStrictRosterPolicyRetirement()`
+retain the permit and approval IDs supplied at entry. Terminal journal evidence,
+compare-and-swap proposals, and retained readback are checked against that identity.
+If either caller-owned ID changes across an awaited operation, the transition
+returns `blocked/policy_lifecycle_inconsistent` without further storage operations.
+It does not roll back a transition already persisted by the host. Retrying with the
+original identity can attest that retained transition idempotently.
+
+This protects lifecycle attestation, not execution authorization. Hosts still own
+atomic transitions, authentic terminal evidence, detached reads, and checkpoint
+verification. Changes hidden entirely within a callback or made after return are
+outside this boundary. SwarmLab exp88 covers both committed and failed outcomes.

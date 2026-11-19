@@ -1998,6 +1998,8 @@ async function compactedRetiredPolicyResult(
     return { status: 'blocked', retryable: false, reason: 'policy_lifecycle_inconsistent' };
   }
 
+  const entry: ApprovalExecutionPermit = { id: permit.id, approvalId: permit.approvalId };
+  const unchanged = () => permit.id === entry.id && permit.approvalId === entry.approvalId;
   const authorityCapability = compactRetirementAuthorityCapability(store);
   if (authorityCapability.status === 'malformed') {
     return { status: 'blocked', retryable: false, reason: 'policy_lifecycle_inconsistent' };
@@ -2009,6 +2011,7 @@ async function compactedRetiredPolicyResult(
       store,
       authorityCapability.read,
     );
+    if (!unchanged()) return { status: 'blocked', retryable: false, reason: 'policy_lifecycle_inconsistent' };
     if (integrity === 'unavailable') {
       return { status: 'indeterminate', retryable: false, reason: 'policy_unavailable' };
     }
@@ -2028,7 +2031,8 @@ async function compactedRetiredPolicyResult(
   } catch {
     return { status: 'indeterminate', retryable: false, reason: 'policy_unavailable' };
   }
-  if (validDurableStrictRosterPolicyRetirementCheckpoint(record, operationId, permit)) {
+  if (!unchanged()) return { status: 'blocked', retryable: false, reason: 'policy_lifecycle_inconsistent' };
+  if (validDurableStrictRosterPolicyRetirementCheckpoint(record, operationId, entry)) {
     return {
       status: 'retired',
       retryable: false,
@@ -2068,6 +2072,10 @@ async function compactRetirementAuthorityIntegrity(
   store: DurableStrictRosterPolicyStore,
   readAuthorities: MultiAuthorityCompactableDurableStrictRosterPolicyStore['readCompactRetirementCheckpointAuthorities'],
 ): Promise<{ integrity: CompactRetirementAuthorityIntegrity; record?: DurableStrictRosterPolicyRetirementCheckpoint | DurableStrictRosterPolicyRetirement }> {
+  // Keep the entry binding across both proof and authority reads; checking only
+  // the final handle would miss drift followed by restoration at the second await.
+  const entry: ApprovalExecutionPermit = { id: permit.id, approvalId: permit.approvalId };
+  const unchanged = () => permit.id === entry.id && permit.approvalId === entry.approvalId;
   let record: unknown;
   let authorities: unknown;
   try {
@@ -2075,11 +2083,12 @@ async function compactRetirementAuthorityIntegrity(
   } catch {
     return { integrity: 'unavailable' };
   }
+  if (!unchanged()) return { integrity: 'inconsistent' };
   // Full retained tombstones predate compaction and do not depend on compact-proof authorities.
-  if (validDurableStrictRosterPolicyRetirement(record, operationId, permit)) {
+  if (validDurableStrictRosterPolicyRetirement(record, operationId, entry)) {
     return { integrity: 'current', record };
   }
-  if (!validDurableStrictRosterPolicyRetirementCheckpoint(record, operationId, permit)) {
+  if (!validDurableStrictRosterPolicyRetirementCheckpoint(record, operationId, entry)) {
     return { integrity: 'inconsistent' };
   }
   try {
@@ -2087,6 +2096,7 @@ async function compactRetirementAuthorityIntegrity(
   } catch {
     return { integrity: 'unavailable' };
   }
+  if (!unchanged()) return { integrity: 'inconsistent' };
   if (authorities === undefined) return { integrity: 'unavailable' };
   if (!Array.isArray(authorities) || authorities.length === 0) return { integrity: 'inconsistent' };
   const seen = new Set<string>();
@@ -2112,8 +2122,8 @@ async function compactRetirementAuthorityIntegrity(
       !validReceiptDigest(candidate.checkpointDigest) ||
       candidate.checkpointDigest !== durableStrictRosterRetirementCheckpointDigest(
         operationId,
-        permit.id,
-        permit.approvalId,
+        entry.id,
+        entry.approvalId,
         candidate.outcome as ApprovalExecutionTerminalProofOutcome,
         candidate.receiptDigest,
         candidate.terminalRevision!,
@@ -2187,10 +2197,14 @@ export async function beginCompactedDurableStrictRosterPolicyExecutionEffect(
 }
 
 async function retiredPolicyResult(permit: ApprovalExecutionPermit, operationId: string, store: DurableStrictRosterPolicyStore): Promise<DurableStrictRosterPolicyLifecycleResult> {
+  const blocked = (): DurableStrictRosterPolicyLifecycleResult => ({ status: 'blocked', retryable: false, reason: 'policy_lifecycle_inconsistent' });
+  if (!presentObject(permit) || !/^permit_[a-f0-9]{24}$/.test(permit.id) || !/^aegis_[a-f0-9]{16}$/.test(permit.approvalId) || !validExecutionOperationId(operationId)) return blocked();
+  const entry: ApprovalExecutionPermit = { id: permit.id, approvalId: permit.approvalId };
   let record: unknown;
   try { record = await store.readStrictRosterPolicy(operationId); } catch { return { status: 'indeterminate', retryable: false, reason: 'policy_unavailable' }; }
-  if (validDurableStrictRosterPolicyRetirement(record, operationId, permit)) return { status: 'retired', retryable: false, reason: record.outcome === 'committed' ? 'effect_committed' : 'effect_failed' };
-  return { status: 'blocked', retryable: false, reason: 'policy_lifecycle_inconsistent' };
+  if (permit.id !== entry.id || permit.approvalId !== entry.approvalId) return blocked();
+  if (validDurableStrictRosterPolicyRetirement(record, operationId, entry)) return { status: 'retired', retryable: false, reason: record.outcome === 'committed' ? 'effect_committed' : 'effect_failed' };
+  return blocked();
 }
 
 /** Late reads after retirement preserve terminal classification and never restore retry authority. */

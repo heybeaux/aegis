@@ -8,7 +8,7 @@
  */
 
 /** Shell metacharacters/combinators that disqualify a command from the fast path. */
-const COMBINATORS = [';', '&&', '||', '|', '$(', '`', '>', '<', '&'];
+const COMBINATORS = ['\n', ';', '&&', '||', '|', '$(', '`', '>', '<', '&'];
 
 /** Package-owned implicit allowlist; explicit allowlist arguments select host policy. */
 const IMPLICIT_SAFE = new Set([
@@ -34,6 +34,9 @@ function hasCombinator(command: string): boolean {
 /**
  * True only if the command's leading token is allowlisted AND it contains no shell
  * combinators. Anything with a combinator is never fast-pathed.
+ * Embedded LF is a shell command separator, including after a comment. Reject it
+ * conservatively even inside quotes or continuations; this is not a shell parser.
+ * Leading/trailing whitespace is still ignored before checking the command.
  */
 export function isSafeCommand(
   command: string,

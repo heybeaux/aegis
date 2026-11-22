@@ -43,27 +43,19 @@ function strictest(a: GateAction, b: GateAction): GateAction {
   return ACTION_RANK[a] >= ACTION_RANK[b] ? a : b;
 }
 
-function targetString(call: ToolCall, target: CompiledRule['rule']['match']['target']): string[] {
-  switch (target) {
-    case 'command':
-      return call.command ? [call.command] : [];
-    case 'content':
-      // Each fragment is a separate rule input: joining can invent cross-edit matches.
-      return [...(call.content ? [call.content] : []), ...(call.contentFragments ?? [])];
-    case 'path':
-      return call.paths ?? [];
-    case 'argv':
-      return call.argv ?? [];
-  }
-}
+// Bound caller-controlled list width before constructing any per-rule regex jobs.
+// This is a cardinality bound, not a bound on policy size or individual string bytes.
+const MAX_TARGET_STRINGS = 1024;
+type MatchTarget = CompiledRule['rule']['match']['target'];
 
-
-/** Strings a rule must test against this call, or null when the rule cannot apply. */
-function ruleStrings(compiled: CompiledRule, call: ToolCall): string[] | null {
-  const { rule } = compiled;
-  if (!ruleApplies(rule.appliesTo, call.tool)) return null;
-  if (rule.enabled === false) return null;
-  return targetString(call, rule.match.target);
+function admittedTargetStrings(call: ToolCall, target: MatchTarget): { strings: string[]; incomplete: boolean } {
+  if (target === 'command') return { strings: call.command ? [call.command] : [], incomplete: false };
+  const prefix = target === 'content' && call.content ? [call.content] : [];
+  const values = (target === 'content' ? call.contentFragments : target === 'path' ? call.paths : call.argv) ?? [];
+  const count = Math.min(values.length, MAX_TARGET_STRINGS - prefix.length);
+  // Do not spread or iterate the unadmitted suffix, even for content fragments.
+  for (let i = 0; i < count; i++) prefix.push(values[i]!);
+  return { strings: prefix, incomplete: values.length > count };
 }
 
 /**
@@ -709,9 +701,27 @@ export function evaluate(
   // one interruptible batch (per-job budget; timed-out rule is unknown and skipped).
   const ruleIndex = new Map<CompiledRule, number>();
   compiledRules.forEach((c, i) => { if (!ruleIndex.has(c)) ruleIndex.set(c, i); });
+  let targetAdmissionIncomplete = false;
+  // Non-command targets are identical across decoded variants. Admit each once,
+  // only when an enabled applicable rule can actually inspect that target.
+  const admittedTargets = new Map<MatchTarget, string[]>();
+  const stringsFor = (compiled: CompiledRule, testCall: ToolCall): string[] | null => {
+    const { rule } = compiled;
+    if (invalidMatchers.has(compiled) || rule.enabled === false || !ruleApplies(rule.appliesTo, testCall.tool)) return null;
+    const target = rule.match.target;
+    if (target === 'command') return testCall.command ? [testCall.command] : [];
+    let strings = admittedTargets.get(target);
+    if (strings === undefined) {
+      const admitted = admittedTargetStrings(call, target);
+      strings = admitted.strings;
+      targetAdmissionIncomplete ||= admitted.incomplete;
+      admittedTargets.set(target, strings);
+    }
+    return strings;
+  };
   const jobs: RegexJob[] = [];
   const plan = callsToTest.map(testCall => compiledRules.map(compiled => {
-    const strings = invalidMatchers.has(compiled) ? null : ruleStrings(compiled, testCall);
+    const strings = stringsFor(compiled, testCall);
     let slice: [number, number] | undefined;
     if (strings && compiled.rule.match.kind === 'regex' && compiled.regex && strings.length > 0) {
       let source: string | undefined;
@@ -769,7 +779,7 @@ export function evaluate(
   // buffered command in an interactive process. Review independently of rules,
   // predictor optimism, or caller-supplied metadata. Never fabricate a rule hit.
   const processInputRequiresReview = call.tool === 'ProcessInput';
-  const policyAction = strictest(severityFloor, unresolvedRules.size > 0 || preprocessingIncomplete || processInputRequiresReview ? 'ask' : 'allow');
+  const policyAction = strictest(severityFloor, unresolvedRules.size > 0 || preprocessingIncomplete || targetAdmissionIncomplete || processInputRequiresReview ? 'ask' : 'allow');
   const action = strictest(policyAction, predAction);
 
   let decidedBy: Evaluation['decidedBy'];
@@ -795,6 +805,11 @@ export function evaluate(
 
   if (preprocessingIncomplete) {
     const diagnostic = 'preprocess admission budget exceeded; decoded coverage incomplete';
+    reason = reason === 'no rule matched' ? diagnostic : `${reason}; ${diagnostic}`;
+  }
+
+  if (targetAdmissionIncomplete) {
+    const diagnostic = `target input admission budget exceeded (${MAX_TARGET_STRINGS} strings per target); coverage incomplete`;
     reason = reason === 'no rule matched' ? diagnostic : `${reason}; ${diagnostic}`;
   }
 

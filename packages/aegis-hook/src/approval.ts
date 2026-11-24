@@ -713,6 +713,46 @@ export function finalizeExecutionPermit(
   }
 }
 
+/**
+ * Optional host authority freshness lease for shared destructive finalization.
+ * Supply on every attempt. This does not persist a permit TTL or cover journal APIs.
+ */
+export interface ApprovalExecutionFinalizationOptions {
+  /** Inclusive nonnegative safe-integer epoch-millisecond deadline. */
+  validUntilMs: number;
+  /** Trusted epoch-millisecond clock, captured at entry; defaults to Date.now. */
+  nowMs?: () => number;
+}
+
+// Capture policy and clock before storage can suspend. A failure is sticky across
+// all awaited boundaries, including a committed prepare with a lost response.
+function captureFinalizationLease(options: ApprovalExecutionFinalizationOptions | undefined): () => boolean {
+  if (options === undefined) return () => true;
+  try {
+    if (!presentObject(options)) return () => false;
+    const deadline = options.validUntilMs;
+    const now = options.nowMs === undefined ? Date.now : options.nowMs;
+    if (!Number.isSafeInteger(deadline) || deadline < 0 || typeof now !== 'function') return () => false;
+    let previous = 0;
+    let valid = true;
+    const check = (): boolean => {
+      if (!valid) return false;
+      try {
+        const current = now();
+        valid = Number.isSafeInteger(current) && current >= previous && current <= deadline;
+        previous = current;
+      } catch {
+        valid = false;
+      }
+      return valid;
+    };
+    check();
+    return check;
+  } catch {
+    return () => false;
+  }
+}
+
 type FinalizationInputs = { permit: ApprovalExecutionPermit; current: ApprovalExecutionSnapshot };
 
 // Shared finalization may suspend after reading caller-owned authority. Retain a
@@ -750,16 +790,18 @@ export async function finalizeExecutionPermitWithStore(
   permit: ApprovalExecutionPermit,
   current: ApprovalExecutionSnapshot,
   store: ApprovalExecutionPermitStore,
+  options?: ApprovalExecutionFinalizationOptions,
 ): Promise<boolean> {
   const entry = captureFinalizationInputs(permit, current);
   if (entry === undefined) return false;
+  const leaseCurrent = captureFinalizationLease(options);
   let record: ApprovalExecutionPermitRecord | undefined;
   try {
     record = await store.take(entry.permit.id);
   } catch {
     return false;
   }
-  return finalizationInputsUnchanged(entry, permit, current) &&
+  return leaseCurrent() && finalizationInputsUnchanged(entry, permit, current) &&
     record?.id === entry.permit.id &&
     record.approvalId === entry.permit.approvalId &&
     executionSnapshotValid(record, entry.current);
@@ -802,6 +844,7 @@ export async function finalizeExecutionPermitWithReconciliation(
   current: ApprovalExecutionSnapshot,
   operationId: string,
   store: ReconciledApprovalExecutionPermitStore,
+  options?: ApprovalExecutionFinalizationOptions,
 ): Promise<ApprovalExecutionFinalizationResult> {
   const blocked = (
     reason: NonNullable<ApprovalExecutionFinalizationResult['reason']>,
@@ -810,6 +853,7 @@ export async function finalizeExecutionPermitWithReconciliation(
   const entry = captureFinalizationInputs(permit, current);
   if (entry === undefined) return blocked('invalid_snapshot');
   if (!validExecutionOperationId(operationId)) return blocked('invalid_snapshot');
+  const leaseCurrent = captureFinalizationLease(options);
 
   try {
     const prepared = await store.prepareTake(entry.permit.id, operationId);
@@ -821,6 +865,7 @@ export async function finalizeExecutionPermitWithReconciliation(
   // Still claim/burn a prepared record after drift; returning early would leave
   // a reusable prepared grant. Keep drift observed at either async boundary.
   const unchangedAfterPrepare = finalizationInputsUnchanged(entry, permit, current);
+  const leaseAfterPrepare = leaseCurrent();
   let record: ApprovalExecutionPermitRecord | undefined;
   try {
     record = await store.claimPreparedTake(operationId);
@@ -829,6 +874,8 @@ export async function finalizeExecutionPermitWithReconciliation(
   }
   if (record === undefined) return blocked('not_taken', true);
   if (
+    !leaseAfterPrepare ||
+    !leaseCurrent() ||
     !unchangedAfterPrepare ||
     !finalizationInputsUnchanged(entry, permit, current) ||
     record.id !== entry.permit.id ||

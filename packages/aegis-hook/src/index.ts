@@ -80,6 +80,7 @@ export {
   type ApprovalExecutionPermitRecord,
   type ApprovalExecutionPermitStore,
   type ApprovalExecutionIssuanceOptions,
+  type ApprovalExecutionFinalizationOptions,
   type ReconciledApprovalExecutionPermitStore,
   type JournaledApprovalExecutionPermitStore,
   type RevisionedApprovalExecutionPermitStore,

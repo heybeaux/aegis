@@ -1217,6 +1217,28 @@ export async function finalizeExecutionPermitWithEffectJournal(
     }
     return { status: 'indeterminate', retryable: false, reason: 'status_unavailable' };
   };
+  // An absent claim result is not evidence that entry authority was valid. Read
+  // the retained binding so static revocation, delegation, and process identity
+  // failures receive the same durable invalidation as a returned claim record.
+  // This read never grants execution; the host retains immutable operation ownership.
+  const reconcileAbsentClaim = async (
+    fallback: ApprovalExecutionFinalizationResult,
+  ): Promise<ApprovalExecutionFinalizationResult> => {
+    let effect: unknown;
+    try {
+      effect = await store.readEffect(operationId);
+    } catch {
+      return { status: 'indeterminate', retryable: false, reason: 'status_unavailable' };
+    }
+    if (effect === undefined) return fallback;
+    // Never burn a foreign or malformed retained operation.
+    if (!effectRecordMatches(effect, entry.permit, operationId)) {
+      return { status: 'indeterminate', retryable: false, reason: 'status_unavailable' };
+    }
+    if (!finalizationInputsUnchanged(entry, permit, current) ||
+        !executionSnapshotValid(effect.permit, entry.current)) return invalidate();
+    return fallback;
+  };
   let record: unknown;
   try {
     record = await store.claimPreparedEffect(operationId);
@@ -1227,7 +1249,7 @@ export async function finalizeExecutionPermitWithEffectJournal(
     if (!unchangedAfterPrepare || !finalizationInputsUnchanged(entry, permit, current)) {
       return invalidate();
     }
-    return { status: 'indeterminate', retryable: false, reason: 'status_unavailable' };
+    return reconcileAbsentClaim({ status: 'indeterminate', retryable: false, reason: 'status_unavailable' });
   }
   // A competing claimant can retain this authorization even when our claim
   // returns nothing. Observed drift must still invalidate it; a competing start
@@ -1235,7 +1257,7 @@ export async function finalizeExecutionPermitWithEffectJournal(
   if (!unchangedAfterPrepare || !finalizationInputsUnchanged(entry, permit, current)) {
     return invalidate();
   }
-  if (record === undefined) return blocked('not_taken', prepared === undefined);
+  if (record === undefined) return reconcileAbsentClaim(blocked('not_taken', prepared === undefined));
   if (!permitRecordMatches(record, entry.permit) || !executionSnapshotValid(record, entry.current)) {
     return invalidate();
   }

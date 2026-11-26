@@ -949,7 +949,8 @@ function permitRecordMatches(
  * `claimPreparedEffect` MUST authorize at most one initial caller while retaining the record.
  * `beginEffect` is written immediately before invoking the external effect, `commitEffect`
  * immediately after successful completion, and `readEffect` MUST be a durable cross-host read.
- * `burnEffect` returns true only after permanently invalidating the authorization.
+ * `burnEffect` returns literal true only after permanently invalidating the authorization.
+ * Nonboolean acknowledgements are unconfirmed, even when truthy at runtime.
  * False or a rejection does not confirm invalidation; hosts must quarantine and reconcile.
  */
 export interface JournaledApprovalExecutionPermitStore extends ApprovalExecutionPermitStore {
@@ -1211,7 +1212,7 @@ export async function finalizeExecutionPermitWithEffectJournal(
   }
   const invalidate = async (): Promise<ApprovalExecutionFinalizationResult> => {
     try {
-      if (await store.burnEffect(operationId)) return blocked('invalid_snapshot');
+      if ((await store.burnEffect(operationId)) === true) return blocked('invalid_snapshot');
     } catch {
       // Invalidation may have committed, but durable acknowledgement is unavailable.
     }
@@ -1650,7 +1651,7 @@ export async function resolveExecutionEffect(
   if (!finalizationInputsUnchanged(entry, permit, current) ||
       !executionSnapshotValid(effect.permit, entry.current)) {
     try {
-      if (!await store.burnEffect(operationId)) return indeterminate('journal_unavailable');
+      if ((await store.burnEffect(operationId)) !== true) return indeterminate('journal_unavailable');
     } catch { return indeterminate('journal_unavailable'); }
     return { status: 'not_executed', retryable: false, reason: 'invalid_snapshot' };
   }
@@ -2427,7 +2428,7 @@ export async function beginExecutionEffect(
   if (!finalizationInputsUnchanged(entry, permit, current) ||
       !executionSnapshotValid(effect.permit, entry.current)) {
     try {
-      if (!await store.burnEffect(operationId)) {
+      if ((await store.burnEffect(operationId)) !== true) {
         return { status: 'indeterminate', retryable: false, reason: 'status_unavailable' };
       }
     } catch {
